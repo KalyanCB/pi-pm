@@ -1,10 +1,13 @@
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from unittest.mock import patch
 
 from app.core.constants import DataStatus
 from app.models.market_data import MarketData
 from app.models.stock import Stock
 from app.models.stock_universe import StockUniverse
 from app.models.universe_membership import UniverseMembership
+from app.providers.yahoo.models import YahooOHLCVBar, YahooStockMetadata
 
 
 def seed_ranking_universe(db_session, as_of: date):
@@ -144,6 +147,62 @@ def test_ranking_with_benchmark_present(client, db_session):
         "relative_strength": "0.15000000",
     }
     assert body["results_count"] == 3
+    for result in body["results"]:
+        assert "relative_strength" in result["score_components"]
+
+
+def test_ranking_with_ingested_benchmark(client, db_session, mock_provider):
+    as_of = date(2025, 6, 1)
+    seed_ranking_universe(db_session, as_of)
+
+    metadata = YahooStockMetadata(
+        symbol="^NSEI",
+        name="NIFTY 50",
+        exchange="NSE",
+        sector=None,
+        industry=None,
+    )
+    bars = []
+    for i in range(220):
+        bar_date = as_of - timedelta(days=219 - i)
+        close = Decimal("100") + Decimal(i)
+        bars.append(
+            YahooOHLCVBar(
+                date=bar_date,
+                open=close,
+                high=close + Decimal("1"),
+                low=close - Decimal("1"),
+                close=close,
+                volume=500_000 + i,
+                adj_close=close,
+            )
+        )
+
+    with patch.object(mock_provider, "fetch_metadata", return_value=metadata), patch.object(
+        mock_provider, "fetch_history", return_value=bars
+    ):
+        ingest = client.post(
+            "/api/v1/market-data/ingest",
+            json={"symbols": ["^NSEI"], "period": "5y"},
+        )
+    assert ingest.status_code == 200
+
+    response = client.post(
+        "/api/v1/rankings/run",
+        json={
+            "universe_code": "PI_PM_CORE",
+            "as_of_date": as_of.isoformat(),
+            "strategy_name": "momentum_v1",
+            "strategy_version": "1.0.0",
+            "benchmark_symbol": "^NSEI",
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    metadata_out = body["metadata"]
+
+    assert metadata_out["benchmark_available"] is True
+    assert metadata_out.get("weight_adjustment_reason") is None
     for result in body["results"]:
         assert "relative_strength" in result["score_components"]
 

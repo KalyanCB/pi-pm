@@ -20,6 +20,26 @@ def _bars():
     ]
 
 
+def _benchmark_bars(count: int = 220):
+    start = datetime.now(UTC).date() - timedelta(days=count - 1)
+    bars: list[YahooOHLCVBar] = []
+    for i in range(count):
+        bar_date = start + timedelta(days=i)
+        close = Decimal("100") + Decimal(i)
+        bars.append(
+            YahooOHLCVBar(
+                date=bar_date,
+                open=close,
+                high=close + Decimal("1"),
+                low=close - Decimal("1"),
+                close=close,
+                volume=500_000 + i,
+                adj_close=close,
+            )
+        )
+    return bars
+
+
 def test_ingest_and_read_flow(client, mock_provider):
     metadata = {
         "RELIANCE.NS": YahooStockMetadata(
@@ -131,3 +151,39 @@ def test_list_stocks(client, mock_provider):
     response = client.get("/api/v1/stocks")
     assert response.status_code == 200
     assert len(response.json()) == 1
+
+
+def test_ingest_benchmark_index_symbol(client, mock_provider):
+    metadata = YahooStockMetadata(
+        symbol="^NSEI",
+        name="NIFTY 50",
+        exchange="NSE",
+        sector=None,
+        industry=None,
+    )
+
+    with patch.object(mock_provider, "fetch_metadata", return_value=metadata), patch.object(
+        mock_provider, "fetch_history", return_value=_benchmark_bars()
+    ):
+        response = client.post(
+            "/api/v1/market-data/ingest",
+            json={"symbols": ["^NSEI"], "period": "5y"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["symbols_processed"] == 1
+    assert body["symbols_failed"] == 0
+    assert body["rows_inserted"] == 220
+
+    stocks = client.get("/api/v1/stocks")
+    assert stocks.status_code == 200
+    assert any(stock["symbol"] == "^NSEI" for stock in stocks.json())
+
+
+def test_ingest_rejects_invalid_index_symbol(client):
+    response = client.post(
+        "/api/v1/market-data/ingest",
+        json={"symbols": ["^"], "period": "5y"},
+    )
+    assert response.status_code == 422

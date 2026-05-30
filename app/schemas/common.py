@@ -1,12 +1,7 @@
-import re
-
 from pydantic import BaseModel, Field, field_validator
 
-from app.core.constants import SYMBOL_PATTERN, IngestPeriod
-
-
-def normalize_symbol(value: str) -> str:
-    return value.strip().upper()
+from app.core.constants import IngestPeriod
+from app.core.symbols import validate_ingest_symbol
 
 
 class MarketDataIngestRequest(BaseModel):
@@ -16,10 +11,4 @@ class MarketDataIngestRequest(BaseModel):
     @field_validator("symbols")
     @classmethod
     def validate_symbols(cls, values: list[str]) -> list[str]:
-        normalized: list[str] = []
-        for raw in values:
-            symbol = normalize_symbol(raw)
-            if not re.match(SYMBOL_PATTERN, symbol):
-                raise ValueError(f"Invalid symbol format: {raw}")
-            normalized.append(symbol)
-        return normalized
+        return [validate_ingest_symbol(raw) for raw in values]

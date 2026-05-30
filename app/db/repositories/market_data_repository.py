@@ -54,6 +54,29 @@ class MarketDataRepository:
         stmt = stmt.order_by(MarketData.date.desc()).limit(1)
         return self.db.scalar(stmt)
 
+    def list_distinct_trading_dates(
+        self,
+        stock_ids: list[UUID],
+        start_date: date,
+        end_date: date,
+        source: str | None = MARKET_DATA_SOURCE_YAHOO,
+    ) -> list[date]:
+        if not stock_ids:
+            return []
+        stmt = (
+            select(MarketData.date)
+            .where(
+                MarketData.stock_id.in_(stock_ids),
+                MarketData.date >= start_date,
+                MarketData.date <= end_date,
+            )
+            .distinct()
+            .order_by(MarketData.date)
+        )
+        if source is not None:
+            stmt = stmt.where(MarketData.source == source)
+        return list(self.db.scalars(stmt).all())
+
     def upsert_bars(
         self,
         stock_id: UUID,

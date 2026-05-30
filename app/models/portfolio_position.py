@@ -16,7 +16,9 @@ if TYPE_CHECKING:
 class PortfolioPosition(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "portfolio_positions"
 
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False, default=0)
     avg_cost: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
     market_value: Mapped[float | None] = mapped_column(Numeric(18, 2))

@@ -13,6 +13,7 @@ from app.models import (  # noqa: F401
     RankingPerformanceSnapshot,
     RankingResult,
     RankingRun,
+    RankingValidationReport,
     ResearchReport,
     Stock,
     StockUniverse,

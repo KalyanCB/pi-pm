@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     ranking_min_stock_price: float = 50.0
     ranking_market_data_source: str = "yahoo"
 
+    validation_high_vol_threshold: float = 0.20
+
 
 @lru_cache
 def get_settings() -> Settings:

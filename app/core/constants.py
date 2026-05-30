@@ -52,7 +52,19 @@ class IngestBatchStatus(StrEnum):
 
 MARKET_DATA_SOURCE_YAHOO = "yahoo"
 
-SYMBOL_PATTERN = r"^[A-Z0-9]+(\.[A-Z]{1,4})?$"
+
+class SymbolKind(StrEnum):
+    EQUITY = "EQUITY"
+    INDEX = "INDEX"
+    ETF = "ETF"
+    UNKNOWN = "UNKNOWN"
+
+
+EQUITY_SYMBOL_PATTERN = r"^[A-Z0-9]+(\.[A-Z]{1,4})?$"
+INDEX_SYMBOL_PATTERN = r"^\^[A-Z0-9]+$"
+
+# Backward-compatible alias for equity-only callers.
+SYMBOL_PATTERN = EQUITY_SYMBOL_PATTERN
 
 NORMALIZATION_METHOD_PERCENTILE = "percentile"
 

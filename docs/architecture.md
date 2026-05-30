@@ -18,6 +18,8 @@ Core principles:
 | 2 | Market Intelligence (Yahoo ingestion, stocks, market data) | Complete |
 | 3 | Universe Filter + Deterministic Ranking Engine | Complete |
 | 3.1 | Ranking hardening (idempotency, failed runs, cache prep, tests) | Complete |
+| 4.1 | Historical ranking generator (backtest replayer) | Complete |
+| 4.2 | Signal validation framework (IC, deciles, hit rates) | Complete |
 
 ## Sprint 3 — Ranking Pipeline
 
@@ -56,6 +58,36 @@ Key properties: deterministic, reproducible, auditable, versioned.
 - `MarketDataCache` (`app/market_data/cache.py`) is a session-scoped bar cache.
 - Shared per ranking request between `UniverseFilterEngine` and `MarketDataLoader`.
 - Sprint 3.1 wires the abstraction only; no performance optimization yet (Sprint 4).
+
+## Sprint 4.1 — Historical Ranking Generator
+
+Generates deterministic ranking runs for every trading day in a date range:
+
+```
+POST /api/v1/backtest/generate-rankings
+  → TradingCalendar (benchmark-anchored dates from market data)
+  → RankingReplayer (RankingService per day)
+  → ranking_runs × N (idempotent via inputs_hash)
+```
+
+This produces the historical run corpus required before signal validation (Sprint 4.2).
+
+## Sprint 4.2 — Signal Validation Framework
+
+Measures whether ranking signals predict forward returns:
+
+```
+POST /api/v1/validation/runs/{run_id}/compute
+  → Forward returns (5/10/20/60 trading days)
+  → Regime classification (BULL/BEAR × HIGH_VOL/LOW_VOL)
+  → IC, decile spreads, hit rates
+  → ranking_validation_reports + filled performance_snapshots
+```
+
+Summary endpoint (`GET /api/v1/validation/summary`) aggregates across historical runs:
+average IC, decile returns, hit rate, and IC by regime.
+
+Backtest summary (`GET /api/v1/backtest/summary`) reports ranking vs validation coverage.
 
 ### Configuration defaults
 

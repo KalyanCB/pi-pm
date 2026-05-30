@@ -26,7 +26,9 @@ if TYPE_CHECKING:
 class MarketData(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "market_data"
 
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     date: Mapped[date] = mapped_column(Date, nullable=False)
     open: Mapped[float | None] = mapped_column(Numeric(18, 6))
     high: Mapped[float | None] = mapped_column(Numeric(18, 6))
@@ -36,7 +38,9 @@ class MarketData(Base, UUIDPrimaryKeyMixin):
     adj_close: Mapped[float | None] = mapped_column(Numeric(18, 6))
     dividend: Mapped[float | None] = mapped_column(Numeric(18, 6))
     split_factor: Mapped[float | None] = mapped_column(Numeric(18, 8))
-    source: Mapped[str] = mapped_column(String(64), nullable=False, default=MARKET_DATA_SOURCE_YAHOO)
+    source: Mapped[str] = mapped_column(
+        String(64), nullable=False, default=MARKET_DATA_SOURCE_YAHOO
+    )
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     stock: Mapped[Stock] = relationship(back_populates="market_data")

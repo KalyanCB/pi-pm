@@ -44,6 +44,17 @@ class RankingResultRepository:
         self.db.flush()
         return rows
 
+    def list_by_run_id(self, ranking_run_id: UUID) -> list[RankingResult]:
+        from sqlalchemy import select
+
+        return list(
+            self.db.scalars(
+                select(RankingResult)
+                .where(RankingResult.ranking_run_id == ranking_run_id)
+                .order_by(RankingResult.rank)
+            ).all()
+        )
+
     def list_top(self, ranking_run_id: UUID, limit: int) -> list[RankingResult]:
         from sqlalchemy import select
 

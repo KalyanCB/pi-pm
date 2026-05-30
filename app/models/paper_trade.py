@@ -18,13 +18,17 @@ if TYPE_CHECKING:
 class PaperTrade(Base, UUIDPrimaryKeyMixin):
     __tablename__ = "paper_trades"
 
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     side: Mapped[str] = mapped_column(String(4), nullable=False)
     quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
     limit_price: Mapped[float | None] = mapped_column(Numeric(18, 6))
     fill_price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False)
     fill_quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default=TradeStatus.PENDING.value)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=TradeStatus.PENDING.value
+    )
     rejection_reason: Mapped[str | None] = mapped_column(Text)
     ranking_run_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("ranking_runs.id", ondelete="SET NULL"), nullable=True

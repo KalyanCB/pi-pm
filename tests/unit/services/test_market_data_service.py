@@ -49,14 +49,17 @@ def _bars(symbol_date: date | None = None) -> list[YahooOHLCVBar]:
 def test_ingest_persists_stock_and_market_data(
     market_data_service, stock_repo, market_data_repo, metadata_reliance
 ):
-    with patch.object(
-        market_data_service.provider,
-        "fetch_metadata",
-        return_value=metadata_reliance,
-    ), patch.object(
-        market_data_service.provider,
-        "fetch_history",
-        return_value=_bars(),
+    with (
+        patch.object(
+            market_data_service.provider,
+            "fetch_metadata",
+            return_value=metadata_reliance,
+        ),
+        patch.object(
+            market_data_service.provider,
+            "fetch_history",
+            return_value=_bars(),
+        ),
     ):
         result = market_data_service.ingest(["RELIANCE.NS"], IngestPeriod.ONE_YEAR)
 
@@ -74,14 +77,17 @@ def test_ingest_persists_stock_and_market_data(
 
 
 def test_ingest_is_idempotent(market_data_service, metadata_reliance):
-    with patch.object(
-        market_data_service.provider,
-        "fetch_metadata",
-        return_value=metadata_reliance,
-    ), patch.object(
-        market_data_service.provider,
-        "fetch_history",
-        return_value=_bars(),
+    with (
+        patch.object(
+            market_data_service.provider,
+            "fetch_metadata",
+            return_value=metadata_reliance,
+        ),
+        patch.object(
+            market_data_service.provider,
+            "fetch_history",
+            return_value=_bars(),
+        ),
     ):
         first = market_data_service.ingest(["RELIANCE.NS"], IngestPeriod.ONE_YEAR)
         second = market_data_service.ingest(["RELIANCE.NS"], IngestPeriod.ONE_YEAR)
@@ -93,14 +99,17 @@ def test_ingest_is_idempotent(market_data_service, metadata_reliance):
 
 def test_ingest_skips_future_dates(market_data_service, metadata_reliance):
     future = datetime.now(UTC).date() + timedelta(days=5)
-    with patch.object(
-        market_data_service.provider,
-        "fetch_metadata",
-        return_value=metadata_reliance,
-    ), patch.object(
-        market_data_service.provider,
-        "fetch_history",
-        return_value=_bars(future),
+    with (
+        patch.object(
+            market_data_service.provider,
+            "fetch_metadata",
+            return_value=metadata_reliance,
+        ),
+        patch.object(
+            market_data_service.provider,
+            "fetch_history",
+            return_value=_bars(future),
+        ),
     ):
         result = market_data_service.ingest(["RELIANCE.NS"], IngestPeriod.ONE_YEAR)
 
@@ -108,22 +117,23 @@ def test_ingest_skips_future_dates(market_data_service, metadata_reliance):
     assert result.runs[0].status == "FAILED"
 
 
-def test_multi_symbol_partial_failure(
-    market_data_service, metadata_reliance, metadata_tcs
-):
+def test_multi_symbol_partial_failure(market_data_service, metadata_reliance, metadata_tcs):
     def metadata_side_effect(symbol: str):
         if symbol == "RELIANCE.NS":
             return metadata_reliance
         raise InvalidSymbolError(f"No metadata found for symbol: {symbol}")
 
-    with patch.object(
-        market_data_service.provider,
-        "fetch_metadata",
-        side_effect=metadata_side_effect,
-    ), patch.object(
-        market_data_service.provider,
-        "fetch_history",
-        return_value=_bars(),
+    with (
+        patch.object(
+            market_data_service.provider,
+            "fetch_metadata",
+            side_effect=metadata_side_effect,
+        ),
+        patch.object(
+            market_data_service.provider,
+            "fetch_history",
+            return_value=_bars(),
+        ),
     ):
         result = market_data_service.ingest(
             ["RELIANCE.NS", "INVALID.NS"],
@@ -156,14 +166,17 @@ def test_get_market_data_not_found(market_data_service):
 
 
 def test_get_latest_market_data(market_data_service, stock_repo, metadata_reliance):
-    with patch.object(
-        market_data_service.provider,
-        "fetch_metadata",
-        return_value=metadata_reliance,
-    ), patch.object(
-        market_data_service.provider,
-        "fetch_history",
-        return_value=_bars(),
+    with (
+        patch.object(
+            market_data_service.provider,
+            "fetch_metadata",
+            return_value=metadata_reliance,
+        ),
+        patch.object(
+            market_data_service.provider,
+            "fetch_history",
+            return_value=_bars(),
+        ),
     ):
         market_data_service.ingest(["RELIANCE.NS"], IngestPeriod.ONE_YEAR)
 

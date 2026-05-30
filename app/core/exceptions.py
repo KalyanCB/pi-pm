@@ -20,3 +20,11 @@ class StrategyNotFoundError(PiPMError):
 
 class RankingError(PiPMError):
     """Ranking computation failed."""
+
+
+class BacktestError(PiPMError):
+    """Historical ranking generation failed."""
+
+
+class ValidationError(PiPMError):
+    """Signal validation failed."""
