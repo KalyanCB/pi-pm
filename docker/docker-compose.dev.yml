@@ -1,0 +1,14 @@
+services:
+  db:
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ..:/app
+    command: sh scripts/entrypoint.sh
+    environment:
+      DEBUG: "true"
