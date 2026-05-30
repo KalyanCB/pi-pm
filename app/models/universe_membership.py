@@ -20,7 +20,9 @@ class UniverseMembership(Base, UUIDPrimaryKeyMixin):
     universe_id: Mapped[UUID] = mapped_column(
         ForeignKey("stock_universes.id", ondelete="CASCADE"), nullable=False
     )
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

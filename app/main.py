@@ -12,6 +12,7 @@ from app.core.exceptions import (
     ProviderError,
     RankingError,
     StrategyNotFoundError,
+    ValidationError,
 )
 from app.core.logging import setup_logging
 from app.db.session import dispose_engine
@@ -30,7 +31,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Pi-PM",
         description="Personal Intelligence Portfolio Manager",
-        version="0.3.0",
+        version="0.4.1",
         lifespan=lifespan,
         debug=settings.debug,
     )
@@ -54,6 +55,10 @@ def create_app() -> FastAPI:
     @app.exception_handler(RankingError)
     async def ranking_error_handler(_request: Request, exc: RankingError):
         return JSONResponse(status_code=500, content={"detail": str(exc)})
+
+    @app.exception_handler(ValidationError)
+    async def validation_error_handler(_request: Request, exc: ValidationError):
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(PiPMError)
     async def pipm_error_handler(_request: Request, exc: PiPMError):

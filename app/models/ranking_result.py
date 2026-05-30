@@ -21,7 +21,9 @@ class RankingResult(Base, UUIDPrimaryKeyMixin):
     ranking_run_id: Mapped[UUID] = mapped_column(
         ForeignKey("ranking_runs.id", ondelete="CASCADE"), nullable=False
     )
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     score: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
     score_components: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

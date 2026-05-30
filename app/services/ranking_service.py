@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -21,6 +22,12 @@ from app.ranking.registry import RankingStrategyRegistry
 from app.schemas.ranking import RankingRunRequest, UniverseFilterConfigSchema
 from app.services.universe_filter_service import UniverseFilterService
 from app.universe.models import UniverseFilterConfig
+
+
+@dataclass(frozen=True)
+class RankingRunOutcome:
+    run: RankingRun
+    reused: bool
 
 
 class RankingService:
@@ -47,9 +54,10 @@ class RankingService:
         self.strategy_registry = strategy_registry
 
     def run_ranking(self, payload: RankingRunRequest) -> RankingRun:
-        universe_code = (
-            payload.universe_code or self.settings.ranking_default_universe_code
-        )
+        return self.run_ranking_with_outcome(payload).run
+
+    def run_ranking_with_outcome(self, payload: RankingRunRequest) -> RankingRunOutcome:
+        universe_code = payload.universe_code or self.settings.ranking_default_universe_code
         strategy_name = payload.strategy_name or self.settings.ranking_default_strategy
         strategy_version = (
             payload.strategy_version or self.settings.ranking_default_strategy_version
@@ -85,7 +93,7 @@ class RankingService:
 
         existing = self.ranking_run_repo.find_completed_by_inputs_hash(output.inputs_hash)
         if existing is not None:
-            return existing
+            return RankingRunOutcome(existing, True)
 
         run = self.ranking_run_repo.create_pending(
             strategy_name=strategy.name,
@@ -111,7 +119,7 @@ class RankingService:
             self.db.commit()
             reloaded = self.ranking_run_repo.get_by_id(run.id)
             assert reloaded is not None
-            return reloaded
+            return RankingRunOutcome(reloaded, False)
         except RankingError:
             raise
         except Exception as exc:
@@ -146,7 +154,9 @@ class RankingService:
     ) -> UniverseFilterConfig:
         schema: UniverseFilterConfigSchema = payload.filter_config or UniverseFilterConfigSchema(
             min_history_days=self.settings.ranking_min_history_days,
-            min_avg_daily_traded_value=Decimal(str(self.settings.ranking_min_avg_daily_traded_value)),
+            min_avg_daily_traded_value=Decimal(
+                str(self.settings.ranking_min_avg_daily_traded_value)
+            ),
             min_stock_price=Decimal(str(self.settings.ranking_min_stock_price)),
             market_data_source=self.settings.ranking_market_data_source,
         )

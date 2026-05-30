@@ -9,13 +9,16 @@ from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
 from app.db.repositories.ranking_result_repository import RankingResultRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
+from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
 from app.db.session import get_db as _get_db
 from app.providers.yahoo.client import YahooFinanceProvider
 from app.ranking.registry import RankingStrategyRegistry
+from app.services.backtest_service import BacktestService
 from app.services.market_data_service import MarketDataService
 from app.services.ranking_service import RankingService
+from app.services.signal_validation_service import SignalValidationService
 from app.services.stock_service import StockService
 from app.services.universe_filter_service import UniverseFilterService
 
@@ -110,4 +113,52 @@ def get_ranking_service(
         stock_repo,
         universe_repo,
         strategy_registry,
+    )
+
+
+def get_ranking_validation_repository(
+    db: Session = Depends(get_db),
+) -> RankingValidationRepository:
+    return RankingValidationRepository(db)
+
+
+def get_signal_validation_service(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings_dep),
+    ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
+    ranking_result_repo: RankingResultRepository = Depends(get_ranking_result_repository),
+    ranking_performance_repo: RankingPerformanceRepository = Depends(
+        get_ranking_performance_repository
+    ),
+    validation_repo: RankingValidationRepository = Depends(get_ranking_validation_repository),
+    stock_repo: StockRepository = Depends(get_stock_repository),
+    market_data_repo: MarketDataRepository = Depends(get_market_data_repository),
+) -> SignalValidationService:
+    return SignalValidationService(
+        db,
+        settings,
+        ranking_run_repo,
+        ranking_result_repo,
+        ranking_performance_repo,
+        validation_repo,
+        stock_repo,
+        market_data_repo,
+    )
+
+
+def get_backtest_service(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings_dep),
+    ranking_service: RankingService = Depends(get_ranking_service),
+    universe_repo: UniverseRepository = Depends(get_universe_repository),
+    stock_repo: StockRepository = Depends(get_stock_repository),
+    market_data_repo: MarketDataRepository = Depends(get_market_data_repository),
+) -> BacktestService:
+    return BacktestService(
+        db,
+        settings,
+        ranking_service,
+        universe_repo,
+        stock_repo,
+        market_data_repo,
     )

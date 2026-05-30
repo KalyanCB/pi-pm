@@ -13,6 +13,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
     from app.models.ranking_result import RankingResult
+    from app.models.ranking_validation_report import RankingValidationReport
 
 
 class RankingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -25,7 +26,9 @@ class RankingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     universe_code: Mapped[str] = mapped_column(String(32), nullable=False)
     benchmark_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     filter_config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    normalization_method: Mapped[str] = mapped_column(String(16), nullable=False, default="percentile")
+    normalization_method: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="percentile"
+    )
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=RankingRunStatus.PENDING.value
     )
@@ -37,6 +40,9 @@ class RankingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     results: Mapped[list[RankingResult]] = relationship(back_populates="ranking_run")
     performance_snapshots: Mapped[list[RankingPerformanceSnapshot]] = relationship(
         back_populates="ranking_run"
+    )
+    validation_report: Mapped[RankingValidationReport | None] = relationship(
+        back_populates="ranking_run", uselist=False
     )
 
     __table_args__ = (

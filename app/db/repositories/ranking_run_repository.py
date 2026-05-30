@@ -83,6 +83,31 @@ class RankingRunRepository:
             stmt = stmt.where(RankingRun.strategy_version == strategy_version)
         return self.db.scalar(stmt.limit(1))
 
+    def list_completed_in_range(
+        self,
+        start_date,
+        end_date,
+        universe_code: str | None = None,
+        strategy_name: str | None = None,
+        strategy_version: str | None = None,
+    ) -> list[RankingRun]:
+        stmt = (
+            select(RankingRun)
+            .where(
+                RankingRun.status == RankingRunStatus.COMPLETED.value,
+                RankingRun.as_of_date >= start_date,
+                RankingRun.as_of_date <= end_date,
+            )
+            .order_by(RankingRun.as_of_date)
+        )
+        if universe_code:
+            stmt = stmt.where(RankingRun.universe_code == universe_code)
+        if strategy_name:
+            stmt = stmt.where(RankingRun.strategy_name == strategy_name)
+        if strategy_version:
+            stmt = stmt.where(RankingRun.strategy_version == strategy_version)
+        return list(self.db.scalars(stmt).all())
+
     def find_completed_by_inputs_hash(self, inputs_hash: str) -> RankingRun | None:
         return self.db.scalar(
             select(RankingRun)

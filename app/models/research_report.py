@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 class ResearchReport(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "research_reports"
 
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
