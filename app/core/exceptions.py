@@ -14,5 +14,9 @@ class ProviderError(PiPMError):
     """External market data provider failure."""
 
 
-class ValidationError(PiPMError):
-    """Request or domain validation failure."""
+class StrategyNotFoundError(PiPMError):
+    """Ranking strategy not found."""
+
+
+class RankingError(PiPMError):
+    """Ranking computation failed."""

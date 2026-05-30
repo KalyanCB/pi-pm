@@ -10,6 +10,7 @@ from app.models import (  # noqa: F401
     MarketDataIngestionRun,
     PaperTrade,
     PortfolioPosition,
+    RankingPerformanceSnapshot,
     RankingResult,
     RankingRun,
     ResearchReport,

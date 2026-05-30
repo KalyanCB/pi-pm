@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     yahoo_request_timeout_seconds: int = 30
     market_data_default_period: str = "1y"
 
+    ranking_default_strategy: str = "momentum_v1"
+    ranking_default_strategy_version: str = "1.0.0"
+    ranking_default_benchmark: str = "^NSEI"
+    ranking_default_universe_code: str = "PI_PM_CORE"
+    ranking_min_history_days: int = 63
+    ranking_min_avg_daily_traded_value: float = 10_000_000.0
+    ranking_min_stock_price: float = 50.0
+    ranking_market_data_source: str = "yahoo"
+
 
 @lru_cache
 def get_settings() -> Settings:

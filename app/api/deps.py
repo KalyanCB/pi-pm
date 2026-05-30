@@ -6,12 +6,18 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
+from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
+from app.db.repositories.ranking_result_repository import RankingResultRepository
+from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
 from app.db.session import get_db as _get_db
 from app.providers.yahoo.client import YahooFinanceProvider
+from app.ranking.registry import RankingStrategyRegistry
 from app.services.market_data_service import MarketDataService
+from app.services.ranking_service import RankingService
 from app.services.stock_service import StockService
+from app.services.universe_filter_service import UniverseFilterService
 
 
 def get_settings_dep() -> Settings:
@@ -54,3 +60,54 @@ def get_market_data_service(
     provider: YahooFinanceProvider = Depends(get_yahoo_provider),
 ) -> MarketDataService:
     return MarketDataService(db, stock_repo, market_data_repo, ingestion_run_repo, provider)
+
+
+def get_universe_filter_service(
+    universe_repo: UniverseRepository = Depends(get_universe_repository),
+    market_data_repo: MarketDataRepository = Depends(get_market_data_repository),
+) -> UniverseFilterService:
+    return UniverseFilterService(universe_repo, market_data_repo)
+
+
+def get_ranking_strategy_registry() -> RankingStrategyRegistry:
+    return RankingStrategyRegistry()
+
+
+def get_ranking_run_repository(db: Session = Depends(get_db)) -> RankingRunRepository:
+    return RankingRunRepository(db)
+
+
+def get_ranking_result_repository(db: Session = Depends(get_db)) -> RankingResultRepository:
+    return RankingResultRepository(db)
+
+
+def get_ranking_performance_repository(
+    db: Session = Depends(get_db),
+) -> RankingPerformanceRepository:
+    return RankingPerformanceRepository(db)
+
+
+def get_ranking_service(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings_dep),
+    universe_filter_service: UniverseFilterService = Depends(get_universe_filter_service),
+    ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
+    ranking_result_repo: RankingResultRepository = Depends(get_ranking_result_repository),
+    ranking_performance_repo: RankingPerformanceRepository = Depends(
+        get_ranking_performance_repository
+    ),
+    stock_repo: StockRepository = Depends(get_stock_repository),
+    universe_repo: UniverseRepository = Depends(get_universe_repository),
+    strategy_registry: RankingStrategyRegistry = Depends(get_ranking_strategy_registry),
+) -> RankingService:
+    return RankingService(
+        db,
+        settings,
+        universe_filter_service,
+        ranking_run_repo,
+        ranking_result_repo,
+        ranking_performance_repo,
+        stock_repo,
+        universe_repo,
+        strategy_registry,
+    )

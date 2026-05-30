@@ -2,6 +2,7 @@ from app.models.market_data import MarketData
 from app.models.market_data_ingestion_run import MarketDataIngestionRun
 from app.models.paper_trade import PaperTrade
 from app.models.portfolio_position import PortfolioPosition
+from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
 from app.models.research_report import ResearchReport
@@ -17,6 +18,7 @@ __all__ = [
     "MarketDataIngestionRun",
     "RankingRun",
     "RankingResult",
+    "RankingPerformanceSnapshot",
     "ResearchReport",
     "PortfolioPosition",
     "PaperTrade",

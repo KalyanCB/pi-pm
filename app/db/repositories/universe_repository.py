@@ -39,6 +39,18 @@ class UniverseRepository:
         )
         return list(self.db.scalars(stmt).all())
 
+    def list_candidate_stocks(self, universe_code: str) -> list[Stock]:
+        universe = self.get_by_code(universe_code)
+        if universe is None:
+            return []
+        stmt = (
+            select(Stock)
+            .join(UniverseMembership, UniverseMembership.stock_id == Stock.id)
+            .where(UniverseMembership.universe_id == universe.id)
+            .order_by(Stock.symbol)
+        )
+        return list(self.db.scalars(stmt).all())
+
     def add_membership(self, universe_id: UUID, stock_id: UUID) -> UniverseMembership:
         existing = self.db.scalar(
             select(UniverseMembership).where(

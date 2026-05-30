@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.core.config import Settings
+from app.core.exceptions import NotFoundError, RankingError
+from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
+from app.db.repositories.ranking_result_repository import RankingResultRepository
+from app.db.repositories.ranking_run_repository import RankingRunRepository
+from app.db.repositories.stock_repository import StockRepository
+from app.db.repositories.universe_repository import UniverseRepository
+from app.market_data.cache import MarketDataCache
+from app.models.ranking_run import RankingRun
+from app.ranking.engine import RankingEngine
+from app.ranking.loader import MarketDataLoader
+from app.ranking.registry import RankingStrategyRegistry
+from app.schemas.ranking import RankingRunRequest, UniverseFilterConfigSchema
+from app.services.universe_filter_service import UniverseFilterService
+from app.universe.models import UniverseFilterConfig
+
+
+class RankingService:
+    def __init__(
+        self,
+        db: Session,
+        settings: Settings,
+        universe_filter_service: UniverseFilterService,
+        ranking_run_repo: RankingRunRepository,
+        ranking_result_repo: RankingResultRepository,
+        ranking_performance_repo: RankingPerformanceRepository,
+        stock_repo: StockRepository,
+        universe_repo: UniverseRepository,
+        strategy_registry: RankingStrategyRegistry,
+    ) -> None:
+        self.db = db
+        self.settings = settings
+        self.universe_filter_service = universe_filter_service
+        self.ranking_run_repo = ranking_run_repo
+        self.ranking_result_repo = ranking_result_repo
+        self.ranking_performance_repo = ranking_performance_repo
+        self.stock_repo = stock_repo
+        self.universe_repo = universe_repo
+        self.strategy_registry = strategy_registry
+
+    def run_ranking(self, payload: RankingRunRequest) -> RankingRun:
+        universe_code = (
+            payload.universe_code or self.settings.ranking_default_universe_code
+        )
+        strategy_name = payload.strategy_name or self.settings.ranking_default_strategy
+        strategy_version = (
+            payload.strategy_version or self.settings.ranking_default_strategy_version
+        )
+
+        universe = self.universe_repo.get_by_code(universe_code)
+        if universe is None:
+            raise NotFoundError(f"Universe not found: {universe_code}")
+
+        as_of_date = payload.as_of_date or date.today()
+        filter_config = self._build_filter_config(payload, universe_code)
+        strategy = self.strategy_registry.get(strategy_name, strategy_version)
+        benchmark_symbol = (
+            payload.benchmark_symbol or self.settings.ranking_default_benchmark
+        ).upper()
+
+        market_data_cache = MarketDataCache(self.universe_filter_service.market_data_repo)
+        tradable_universe = self.universe_filter_service.build_tradable_universe(
+            as_of_date, filter_config, market_data_cache
+        )
+
+        benchmark_stock = self.stock_repo.get_by_symbol(benchmark_symbol)
+        benchmark_stock_id = benchmark_stock.id if benchmark_stock else None
+
+        engine = RankingEngine(MarketDataLoader(market_data_cache))
+        output = engine.run(
+            tradable_universe=tradable_universe,
+            strategy=strategy,
+            benchmark_symbol=benchmark_symbol,
+            benchmark_stock_id=benchmark_stock_id,
+            as_of_date=as_of_date,
+        )
+
+        existing = self.ranking_run_repo.find_completed_by_inputs_hash(output.inputs_hash)
+        if existing is not None:
+            return existing
+
+        run = self.ranking_run_repo.create_pending(
+            strategy_name=strategy.name,
+            strategy_version=strategy.version,
+            as_of_date=as_of_date,
+            universe_code=universe_code,
+            benchmark_symbol=benchmark_symbol,
+            filter_config_hash=tradable_universe.filter_config_hash,
+            normalization_method="percentile",
+        )
+
+        try:
+            self.ranking_result_repo.save_results(run.id, output.ranked_stocks)
+            self.ranking_performance_repo.create_placeholder_snapshots(
+                run.id,
+                [item.stock_id for item in output.ranked_stocks],
+            )
+            metadata = {
+                **output.metadata,
+                "exclusion_summary": output.exclusion_summary,
+            }
+            self.ranking_run_repo.complete(run, output.inputs_hash, metadata)
+            self.db.commit()
+            reloaded = self.ranking_run_repo.get_by_id(run.id)
+            assert reloaded is not None
+            return reloaded
+        except RankingError:
+            raise
+        except Exception as exc:
+            self.ranking_run_repo.fail(run, str(exc))
+            self.db.commit()
+            raise RankingError(str(exc)) from exc
+
+    def get_run(self, run_id: UUID) -> RankingRun:
+        run = self.ranking_run_repo.get_by_id(run_id)
+        if run is None:
+            raise NotFoundError(f"Ranking run not found: {run_id}")
+        return run
+
+    def get_latest(
+        self,
+        universe_code: str | None = None,
+        strategy_name: str | None = None,
+        strategy_version: str | None = None,
+    ) -> RankingRun:
+        run = self.ranking_run_repo.get_latest(universe_code, strategy_name, strategy_version)
+        if run is None:
+            raise NotFoundError("No completed ranking runs found")
+        return run
+
+    def get_top(self, run_id: UUID, limit: int = 10) -> tuple[RankingRun, list]:
+        run = self.get_run(run_id)
+        top = self.ranking_result_repo.list_top(run.id, limit)
+        return run, top
+
+    def _build_filter_config(
+        self, payload: RankingRunRequest, universe_code: str
+    ) -> UniverseFilterConfig:
+        schema: UniverseFilterConfigSchema = payload.filter_config or UniverseFilterConfigSchema(
+            min_history_days=self.settings.ranking_min_history_days,
+            min_avg_daily_traded_value=Decimal(str(self.settings.ranking_min_avg_daily_traded_value)),
+            min_stock_price=Decimal(str(self.settings.ranking_min_stock_price)),
+            market_data_source=self.settings.ranking_market_data_source,
+        )
+        return UniverseFilterConfig(
+            universe_code=universe_code,
+            min_history_days=schema.min_history_days,
+            min_avg_daily_traded_value=schema.min_avg_daily_traded_value,
+            min_stock_price=schema.min_stock_price,
+            require_data_status_active=schema.require_data_status_active,
+            require_stock_active=schema.require_stock_active,
+            market_data_source=schema.market_data_source,
+        )
