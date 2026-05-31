@@ -44,14 +44,22 @@ Fill results in: `docs/sprint81-results-template.md`
 | `factor_performance_metrics` table | Backfill from existing data |
 | No new technical indicators | Until factor IC proven |
 
-### P2 — Sprint 8.3 (Planned)
+### P2 — Sprint 8.3 (Design complete; implementation next)
 
 | Item | Description |
 |------|-------------|
-| AI research agent | Hypothesis → experiment → report |
+| Exit research workspace (`workspace_exit_research`) | Given signal entry, which exit behaviors preserved edge? |
+| Five policy families | Fixed hold, alpha decay, rank deterioration, regime transition, trend failure |
+| Design doc | `docs/sprint83-exit-research-design.md` |
+
+### P3 — Sprint 8.4 (Planned)
+
+| Item | Description |
+|------|-------------|
+| AI research agent | Hypothesis → experiment → report (reads exit/factor/regime metrics) |
 | Human approval checkpoints | No autonomous production changes |
 
-### P3 — Sprint 8.4 (Conditional)
+### P4 — Sprint 8.5 (Conditional)
 
 | Item | Description |
 |------|-------------|
@@ -76,13 +84,20 @@ Fill results in: `docs/sprint81-results-template.md`
 - Backfill from `ranking_factor_contributions` + forward returns
 - APIs under `/api/v1/analytics/factors`
 
-### Sprint 8.3 — AI Research Agent
+### Sprint 8.3 — Exit Research Workspace
 
-- Read validation + factor + regime metrics
+- Isolated `workspace_exit_research` (read-only upstream)
+- Five dashboards: policy comparison, alpha decay, rank deterioration, regime transition, trend failure
+- Stratified metrics with n≥30 rule; holdout-first reporting
+- **Design:** `docs/sprint83-exit-research-design.md`
+
+### Sprint 8.4 — AI Research Agent
+
+- Read validation + factor + regime + exit metrics
 - Generate hypotheses and experiment proposals
 - Human approval before any writes
 
-### Sprint 8.4 — Regime-Specific Models (Conditional)
+### Sprint 8.5 — Regime-Specific Models (Conditional)
 
 - Only if 8.2 identifies regime-differential factor IC
 - Walk-forward validation required
