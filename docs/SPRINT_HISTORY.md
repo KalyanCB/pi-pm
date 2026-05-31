@@ -1,6 +1,6 @@
 # Pi-PM — Sprint History
 
-**Last updated:** 2026-05-31
+**Last updated:** 2026-06-01
 
 ---
 
@@ -359,6 +359,36 @@ E2 backtest showed ALLOW in decisions but `sample_count=0` / `ranked_days=0`. Re
 
 ---
 
+## Sprint 8.2 — Factor Predictive Power Analytics
+
+**Branch:** `feature/sprint82-factor-ic-analytics`  
+**Migration:** `20260601_0009`
+
+### Objective
+
+Read-only factor IC analytics: which factors have edge in BULL_LOW_VOL and whether it holds on holdout.
+
+### Deliverables
+
+- `app/factor_analytics/` domain package
+- Tables: `factor_performance_metrics`, `factor_daily_metrics`, `factor_performance_runs`
+- `FactorPredictivePowerService` + `/api/v1/analytics/factors/*`
+- Train/holdout splits, stability score, regime coverage, weight resolution, ALL regime rollup
+- Backfill script: `scripts/backfill_sprint82_factor_analytics.py`
+- 27 new tests (177 total)
+
+### Explicitly not done
+
+- Ranking / validation / regime policy changes
+- Factor weight changes
+- Daily metrics API (deferred to 8.3)
+- Sprint 8.2.1 interaction analysis (ADR-021 draft only)
+
+**Runbook:** `docs/sprint82-factor-ic-analytics.md`  
+**Review package:** `docs/sprint82-implementation-summary.md`
+
+---
+
 ## Test Growth by Sprint
 
 | Sprint | Approx. Tests |
@@ -369,6 +399,7 @@ E2 backtest showed ALLOW in decisions but `sample_count=0` / `ranked_days=0`. Re
 | 6.1 | 121 |
 | 7 / 7.1 | 132 |
 | 8.1 | **150** |
+| 8.2 | **177** |
 
 ---
 

@@ -1,10 +1,10 @@
 # Pi-PM — Database Schema
 
 **Last updated:** 2026-06-01  
-**Migration head:** `20260531_0008`  
-**Total tables:** ~27
+**Migration head:** `20260601_0009`  
+**Total tables:** ~30
 
-See also: `docs/HANDOFF.md`, `docs/sprint7-platform-traceability.md`, `docs/sprint81-regime-aware-trading.md`
+See also: `docs/HANDOFF.md`, `docs/sprint7-platform-traceability.md`, `docs/sprint81-regime-aware-trading.md`, `docs/sprint82-factor-ic-analytics.md`
 
 ---
 
@@ -45,6 +45,7 @@ erDiagram
 | `20260530_0006` | 6.1 | `full_universe_validation_campaigns`, `_runs`, `_metrics`, `_deciles` |
 | `20260530_0007` | 7 | Traceability: `ingestion_batch_runs`, `ranking_factor_contributions`, `validation_horizon_metrics`, `validation_decile_metrics`, `run_lineage_records`, `experiment_runs`, `regime_history`, `strategy_regime_performance`; alters `ranking_runs`, `market_data_ingestion_runs` |
 | `20260531_0008` | 8.1 | `regime_policy_configs`, `regime_policy_decisions`, `regime_backtest_runs` |
+| `20260601_0009` | 8.2 | `factor_performance_runs`, `factor_daily_metrics`, `factor_performance_metrics` |
 
 ---
 
@@ -440,6 +441,7 @@ Full ERD and column details: `docs/sprint7-platform-traceability.md`
 | `ResearchReport` | `app/models/research_report.py` |
 | `IngestionBatchRun`, `RankingFactorContribution`, etc. | `app/models/platform_traceability.py` |
 | `RegimePolicyConfig`, `RegimePolicyDecision`, `RegimeBacktestRun` | `app/models/regime_policy.py` |
+| `FactorPerformanceRun`, `FactorDailyMetric`, `FactorPerformanceMetric` | `app/models/factor_analytics.py` |
 
 Base mixins: `app/db/base.py` — `UUIDPrimaryKeyMixin`, timestamps
 
@@ -450,3 +452,4 @@ Base mixins: `app/db/base.py` — `UUIDPrimaryKeyMixin`, timestamps
 - `docs/HANDOFF.md` — Takeover guide
 - `docs/sprint7-platform-traceability.md` — Traceability ERD
 - `docs/sprint81-regime-aware-trading.md` — Policy tables usage
+- `docs/sprint82-factor-ic-analytics.md` — Factor IC analytics tables

@@ -4,12 +4,16 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
-from app.db.repositories.experiment_run_repository import ExperimentRunRepository
+from app.db.repositories.factor_performance_metric_repository import (
+    FactorPerformanceMetricRepository,
+)
+from app.db.repositories.factor_performance_run_repository import FactorPerformanceRunRepository
 from app.db.repositories.full_universe_validation_repository import (
     FullUniverseValidationRepository,
 )
 from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
+from app.db.repositories.experiment_run_repository import ExperimentRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_factor_contribution_repository import (
     RankingFactorContributionRepository,
@@ -31,6 +35,7 @@ from app.providers.yahoo.client import YahooFinanceProvider
 from app.ranking.registry import RankingStrategyRegistry
 from app.services.backtest_service import BacktestService
 from app.services.experiment_service import ExperimentService
+from app.services.factor_predictive_power_service import FactorPredictivePowerService
 from app.services.full_universe_validation_service import FullUniverseValidationService
 from app.services.market_data_service import MarketDataService
 from app.services.observability_service import ObservabilityService
@@ -290,6 +295,34 @@ def get_regime_policy_service(
         lineage_repo,
         experiment_service,
         preset_service,
+    )
+
+
+def get_factor_performance_metric_repository(
+    db: Session = Depends(get_db),
+) -> FactorPerformanceMetricRepository:
+    return FactorPerformanceMetricRepository(db)
+
+
+def get_factor_performance_run_repository(
+    db: Session = Depends(get_db),
+) -> FactorPerformanceRunRepository:
+    return FactorPerformanceRunRepository(db)
+
+
+def get_factor_predictive_power_service(
+    db: Session = Depends(get_db),
+    metric_repo: FactorPerformanceMetricRepository = Depends(get_factor_performance_metric_repository),
+    run_repo: FactorPerformanceRunRepository = Depends(get_factor_performance_run_repository),
+    validation_repo: RankingValidationRepository = Depends(get_ranking_validation_repository),
+    ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
+) -> FactorPredictivePowerService:
+    return FactorPredictivePowerService(
+        db,
+        metric_repo,
+        run_repo,
+        validation_repo,
+        ranking_run_repo,
     )
 
 

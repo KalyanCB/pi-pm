@@ -22,6 +22,11 @@ from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
 from app.models.ranking_validation_report import RankingValidationReport
+from app.models.factor_analytics import (
+    FactorDailyMetric,
+    FactorPerformanceMetric,
+    FactorPerformanceRun,
+)
 from app.models.regime_policy import (
     RegimeBacktestRun,
     RegimePolicyConfig,
@@ -60,4 +65,7 @@ __all__ = [
     "RegimePolicyConfig",
     "RegimePolicyDecision",
     "RegimeBacktestRun",
+    "FactorPerformanceRun",
+    "FactorPerformanceMetric",
+    "FactorDailyMetric",
 ]
