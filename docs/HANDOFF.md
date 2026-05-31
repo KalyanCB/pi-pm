@@ -17,12 +17,12 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 |------|-------|
 | Repo | `/Users/kalyancb/pi-pm` |
 | Remote | `https://github.com/KalyanCB/pi-pm.git` |
-| Active branch | `feature/sprint8` (Sprint 8.1 regime policy) |
-| Base branch | `main` (includes Sprint 6.1–7.1 via PR #3) |
+| Active branch | `feature/sprint82-factor-ic-analytics` (Sprint 8.2 factor IC analytics) |
+| Base branch | `main` |
 | API | FastAPI @ `/api/v1` |
 | DB | PostgreSQL 16, user/db `pipm` |
-| Migration head | `20260531_0008` |
-| Tests | **150 passing** (`pytest`) |
+| Migration head | `20260601_0009` |
+| Tests | **177 passing** (`pytest`) |
 
 ---
 
@@ -45,6 +45,8 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 - `docs/sprint71-traceability-operationalization.md` — backfill + verification SQL
 - `docs/sprint81-regime-aware-trading.md` — regime policy + backtest
 - `docs/sprint81-results-template.md` — fill after backtest
+- `docs/sprint82-factor-ic-analytics.md` — factor IC analytics + backfill
+- `docs/sprint82-implementation-summary.md` — PR review package
 
 ---
 

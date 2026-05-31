@@ -687,6 +687,58 @@ See `docs/sprint81-regime-aware-trading.md`.
 
 ---
 
+## Factor Analytics (Sprint 8.2 — Read-Only)
+
+Prefix: `/api/v1/analytics/factors`
+
+Research analytics on factor IC; does not modify rankings or weights.
+
+### `GET /api/v1/analytics/factors/performance`
+
+Filter aggregate metrics. Query: `factor_name`, `regime_label`, `horizon`, `universe_code`, `dataset_split` (`ALL`|`TRAIN`|`HOLDOUT`), `start_date`, `end_date`.
+
+### `GET /api/v1/analytics/factors/leaderboard`
+
+Rank factors by IC for a regime/horizon. **Default `dataset_split=HOLDOUT`.** Exposes `train_ic`, `holdout_ic`, `ic_drift`, resolved weights, stability, coverage.
+
+Query (required): `regime_label`, `horizon`, `universe_code`.
+
+### `GET /api/v1/analytics/factors/compare`
+
+Single-factor view across regimes and horizons. Query: `factor_name`, `universe_code`.
+
+### `GET /api/v1/analytics/factors/train-holdout-drift`
+
+Drift detection with verdicts (`holdout_confirmed`, `overfit_suspect`, etc.). Default `regime_label=BULL_LOW_VOL`, `horizon=20`, `holdout_start_date=2025-01-01`.
+
+### `POST /api/v1/analytics/factors/backfill`
+
+Trigger analytics backfill from traceability data.
+
+**Body:**
+```json
+{
+  "universe_code": "NIFTY_500",
+  "start_date": "2023-01-01",
+  "end_date": "2025-05-30",
+  "holdout_start_date": "2025-01-01",
+  "force_recompute": false,
+  "write_daily_metrics": true
+}
+```
+
+### `GET /api/v1/analytics/factors/runs`
+
+List backfill runs. Query: `status`, `limit`.
+
+### `GET /api/v1/analytics/factors/runs/{run_id}`
+
+Single backfill run detail.
+
+See `docs/sprint82-factor-ic-analytics.md` and `docs/sprint82-implementation-summary.md`.
+
+---
+
 ## Endpoint Summary
 
 | Method | Path | Tag |
@@ -712,8 +764,9 @@ See `docs/sprint81-regime-aware-trading.md`.
 | GET | `/api/v1/validation/full-universe/deciles` | validation |
 | GET | `/api/v1/observability/*` | observability |
 | GET/POST | `/api/v1/regime-policy/*` | regime-policy |
+| GET/POST | `/api/v1/analytics/factors/*` | factor-analytics |
 
-**Total:** 40+ endpoints (see OpenAPI `/docs` for full list)
+**Total:** 45+ endpoints (see OpenAPI `/docs` for full list)
 
 ---
 
@@ -722,6 +775,7 @@ See `docs/sprint81-regime-aware-trading.md`.
 - `docs/HANDOFF.md` — Takeover guide
 - `docs/sprint7-platform-traceability.md`
 - `docs/sprint81-regime-aware-trading.md`
+- `docs/sprint82-factor-ic-analytics.md`
 
 ---
 

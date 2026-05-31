@@ -1,6 +1,6 @@
 # Pi-PM — Decision Log
 
-**Last updated:** 2026-05-31
+**Last updated:** 2026-06-01
 
 Architectural and product decisions with context, alternatives considered, and rationale.
 
@@ -477,6 +477,39 @@ For E1/E2 policies, when stock-level scored returns are empty but `validation_ho
 - Audit trail (ALLOW decisions) aligns with included days and sample counts
 - Pooled IC/hit-rate may be unavailable for fallback-only days (spread from precomputed metrics)
 - Long-term fix: ensure snapshot returns populated via validation recompute on affected runs
+
+---
+
+## ADR-021: Factor Interaction Analysis (Sprint 8.2.1 — Proposed)
+
+**Date:** Sprint 8.2.1 (design only)  
+**Status:** Proposed — **not implemented in 8.2**
+
+### Context
+
+Sprint 8.2 delivers single-factor IC analytics. Research agents will next ask whether factor pairs or clusters jointly explain edge (e.g., momentum + volume surge in BULL_LOW_VOL).
+
+### Proposal
+
+Add a read-only **Factor Interaction Analysis** layer:
+
+- New table `factor_interaction_metrics` storing pairwise Spearman IC, conditional IC, and sample metadata per regime × horizon × split.
+- Correlation matrix API: `GET /api/v1/analytics/factors/interactions/matrix`.
+- Reuse Sprint 8.2 observation loader and train/holdout window logic; no ranking or weight changes.
+
+### Alternatives Considered
+
+| Alternative | Notes |
+|-------------|-------|
+| Extend `factor_performance_metrics` with JSON pair columns | Poor queryability; combinatorial explosion |
+| On-the-fly computation only | Too slow for NIFTY_500 history; no audit trail |
+| Modify ranking to emit interaction terms | Violates analytics-only boundary |
+
+### Consequences (if accepted)
+
+- Depends on Sprint 8.2 daily metrics and observation percentile support
+- Estimated schema + API surface similar to 8.2 aggregate tables
+- Implementation deferred until 8.2 backfill results reviewed
 
 ---
 

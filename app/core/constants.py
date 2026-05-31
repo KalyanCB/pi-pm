@@ -104,6 +104,13 @@ class RegimeBacktestRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class FactorPerformanceRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ReplayWindowMode(StrEnum):
     SINGLE_HOLDOUT = "single_holdout"
     ROLLING = "rolling"
