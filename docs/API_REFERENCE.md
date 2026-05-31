@@ -1,0 +1,625 @@
+# Pi-PM — API Reference
+
+**Base URL:** `http://localhost:8000`  
+**Prefix:** `/api/v1`  
+**OpenAPI:** `/openapi.json` | **Swagger UI:** `/docs`  
+**Last updated:** 2026-05-31
+
+---
+
+## Error Responses
+
+All errors return JSON: `{"detail": "message"}`
+
+| Status | Meaning |
+|--------|---------|
+| 400 | General application error (`PiPMError`) |
+| 404 | Resource not found (`NotFoundError`) |
+| 422 | Validation / invalid symbol / strategy not found |
+| 500 | Ranking engine failure |
+| 502 | External provider error (Yahoo) |
+| 207 | Partial success (market data ingest batch) |
+
+---
+
+## Health
+
+### `GET /api/v1/health`
+
+Database connectivity check.
+
+**Response 200:**
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "environment": "development"
+}
+```
+
+---
+
+## Stocks
+
+### `GET /api/v1/stocks`
+
+List all stocks.
+
+**Query parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `data_status` | string | No | Filter: `ACTIVE`, `INACTIVE`, `ERROR` |
+
+**Response 200:**
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "symbol": "RELIANCE.NS",
+    "name": "Reliance Industries Limited",
+    "exchange": "NSE",
+    "sector": "Energy",
+    "industry": "Oil & Gas",
+    "is_active": true,
+    "data_status": "ACTIVE",
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+---
+
+### `GET /api/v1/stocks/{symbol}`
+
+Get single stock by symbol.
+
+**Response 200:** Same object as list item.
+
+**Response 404:** Stock not found.
+
+---
+
+### `GET /api/v1/stocks/{symbol}/market-data`
+
+Get OHLCV bars for a stock.
+
+**Query parameters:**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `start_date` | date | No | ISO date |
+| `end_date` | date | No | ISO date |
+| `source` | string | No | e.g. `yahoo` |
+| `limit` | int | No | 1–5000 |
+
+**Response 200:**
+```json
+[
+  {
+    "id": "...",
+    "stock_id": "...",
+    "date": "2025-05-29",
+    "open": 1450.0,
+    "high": 1465.0,
+    "low": 1440.0,
+    "close": 1455.0,
+    "adj_close": 1455.0,
+    "volume": 5000000,
+    "source": "yahoo"
+  }
+]
+```
+
+---
+
+## Market Data
+
+### `POST /api/v1/market-data/ingest`
+
+Ingest OHLCV from Yahoo Finance.
+
+**Request:**
+```json
+{
+  "symbols": ["RELIANCE.NS", "TCS.NS", "^NSEI"],
+  "period": "5y"
+}
+```
+
+**Response 200/207:**
+```json
+{
+  "run_id": "...",
+  "period": "5y",
+  "status": "completed",
+  "symbols_requested": 3,
+  "symbols_succeeded": 3,
+  "symbols_failed": 0,
+  "is_unhealthy_batch": false,
+  "results": [
+    {
+      "symbol": "RELIANCE.NS",
+      "status": "success",
+      "bars_ingested": 1245
+    }
+  ]
+}
+```
+
+Returns **207** if any symbol failed (`is_unhealthy_batch: true`).
+
+---
+
+## Rankings
+
+### `POST /api/v1/rankings/run`
+
+Execute a ranking run. Returns **201**.
+
+**Request:**
+```json
+{
+  "universe_code": "NIFTY_500",
+  "as_of_date": "2025-05-29",
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "benchmark_symbol": "^NSEI",
+  "filter_config": {
+    "min_history_days": 63,
+    "min_avg_daily_traded_value": "10000000",
+    "min_stock_price": "50",
+    "require_data_status_active": true,
+    "require_stock_active": true,
+    "market_data_source": "yahoo"
+  }
+}
+```
+
+All fields optional — defaults from `Settings` (⚠️ `universe_code` defaults to `PI_PM_CORE`).
+
+**Response 201:**
+```json
+{
+  "id": "a1b2c3d4-...",
+  "universe_code": "NIFTY_500",
+  "as_of_date": "2025-05-29",
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "benchmark_symbol": "^NSEI",
+  "inputs_hash": "abc123...",
+  "filter_config_hash": "def456...",
+  "normalization_method": "percentile",
+  "status": "completed",
+  "started_at": "2026-05-31T10:00:00Z",
+  "completed_at": "2026-05-31T10:00:05Z",
+  "error_message": null,
+  "metadata": {
+    "benchmark_available": true,
+    "ranked_stock_count": 439,
+    "exclusion_summary": { "DATA_STATUS_NOT_ACTIVE": 65 }
+  },
+  "results_count": 439,
+  "results": [
+    {
+      "id": "...",
+      "stock_id": "...",
+      "symbol": "BDL.NS",
+      "rank": 1,
+      "score": 0.8679,
+      "score_components": {
+        "high_proximity": 0.95,
+        "volume_surge": 0.82
+      }
+    }
+  ]
+}
+```
+
+---
+
+### `GET /api/v1/rankings/latest`
+
+Get most recent completed ranking run.
+
+**Query parameters:** `universe_code`, `strategy_name`, `strategy_version` (all optional)
+
+**Response 200:** Same shape as `POST /rankings/run`.
+
+---
+
+### `GET /api/v1/rankings/{run_id}`
+
+Get a specific ranking run by UUID.
+
+**Response 200:** Same shape as above.
+
+---
+
+### `GET /api/v1/rankings/{run_id}/top`
+
+Get top N ranked stocks.
+
+**Query parameters:**
+| Param | Type | Default | Range |
+|-------|------|---------|-------|
+| `n` | int | 10 | 1–100 |
+
+**Response 200:**
+```json
+{
+  "run_id": "...",
+  "as_of_date": "2025-05-29",
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "top": [
+    { "rank": 1, "symbol": "BDL.NS", "score": 0.8679, "stock_id": "..." }
+  ]
+}
+```
+
+---
+
+## Backtest
+
+### `POST /api/v1/backtest/generate-rankings`
+
+Generate historical ranking runs for every trading day in range. Returns **201**.
+
+**Request:**
+```json
+{
+  "universe_code": "NIFTY_500",
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-31",
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "benchmark_symbol": "^NSEI"
+}
+```
+
+**Response 201:**
+```json
+{
+  "universe_code": "NIFTY_500",
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "benchmark_symbol": "^NSEI",
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-31",
+  "trading_days_total": 340,
+  "runs_created": 280,
+  "runs_reused": 60,
+  "runs_failed": 0,
+  "failed_dates": []
+}
+```
+
+---
+
+### `GET /api/v1/backtest/summary`
+
+Ranking vs validation coverage for a date range.
+
+**Query parameters (required):** `start_date`, `end_date`  
+**Optional:** `universe_code`, `strategy_name`, `strategy_version`
+
+**Response 200:**
+```json
+{
+  "universe_code": "NIFTY_500",
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-31",
+  "ranking_runs_total": 340,
+  "validated_runs_total": 320,
+  "pending_validation_runs": 20
+}
+```
+
+---
+
+## Validation (Per-Run)
+
+### `POST /api/v1/validation/backfill`
+
+Validate all completed ranking runs in a date range.
+
+**Request:**
+```json
+{
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-31",
+  "force_recompute": false
+}
+```
+
+**Response 200:**
+```json
+{
+  "runs_found": 340,
+  "validated": 280,
+  "reused": 60,
+  "failed": 0
+}
+```
+
+---
+
+### `POST /api/v1/validation/runs/{run_id}/compute`
+
+Compute validation for a single ranking run. Returns **201**.
+
+**Query parameters:** `force_recompute` (bool, default false)
+
+**Response 201:**
+```json
+{
+  "ranking_run_id": "...",
+  "status": "completed",
+  "validation_hash": "abc123...",
+  "regime_label": "BULL_LOW_VOL",
+  "trend_regime": "BULL",
+  "vol_regime": "LOW_VOL",
+  "horizon_metrics": {
+    "20": {
+      "status": "ok",
+      "ic_spearman": "0.04200000",
+      "top_minus_bottom_spread": "0.03500000",
+      "sample_size": 439,
+      "deciles": [
+        { "decile": 1, "count": 44, "mean_return": "0.02500000", "median_return": "0.02000000" }
+      ],
+      "hit_rates": {
+        "top_vs_median_hit_rate": "0.55000000",
+        "top_vs_bottom_hit_rate": "0.60000000",
+        "rank_directional_hit_rate": "0.52000000"
+      }
+    }
+  },
+  "sample_summary": {
+    "ranked_stock_count": 439,
+    "horizon_valid_counts": { "5": 439, "10": 439, "20": 435, "60": 420 }
+  },
+  "computed_at": "2026-05-31T12:00:00Z",
+  "error_message": null
+}
+```
+
+---
+
+### `GET /api/v1/validation/runs/{run_id}`
+
+Get validation report for a ranking run.
+
+**Response 200:** Same shape as compute response.
+
+---
+
+### `GET /api/v1/validation/runs/{run_id}/snapshots`
+
+Get per-stock forward return snapshots.
+
+**Response 200:**
+```json
+[
+  {
+    "id": "...",
+    "stock_id": "...",
+    "symbol": "RELIANCE.NS",
+    "return_5d": 0.012,
+    "return_10d": 0.025,
+    "return_20d": 0.041,
+    "return_60d": 0.078,
+    "captured_at": "2026-05-31T12:00:00Z"
+  }
+]
+```
+
+---
+
+### `GET /api/v1/validation/summary`
+
+Aggregate validation metrics across multiple runs.
+
+**Query parameters:**
+| Param | Type | Default |
+|-------|------|---------|
+| `universe_code` | string | — |
+| `strategy_name` | string | — |
+| `strategy_version` | string | — |
+| `start_date` | date | — |
+| `end_date` | date | — |
+| `horizon` | int | 20 |
+
+**Response 200:**
+```json
+{
+  "reports_count": 320,
+  "horizon": 20,
+  "validated_runs": 320,
+  "failed_runs": 0,
+  "insufficient_data_runs": 5,
+  "average_ic_20d": "0.03800000",
+  "median_ic_20d": "0.03500000",
+  "top_decile_return_20d": "0.02200000",
+  "bottom_decile_return_20d": "-0.00800000",
+  "spread_20d": "0.03000000",
+  "hit_rate_20d": "0.54000000",
+  "directional_hit_rate_20d": "0.51000000",
+  "bull_market_ic": "0.04500000",
+  "bear_market_ic": "0.02000000",
+  "high_vol_ic": "0.02500000",
+  "low_vol_ic": "0.04200000",
+  "regime_ic": {
+    "bull_low_vol_ic": "0.04800000",
+    "bull_high_vol_ic": "0.03000000",
+    "bear_low_vol_ic": "0.02200000",
+    "bear_high_vol_ic": "0.01500000"
+  },
+  "best_regime": "BULL_LOW_VOL",
+  "worst_regime": "BEAR_HIGH_VOL"
+}
+```
+
+---
+
+## Validation (Full-Universe Campaign) — Sprint 6.1
+
+### `POST /api/v1/validation/full-universe/run`
+
+Run a full-universe validation campaign. Generates rankings, validates each day, pools metrics. Returns **201**.
+
+Defaults: `NIFTY_500` + `breakout_v1` v1.0.0.
+
+**Request:**
+```json
+{
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-31",
+  "force_recompute": false
+}
+```
+
+**Response 201:**
+```json
+{
+  "campaign_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "status": "completed",
+  "ranking_runs_created": 280,
+  "ranking_runs_reused": 60,
+  "validation_days_completed": 335,
+  "validation_days_failed": 5,
+  "ranked_days_total": 340
+}
+```
+
+---
+
+### `GET /api/v1/validation/full-universe/summary`
+
+Pooled campaign metrics. Defaults to latest completed campaign.
+
+**Query parameters:**
+| Param | Type | Default |
+|-------|------|---------|
+| `campaign_id` | UUID | Latest completed |
+| `horizon` | int | 20 |
+| `universe_code` | string | — |
+| `strategy_name` | string | — |
+| `strategy_version` | string | — |
+
+**Response 200:**
+```json
+{
+  "campaign_id": "f47ac10b-...",
+  "universe_code": "NIFTY_500",
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-31",
+  "status": "completed",
+  "horizon": 20,
+  "ic": "0.04200000",
+  "rank_ic": "0.03800000",
+  "hit_rate": "0.55000000",
+  "directional_hit_rate": "0.52000000",
+  "top_decile_return": "0.02500000",
+  "bottom_decile_return": "-0.01000000",
+  "spread": "0.03500000",
+  "top_20_return": "0.02800000",
+  "top_50_return": "0.02200000",
+  "sample_size": 147650,
+  "ranked_days": 335,
+  "is_monotonic": true,
+  "best_horizon": 20,
+  "worst_horizon": 60,
+  "horizons": {
+    "5": {
+      "ic": "0.03000000",
+      "rank_ic": "0.02800000",
+      "hit_rate": "0.52000000",
+      "spread": "0.01500000",
+      "top_decile_return": "0.00800000",
+      "bottom_decile_return": "-0.00700000",
+      "is_monotonic": false
+    },
+    "20": { "...": "..." }
+  }
+}
+```
+
+**Response 404:** No campaign found (before first run completes).
+
+---
+
+### `GET /api/v1/validation/full-universe/deciles`
+
+Decile breakdown for a campaign horizon.
+
+**Query parameters:**
+| Param | Type | Default |
+|-------|------|---------|
+| `horizon` | int | 20 |
+| `campaign_id` | UUID | Latest completed |
+| `universe_code` | string | — |
+| `strategy_name` | string | — |
+| `strategy_version` | string | — |
+
+**Response 200:**
+```json
+{
+  "campaign_id": "f47ac10b-...",
+  "horizon": 20,
+  "deciles": [
+    {
+      "decile": 1,
+      "count": 14765,
+      "avg_return": "0.02500000",
+      "median_return": "0.02000000",
+      "win_rate": "0.58000000"
+    },
+    {
+      "decile": 10,
+      "count": 14765,
+      "avg_return": "-0.01000000",
+      "median_return": "-0.01200000",
+      "win_rate": "0.42000000"
+    }
+  ]
+}
+```
+
+---
+
+## Endpoint Summary
+
+| Method | Path | Tag |
+|--------|------|-----|
+| GET | `/api/v1/health` | health |
+| GET | `/api/v1/stocks` | stocks |
+| GET | `/api/v1/stocks/{symbol}` | stocks |
+| GET | `/api/v1/stocks/{symbol}/market-data` | stocks |
+| POST | `/api/v1/market-data/ingest` | market-data |
+| POST | `/api/v1/rankings/run` | rankings |
+| GET | `/api/v1/rankings/latest` | rankings |
+| GET | `/api/v1/rankings/{run_id}` | rankings |
+| GET | `/api/v1/rankings/{run_id}/top` | rankings |
+| POST | `/api/v1/backtest/generate-rankings` | backtest |
+| GET | `/api/v1/backtest/summary` | backtest |
+| POST | `/api/v1/validation/backfill` | validation |
+| POST | `/api/v1/validation/runs/{run_id}/compute` | validation |
+| GET | `/api/v1/validation/runs/{run_id}` | validation |
+| GET | `/api/v1/validation/runs/{run_id}/snapshots` | validation |
+| GET | `/api/v1/validation/summary` | validation |
+| POST | `/api/v1/validation/full-universe/run` | validation |
+| GET | `/api/v1/validation/full-universe/summary` | validation |
+| GET | `/api/v1/validation/full-universe/deciles` | validation |
+
+**Total:** 21 endpoints
+
+---
+
+## Postman Collection
+
+`docs/PiPM-Sprint5.postman_collection.json` — covers Sprint 5 endpoints; extend for Sprint 6.1 full-universe routes.

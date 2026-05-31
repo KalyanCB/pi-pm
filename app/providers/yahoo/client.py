@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 import yfinance as yf
+from datetime import datetime as dt
 
 from app.core.constants import IngestPeriod
 from app.core.exceptions import InvalidSymbolError, ProviderError
@@ -72,6 +73,62 @@ class YahooFinanceProvider:
         bars: list[YahooOHLCVBar] = []
         for index, row in frame.iterrows():
             bar_date = index.date() if isinstance(index, datetime) else index.to_pydatetime().date()
+            close = _to_decimal(row.get("Close"))
+            if close is None:
+                continue
+
+            volume_raw = row.get("Volume")
+            if volume_raw is not None and volume_raw == volume_raw:
+                volume = int(volume_raw)
+            else:
+                volume = None
+
+            bars.append(
+                YahooOHLCVBar(
+                    date=bar_date,
+                    open=_to_decimal(row.get("Open")),
+                    high=_to_decimal(row.get("High")),
+                    low=_to_decimal(row.get("Low")),
+                    close=close,
+                    volume=volume,
+                    adj_close=_to_decimal(row.get("Adj Close")),
+                    dividend=_to_decimal(row.get("Dividends")) if "Dividends" in row else None,
+                    split_factor=_to_decimal(row.get("Stock Splits"))
+                    if "Stock Splits" in row
+                    else None,
+                )
+            )
+
+        return bars
+
+    def fetch_history_since(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date | None = None,
+    ) -> list[YahooOHLCVBar]:
+        end = end_date or datetime.now(UTC).date()
+        if start_date > end:
+            return []
+        try:
+            ticker = yf.Ticker(symbol)
+            frame = ticker.history(
+                start=start_date.isoformat(),
+                end=(end + timedelta(days=1)).isoformat(),
+                auto_adjust=False,
+            )
+        except Exception as exc:
+            logger.exception("Yahoo incremental history fetch failed for %s", symbol)
+            raise ProviderError(f"Yahoo incremental history fetch failed for {symbol}") from exc
+
+        if frame is None or frame.empty:
+            return []
+
+        bars: list[YahooOHLCVBar] = []
+        for index, row in frame.iterrows():
+            bar_date = index.date() if isinstance(index, dt) else index.to_pydatetime().date()
+            if bar_date < start_date or bar_date > end:
+                continue
             close = _to_decimal(row.get("Close"))
             if close is None:
                 continue

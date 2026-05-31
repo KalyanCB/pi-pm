@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
-from sqlalchemy import Date, DateTime, Index, String, Text
+from sqlalchemy import Date, DateTime, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,9 +27,7 @@ class RankingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     universe_code: Mapped[str] = mapped_column(String(32), nullable=False)
     benchmark_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     filter_config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    normalization_method: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="percentile"
-    )
+    normalization_method: Mapped[str] = mapped_column(String(16), nullable=False, default="percentile")
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=RankingRunStatus.PENDING.value
     )
@@ -36,6 +35,11 @@ class RankingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+    regime_label: Mapped[str | None] = mapped_column(String(32))
+    weight_config_hash: Mapped[str | None] = mapped_column(String(64))
+    ranked_stock_count: Mapped[int | None] = mapped_column(Integer)
+    excluded_stock_count: Mapped[int | None] = mapped_column(Integer)
+    execution_duration_ms: Mapped[int | None] = mapped_column(Integer)
 
     results: Mapped[list[RankingResult]] = relationship(back_populates="ranking_run")
     performance_snapshots: Mapped[list[RankingPerformanceSnapshot]] = relationship(

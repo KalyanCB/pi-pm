@@ -50,6 +50,34 @@ class IngestBatchStatus(StrEnum):
     PARTIAL_SUCCESS = "partial_success"
 
 
+class IngestionMode(StrEnum):
+    FULL_REFRESH = "full_refresh"
+    INCREMENTAL = "incremental"
+    BACKFILL = "backfill"
+
+
+class ExperimentRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class LineageEntityType(StrEnum):
+    INGESTION_BATCH = "ingestion_batch"
+    INGESTION_SYMBOL = "ingestion_symbol"
+    RANKING_RUN = "ranking_run"
+    VALIDATION_REPORT = "validation_report"
+    EXPERIMENT_RUN = "experiment_run"
+
+
+class LineageRelationshipType(StrEnum):
+    BATCH_SYMBOL = "batch_symbol"
+    VALIDATES_RANKING = "validates_ranking"
+    EXPERIMENT_RANKING = "experiment_ranking"
+    RANKING_INGESTION = "ranking_ingestion"
+
+
 MARKET_DATA_SOURCE_YAHOO = "yahoo"
 
 

@@ -5,11 +5,15 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+import logging
+import time
+
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.constants import RankingRunStatus
 from app.core.exceptions import NotFoundError, ValidationError
+from app.core.structured_logging import log_event
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
 from app.db.repositories.ranking_result_repository import RankingResultRepository
@@ -18,6 +22,7 @@ from app.db.repositories.ranking_validation_repository import RankingValidationR
 from app.db.repositories.stock_repository import StockRepository
 from app.market_data.cache import MarketDataCache
 from app.models.ranking_validation_report import RankingValidationReport
+from app.services.traceability_service import TraceabilityService
 from app.validation.constants import (
     MAX_FORWARD_TRADING_DAYS,
     VALIDATION_HORIZONS,
@@ -33,6 +38,8 @@ from app.validation.models import StockForwardReturns
 from app.validation.regimes import classify_regime
 from app.validation.report_builder import build_validation_report, serialize_horizon_metrics
 from app.validation.summary_aggregator import aggregate_cross_run_summary, cross_run_summary_to_dict
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -54,6 +61,7 @@ class SignalValidationService:
         validation_repo: RankingValidationRepository,
         stock_repo: StockRepository,
         market_data_repo: MarketDataRepository,
+        traceability_service: TraceabilityService,
     ) -> None:
         self.db = db
         self.settings = settings
@@ -63,6 +71,7 @@ class SignalValidationService:
         self.validation_repo = validation_repo
         self.stock_repo = stock_repo
         self.market_data_repo = market_data_repo
+        self.traceability_service = traceability_service
 
     def validate_run(
         self, run_id: UUID, *, force_recompute: bool = False
@@ -91,6 +100,7 @@ class SignalValidationService:
                 and existing.status in _BACKFILL_REUSE_STATUSES
                 and not force_recompute
             ):
+                self.traceability_service.ensure_validation_traceability(existing, run)
                 reused += 1
                 continue
 
@@ -122,9 +132,19 @@ class SignalValidationService:
             and existing.status == VALIDATION_STATUS_COMPLETED
             and not force_recompute
         ):
+            self.traceability_service.ensure_validation_traceability(existing, run)
             return existing
 
         report = existing or self.validation_repo.create_pending(run_id)
+        started = time.perf_counter()
+        log_event(
+            logger,
+            "validation_started",
+            ranking_run_id=run_id,
+            strategy_name=run.strategy_name,
+            strategy_version=run.strategy_version,
+            as_of_date=run.as_of_date.isoformat(),
+        )
 
         try:
             results = self.ranking_result_repo.list_by_run_id(run_id)
@@ -178,6 +198,7 @@ class SignalValidationService:
                 if cached is not None and cached.ranking_run_id != run_id:
                     pass
                 elif cached is not None:
+                    self.traceability_service.ensure_validation_traceability(cached, run)
                     return cached
 
             completed = self.validation_repo.complete(
@@ -190,7 +211,22 @@ class SignalValidationService:
                 horizon_metrics=serialize_horizon_metrics(report_data.horizon_metrics),
                 sample_summary=report_data.sample_summary,
             )
+            horizon_metrics = serialize_horizon_metrics(report_data.horizon_metrics)
+            if completed.status == VALIDATION_STATUS_COMPLETED and horizon_metrics:
+                self.traceability_service.record_validation_traceability(
+                    completed, run, horizon_metrics
+                )
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
             self.db.commit()
+            log_event(
+                logger,
+                "validation_completed",
+                validation_report_id=completed.id,
+                ranking_run_id=run_id,
+                status=completed.status,
+                regime_label=completed.regime_label,
+                execution_duration_ms=elapsed_ms,
+            )
             return completed
         except ValidationError:
             raise

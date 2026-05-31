@@ -9,8 +9,10 @@ import time
 
 from app.core.config import get_settings
 from app.core.constants import DataStatus, IngestPeriod
+from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
+from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.session import get_session_factory
 from app.providers.yahoo.client import YahooFinanceProvider
@@ -23,7 +25,15 @@ def _build_market_data_service(db) -> MarketDataService:
     market_data_repo = MarketDataRepository(db)
     ingestion_run_repo = IngestionRunRepository(db)
     provider = YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds)
-    return MarketDataService(db, stock_repo, market_data_repo, ingestion_run_repo, provider)
+    return MarketDataService(
+        db,
+        stock_repo,
+        market_data_repo,
+        ingestion_run_repo,
+        IngestionBatchRepository(db),
+        RunLineageRepository(db),
+        provider,
+    )
 
 
 def _error_symbols(stock_repo: StockRepository, batch_size: int) -> list[str]:

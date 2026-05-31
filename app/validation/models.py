@@ -19,6 +19,7 @@ class DecileBucket:
     count: int
     mean_return: Decimal | None
     median_return: Decimal | None
+    win_rate: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,25 @@ class HitRateMetrics:
     top_vs_median_hit_rate: Decimal | None
     top_vs_bottom_hit_rate: Decimal | None
     rank_directional_hit_rate: Decimal | None
+
+
+@dataclass(frozen=True)
+class FullHorizonMetrics:
+    horizon: int
+    status: str
+    ic_pearson: Decimal | None
+    rank_ic_spearman: Decimal | None
+    hit_rate: Decimal | None
+    directional_hit_rate: Decimal | None
+    top_decile_return: Decimal | None
+    bottom_decile_return: Decimal | None
+    spread: Decimal | None
+    top_20_return: Decimal | None
+    top_50_return: Decimal | None
+    deciles: tuple[DecileBucket, ...]
+    is_monotonic: bool
+    sample_size: int
+    ranked_days: int
 
 
 @dataclass(frozen=True)

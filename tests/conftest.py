@@ -8,14 +8,36 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
+from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
+from app.db.repositories.ranking_factor_contribution_repository import (
+    RankingFactorContributionRepository,
+)
+from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
+from app.db.repositories.ranking_result_repository import RankingResultRepository
+from app.db.repositories.ranking_run_repository import RankingRunRepository
+from app.db.repositories.ranking_validation_repository import RankingValidationRepository
+from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
+from app.db.repositories.validation_metrics_repository import ValidationMetricsRepository
 from app.main import create_app
 from app.providers.yahoo.client import YahooFinanceProvider
 from app.services.market_data_service import MarketDataService
 from app.services.stock_service import StockService
+from app.services.traceability_service import TraceabilityService
+
+
+@pytest.fixture
+def traceability_service(db_session: Session) -> TraceabilityService:
+    return TraceabilityService(
+        db_session,
+        RankingFactorContributionRepository(db_session),
+        ValidationMetricsRepository(db_session),
+        RunLineageRepository(db_session),
+        IngestionRunRepository(db_session),
+    )
 
 
 @compiles(JSONB, "sqlite")
@@ -90,7 +112,13 @@ def market_data_service(
     mock_provider: YahooFinanceProvider,
 ) -> MarketDataService:
     return MarketDataService(
-        db_session, stock_repo, market_data_repo, ingestion_run_repo, mock_provider
+        db_session,
+        stock_repo,
+        market_data_repo,
+        ingestion_run_repo,
+        IngestionBatchRepository(db_session),
+        RunLineageRepository(db_session),
+        mock_provider,
     )
 
 

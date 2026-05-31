@@ -14,21 +14,27 @@ from pathlib import Path
 from app.core.config import get_settings
 from app.core.constants import (
     DEFAULT_BENCHMARK_SYMBOL,
+    IngestPeriod,
     RANKING_STRATEGY_BREAKOUT_V1,
     RANKING_STRATEGY_BREAKOUT_V1_VERSION,
     RANKING_STRATEGY_MOMENTUM_V1,
     RANKING_STRATEGY_MOMENTUM_V1_VERSION,
     UNIVERSE_NIFTY_500,
-    IngestPeriod,
 )
+from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
+from app.db.repositories.ranking_factor_contribution_repository import (
+    RankingFactorContributionRepository,
+)
 from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
 from app.db.repositories.ranking_result_repository import RankingResultRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
+from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
+from app.db.repositories.validation_metrics_repository import ValidationMetricsRepository
 from app.db.session import get_session_factory
 from app.providers.yahoo.client import YahooFinanceProvider
 from app.ranking.registry import RankingStrategyRegistry
@@ -38,6 +44,7 @@ from app.services.backtest_service import BacktestService
 from app.services.market_data_service import MarketDataService
 from app.services.ranking_service import RankingService
 from app.services.signal_validation_service import SignalValidationService
+from app.services.traceability_service import TraceabilityService
 from app.services.universe_bootstrap_service import UniverseBootstrapService
 from app.services.universe_coverage_service import UniverseCoverageService
 from app.services.universe_filter_service import UniverseFilterService
@@ -64,7 +71,20 @@ def _build_services(db):
     universe_repo = UniverseRepository(db)
     provider = YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds)
     market_data_service = MarketDataService(
-        db, stock_repo, market_data_repo, ingestion_run_repo, provider
+        db,
+        stock_repo,
+        market_data_repo,
+        ingestion_run_repo,
+        IngestionBatchRepository(db),
+        RunLineageRepository(db),
+        provider,
+    )
+    traceability_service = TraceabilityService(
+        db,
+        RankingFactorContributionRepository(db),
+        ValidationMetricsRepository(db),
+        RunLineageRepository(db),
+        ingestion_run_repo,
     )
     bootstrap_service = UniverseBootstrapService(db, stock_repo, universe_repo)
     coverage_service = UniverseCoverageService(stock_repo, universe_repo, market_data_repo)
@@ -80,6 +100,7 @@ def _build_services(db):
         stock_repo,
         universe_repo,
         strategy_registry,
+        traceability_service,
     )
     backtest_service = BacktestService(
         db,
@@ -98,6 +119,7 @@ def _build_services(db):
         RankingValidationRepository(db),
         stock_repo,
         market_data_repo,
+        traceability_service,
     )
     return {
         "db": db,

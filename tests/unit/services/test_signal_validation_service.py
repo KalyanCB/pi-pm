@@ -18,7 +18,7 @@ from app.validation.constants import VALIDATION_STATUS_COMPLETED, VALIDATION_STA
 
 
 @pytest.fixture
-def validation_service(db_session) -> SignalValidationService:
+def validation_service(db_session, traceability_service) -> SignalValidationService:
     return SignalValidationService(
         db_session,
         Settings(),
@@ -28,6 +28,7 @@ def validation_service(db_session) -> SignalValidationService:
         RankingValidationRepository(db_session),
         StockRepository(db_session),
         MarketDataRepository(db_session),
+        traceability_service,
     )
 
 

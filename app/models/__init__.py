@@ -1,5 +1,21 @@
+from app.models.full_universe_validation import (
+    FullUniverseValidationCampaign,
+    FullUniverseValidationDecile,
+    FullUniverseValidationMetric,
+    FullUniverseValidationRun,
+)
 from app.models.market_data import MarketData
 from app.models.market_data_ingestion_run import MarketDataIngestionRun
+from app.models.platform_traceability import (
+    ExperimentRun,
+    IngestionBatchRun,
+    RankingFactorContribution,
+    RegimeHistory,
+    RunLineageRecord,
+    StrategyRegimePerformance,
+    ValidationDecileMetric,
+    ValidationHorizonMetric,
+)
 from app.models.paper_trade import PaperTrade
 from app.models.portfolio_position import PortfolioPosition
 from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
@@ -24,4 +40,16 @@ __all__ = [
     "ResearchReport",
     "PortfolioPosition",
     "PaperTrade",
+    "FullUniverseValidationCampaign",
+    "FullUniverseValidationRun",
+    "FullUniverseValidationMetric",
+    "FullUniverseValidationDecile",
+    "IngestionBatchRun",
+    "RankingFactorContribution",
+    "ValidationHorizonMetric",
+    "ValidationDecileMetric",
+    "RunLineageRecord",
+    "ExperimentRun",
+    "RegimeHistory",
+    "StrategyRegimePerformance",
 ]
