@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -8,6 +9,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.constants import DataStatus
 from app.core.exceptions import NotFoundError, RankingError
 from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
 from app.db.repositories.ranking_result_repository import RankingResultRepository
@@ -22,6 +24,8 @@ from app.ranking.registry import RankingStrategyRegistry
 from app.schemas.ranking import RankingRunRequest, UniverseFilterConfigSchema
 from app.services.universe_filter_service import UniverseFilterService
 from app.universe.models import UniverseFilterConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,7 +61,9 @@ class RankingService:
         return self.run_ranking_with_outcome(payload).run
 
     def run_ranking_with_outcome(self, payload: RankingRunRequest) -> RankingRunOutcome:
-        universe_code = payload.universe_code or self.settings.ranking_default_universe_code
+        universe_code = (
+            payload.universe_code or self.settings.ranking_default_universe_code
+        )
         strategy_name = payload.strategy_name or self.settings.ranking_default_strategy
         strategy_version = (
             payload.strategy_version or self.settings.ranking_default_strategy_version
@@ -74,6 +80,29 @@ class RankingService:
             payload.benchmark_symbol or self.settings.ranking_default_benchmark
         ).upper()
 
+        total_active_stocks = len(
+            self.stock_repo.list_stocks(data_status=DataStatus.ACTIVE.value)
+        )
+        universe_membership_stocks = self.universe_repo.list_stocks_in_universe(universe_code)
+        active_universe_members = sum(
+            1
+            for stock in universe_membership_stocks
+            if stock.data_status == DataStatus.ACTIVE.value
+        )
+        logger.info(
+            "ranking_pipeline_start universe_code=%s strategy=%s:%s as_of_date=%s "
+            "total_active_stocks=%s universe_membership_total=%s "
+            "universe_active_members=%s default_universe=%s",
+            universe_code,
+            strategy_name,
+            strategy_version,
+            as_of_date.isoformat(),
+            total_active_stocks,
+            len(universe_membership_stocks),
+            active_universe_members,
+            self.settings.ranking_default_universe_code,
+        )
+
         market_data_cache = MarketDataCache(self.universe_filter_service.market_data_repo)
         tradable_universe = self.universe_filter_service.build_tradable_universe(
             as_of_date, filter_config, market_data_cache
@@ -89,6 +118,16 @@ class RankingService:
             benchmark_symbol=benchmark_symbol,
             benchmark_stock_id=benchmark_stock_id,
             as_of_date=as_of_date,
+        )
+
+        logger.info(
+            "ranking_pipeline_complete universe_code=%s ranked_stock_count=%s "
+            "universe_stock_count=%s universe_exclusions=%s ranking_exclusions=%s",
+            universe_code,
+            output.metadata.get("ranked_stock_count"),
+            output.metadata.get("universe_stock_count"),
+            output.metadata.get("universe_exclusion_summary"),
+            output.metadata.get("ranking_exclusion_summary"),
         )
 
         existing = self.ranking_run_repo.find_completed_by_inputs_hash(output.inputs_hash)
@@ -154,9 +193,7 @@ class RankingService:
     ) -> UniverseFilterConfig:
         schema: UniverseFilterConfigSchema = payload.filter_config or UniverseFilterConfigSchema(
             min_history_days=self.settings.ranking_min_history_days,
-            min_avg_daily_traded_value=Decimal(
-                str(self.settings.ranking_min_avg_daily_traded_value)
-            ),
+            min_avg_daily_traded_value=Decimal(str(self.settings.ranking_min_avg_daily_traded_value)),
             min_stock_price=Decimal(str(self.settings.ranking_min_stock_price)),
             market_data_source=self.settings.ranking_market_data_source,
         )

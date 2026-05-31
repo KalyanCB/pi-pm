@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.stock_repository import StockRepository
+from app.db.repositories.universe_repository import UniverseRepository
 from app.main import create_app
 from app.providers.yahoo.client import YahooFinanceProvider
 from app.services.market_data_service import MarketDataService
@@ -53,6 +54,11 @@ def db_session(db_engine):
 @pytest.fixture
 def stock_repo(db_session: Session) -> StockRepository:
     return StockRepository(db_session)
+
+
+@pytest.fixture
+def universe_repo(db_session: Session) -> UniverseRepository:
+    return UniverseRepository(db_session)
 
 
 @pytest.fixture

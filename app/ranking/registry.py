@@ -5,6 +5,7 @@ from app.core.constants import (
     RANKING_STRATEGY_MOMENTUM_V1_VERSION,
 )
 from app.core.exceptions import StrategyNotFoundError
+from app.ranking.strategies.breakout_v1 import BreakoutV1Strategy
 from app.ranking.strategies.momentum_v1 import MomentumV1Strategy
 from app.ranking.strategy import RankingStrategy
 
@@ -13,6 +14,7 @@ class RankingStrategyRegistry:
     def __init__(self) -> None:
         self._strategies: dict[tuple[str, str], RankingStrategy] = {}
         self.register(MomentumV1Strategy())
+        self.register(BreakoutV1Strategy())
 
     def register(self, strategy: RankingStrategy) -> None:
         self._strategies[(strategy.name, strategy.version)] = strategy

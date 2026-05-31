@@ -1,0 +1,86 @@
+{
+  "info": {
+    "name": "Pi-PM Sprint 5",
+    "_postman_id": "pipm-sprint5",
+    "description": "Pi-PM APIs for Market Data, Rankings, Backtests and Validation",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rankings",
+      "item": [
+        {
+          "name": "Run Breakout Ranking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"strategy_name\": \"breakout_v1\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/rankings/run"
+          }
+        },
+        {
+          "name": "Latest Breakout Ranking",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/rankings/latest?strategy_name=breakout_v1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation",
+      "item": [
+        {
+          "name": "Validation Backfill",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_date\":\"2024-01-01\",\n  \"end_date\":\"2024-03-31\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/validation/backfill"
+          }
+        },
+        {
+          "name": "Validation Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/validation/summary?strategy_name=breakout_v1&start_date=2024-01-01&end_date=2024-03-31&horizon=20"
+          }
+        }
+      ]
+    }
+  ]
+}
