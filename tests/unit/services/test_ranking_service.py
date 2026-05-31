@@ -20,7 +20,7 @@ from tests.integration.api.test_rankings_api import seed_ranking_universe
 
 
 @pytest.fixture
-def ranking_service(db_session) -> RankingService:
+def ranking_service(db_session, traceability_service) -> RankingService:
     market_data_repo = MarketDataRepository(db_session)
     return RankingService(
         db_session,
@@ -32,6 +32,7 @@ def ranking_service(db_session) -> RankingService:
         StockRepository(db_session),
         UniverseRepository(db_session),
         RankingStrategyRegistry(),
+        traceability_service,
     )
 
 

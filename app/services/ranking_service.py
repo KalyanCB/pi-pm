@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -9,8 +10,8 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.core.constants import DataStatus
 from app.core.exceptions import NotFoundError, RankingError
+from app.core.structured_logging import log_event
 from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
 from app.db.repositories.ranking_result_repository import RankingResultRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
@@ -21,9 +22,12 @@ from app.models.ranking_run import RankingRun
 from app.ranking.engine import RankingEngine
 from app.ranking.loader import MarketDataLoader
 from app.ranking.registry import RankingStrategyRegistry
+from app.ranking.weight_hashing import hash_weight_config
 from app.schemas.ranking import RankingRunRequest, UniverseFilterConfigSchema
+from app.services.traceability_service import TraceabilityService
 from app.services.universe_filter_service import UniverseFilterService
 from app.universe.models import UniverseFilterConfig
+from app.validation.regimes import classify_regime
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,7 @@ class RankingService:
         stock_repo: StockRepository,
         universe_repo: UniverseRepository,
         strategy_registry: RankingStrategyRegistry,
+        traceability_service: TraceabilityService,
     ) -> None:
         self.db = db
         self.settings = settings
@@ -56,11 +61,13 @@ class RankingService:
         self.stock_repo = stock_repo
         self.universe_repo = universe_repo
         self.strategy_registry = strategy_registry
+        self.traceability_service = traceability_service
 
     def run_ranking(self, payload: RankingRunRequest) -> RankingRun:
         return self.run_ranking_with_outcome(payload).run
 
     def run_ranking_with_outcome(self, payload: RankingRunRequest) -> RankingRunOutcome:
+        started = time.perf_counter()
         universe_code = (
             payload.universe_code or self.settings.ranking_default_universe_code
         )
@@ -80,27 +87,14 @@ class RankingService:
             payload.benchmark_symbol or self.settings.ranking_default_benchmark
         ).upper()
 
-        total_active_stocks = len(
-            self.stock_repo.list_stocks(data_status=DataStatus.ACTIVE.value)
-        )
-        universe_membership_stocks = self.universe_repo.list_stocks_in_universe(universe_code)
-        active_universe_members = sum(
-            1
-            for stock in universe_membership_stocks
-            if stock.data_status == DataStatus.ACTIVE.value
-        )
-        logger.info(
-            "ranking_pipeline_start universe_code=%s strategy=%s:%s as_of_date=%s "
-            "total_active_stocks=%s universe_membership_total=%s "
-            "universe_active_members=%s default_universe=%s",
-            universe_code,
-            strategy_name,
-            strategy_version,
-            as_of_date.isoformat(),
-            total_active_stocks,
-            len(universe_membership_stocks),
-            active_universe_members,
-            self.settings.ranking_default_universe_code,
+        log_event(
+            logger,
+            "ranking_started",
+            universe_code=universe_code,
+            strategy_name=strategy_name,
+            strategy_version=strategy_version,
+            as_of_date=as_of_date.isoformat(),
+            benchmark=benchmark_symbol,
         )
 
         market_data_cache = MarketDataCache(self.universe_filter_service.market_data_repo)
@@ -111,6 +105,10 @@ class RankingService:
         benchmark_stock = self.stock_repo.get_by_symbol(benchmark_symbol)
         benchmark_stock_id = benchmark_stock.id if benchmark_stock else None
 
+        regime_label = self._resolve_regime_label(
+            benchmark_stock_id, as_of_date, market_data_cache
+        )
+
         engine = RankingEngine(MarketDataLoader(market_data_cache))
         output = engine.run(
             tradable_universe=tradable_universe,
@@ -120,18 +118,18 @@ class RankingService:
             as_of_date=as_of_date,
         )
 
-        logger.info(
-            "ranking_pipeline_complete universe_code=%s ranked_stock_count=%s "
-            "universe_stock_count=%s universe_exclusions=%s ranking_exclusions=%s",
-            universe_code,
-            output.metadata.get("ranked_stock_count"),
-            output.metadata.get("universe_stock_count"),
-            output.metadata.get("universe_exclusion_summary"),
-            output.metadata.get("ranking_exclusion_summary"),
-        )
-
         existing = self.ranking_run_repo.find_completed_by_inputs_hash(output.inputs_hash)
         if existing is not None:
+            self.traceability_service.ensure_ranking_traceability(existing)
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+            log_event(
+                logger,
+                "ranking_completed",
+                ranking_run_id=existing.id,
+                reused=True,
+                ranked_stock_count=output.metadata.get("ranked_stock_count"),
+                execution_duration_ms=elapsed_ms,
+            )
             return RankingRunOutcome(existing, True)
 
         run = self.ranking_run_repo.create_pending(
@@ -155,9 +153,34 @@ class RankingService:
                 "exclusion_summary": output.exclusion_summary,
             }
             self.ranking_run_repo.complete(run, output.inputs_hash, metadata)
+
+            effective_weights = output.metadata.get("effective_weights") or {}
+            weight_hash = hash_weight_config(effective_weights) if effective_weights else None
+            ranked_count = int(output.metadata.get("ranked_stock_count") or len(output.ranked_stocks))
+            universe_count = int(output.metadata.get("universe_stock_count") or 0)
+            excluded_count = max(universe_count - ranked_count, 0)
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+            self.traceability_service.record_ranking_traceability(
+                run,
+                weight_config_hash=weight_hash,
+                regime_label=regime_label,
+                ranked_stock_count=ranked_count,
+                excluded_stock_count=excluded_count,
+                execution_duration_ms=elapsed_ms,
+            )
             self.db.commit()
             reloaded = self.ranking_run_repo.get_by_id(run.id)
             assert reloaded is not None
+            log_event(
+                logger,
+                "ranking_completed",
+                ranking_run_id=reloaded.id,
+                reused=False,
+                ranked_stock_count=ranked_count,
+                excluded_stock_count=excluded_count,
+                execution_duration_ms=elapsed_ms,
+            )
             return RankingRunOutcome(reloaded, False)
         except RankingError:
             raise
@@ -187,6 +210,19 @@ class RankingService:
         run = self.get_run(run_id)
         top = self.ranking_result_repo.list_top(run.id, limit)
         return run, top
+
+    def _resolve_regime_label(
+        self,
+        benchmark_stock_id: UUID | None,
+        as_of_date: date,
+        cache: MarketDataCache,
+    ) -> str | None:
+        if benchmark_stock_id is None:
+            return None
+        bars = cache.load_extended_series(benchmark_stock_id, as_of_date)
+        high_vol_threshold = Decimal(str(self.settings.validation_high_vol_threshold))
+        regime = classify_regime(bars, as_of_date, high_vol_threshold)
+        return regime.regime_label if regime else None
 
     def _build_filter_config(
         self, payload: RankingRunRequest, universe_code: str

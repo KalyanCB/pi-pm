@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.constants import IngestBatchStatus, IngestionRunStatus
+from app.core.constants import IngestBatchStatus, IngestionMode, IngestionRunStatus
 
 
 class MarketDataRead(BaseModel):
@@ -36,15 +36,20 @@ class IngestionRunRead(BaseModel):
     rows_skipped: int
     status: IngestionRunStatus
     error_message: str | None = None
+    first_date_loaded: date | None = None
+    last_date_loaded: date | None = None
 
 
 class MarketDataIngestResponse(BaseModel):
+    batch_id: UUID | None = None
     symbols_processed: int
     symbols_failed: int
     rows_inserted: int
     rows_updated: int
     rows_skipped: int
     status: IngestBatchStatus
+    ingestion_mode: IngestionMode = IngestionMode.FULL_REFRESH
+    execution_duration_ms: int | None = None
     runs: list[IngestionRunRead] = Field(default_factory=list)
 
     @property

@@ -86,3 +86,75 @@ class ValidationBackfillResponse(BaseModel):
     validated: int = Field(ge=0)
     reused: int = Field(ge=0)
     failed: int = Field(ge=0)
+
+
+class FullUniverseValidationRunRequest(BaseModel):
+    start_date: date
+    end_date: date
+    force_recompute: bool = False
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> FullUniverseValidationRunRequest:
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        return self
+
+
+class FullUniverseValidationRunResponse(BaseModel):
+    campaign_id: str
+    status: str
+    ranking_runs_created: int = Field(ge=0)
+    ranking_runs_reused: int = Field(ge=0)
+    validation_days_completed: int = Field(ge=0)
+    validation_days_failed: int = Field(ge=0)
+    ranked_days_total: int = Field(ge=0)
+
+
+class FullUniverseHorizonSummaryRead(BaseModel):
+    ic: str | None = None
+    rank_ic: str | None = None
+    hit_rate: str | None = None
+    spread: str | None = None
+    top_decile_return: str | None = None
+    bottom_decile_return: str | None = None
+    is_monotonic: bool = False
+
+
+class FullUniverseValidationSummaryRead(BaseModel):
+    campaign_id: str
+    universe_code: str
+    strategy_name: str
+    strategy_version: str
+    start_date: str
+    end_date: str
+    status: str
+    horizon: int
+    ic: str | None = None
+    rank_ic: str | None = None
+    hit_rate: str | None = None
+    directional_hit_rate: str | None = None
+    top_decile_return: str | None = None
+    bottom_decile_return: str | None = None
+    spread: str | None = None
+    top_20_return: str | None = None
+    top_50_return: str | None = None
+    sample_size: int = 0
+    ranked_days: int = 0
+    is_monotonic: bool = False
+    best_horizon: int | None = None
+    worst_horizon: int | None = None
+    horizons: dict[str, FullUniverseHorizonSummaryRead] = Field(default_factory=dict)
+
+
+class FullUniverseDecileRead(BaseModel):
+    decile: int
+    count: int
+    avg_return: str | None = None
+    median_return: str | None = None
+    win_rate: str | None = None
+
+
+class FullUniverseDecilesResponse(BaseModel):
+    campaign_id: str
+    horizon: int
+    deciles: list[FullUniverseDecileRead]

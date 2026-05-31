@@ -6,18 +6,30 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import get_settings
 from app.db.base import Base
 from app.models import (  # noqa: F401
+    ExperimentRun,
+    FullUniverseValidationCampaign,
+    FullUniverseValidationDecile,
+    FullUniverseValidationMetric,
+    FullUniverseValidationRun,
+    IngestionBatchRun,
     MarketData,
     MarketDataIngestionRun,
     PaperTrade,
     PortfolioPosition,
+    RankingFactorContribution,
     RankingPerformanceSnapshot,
     RankingResult,
     RankingRun,
     RankingValidationReport,
+    RegimeHistory,
     ResearchReport,
+    RunLineageRecord,
     Stock,
     StockUniverse,
+    StrategyRegimePerformance,
     UniverseMembership,
+    ValidationDecileMetric,
+    ValidationHorizonMetric,
 )
 
 config = context.config

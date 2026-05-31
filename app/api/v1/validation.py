@@ -5,22 +5,27 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_signal_validation_service, get_stock_repository
+from app.api.deps import (
+    get_full_universe_validation_service,
+    get_signal_validation_service,
+    get_stock_repository,
+)
 from app.db.repositories.stock_repository import StockRepository
 from app.schemas.validation import (
+    FullUniverseDecilesResponse,
+    FullUniverseDecileRead,
+    FullUniverseValidationRunRequest,
+    FullUniverseValidationRunResponse,
+    FullUniverseValidationSummaryRead,
     ValidationBackfillRequest,
     ValidationBackfillResponse,
     ValidationReportRead,
     ValidationSnapshotRead,
     ValidationSummaryRead,
 )
+from app.services.full_universe_validation_service import FullUniverseValidationService
 from app.services.signal_validation_service import SignalValidationService
-from app.services.validation_serializers import (
-    report_to_read,
-    snapshot_to_read,
-    summary_to_read,
-    symbol_map,
-)
+from app.services.validation_serializers import report_to_read, snapshot_to_read, summary_to_read, symbol_map
 
 router = APIRouter()
 
@@ -92,3 +97,70 @@ def get_validation_summary(
         horizon=horizon,
     )
     return summary_to_read(summary)
+
+
+@router.post(
+    "/full-universe/run",
+    response_model=FullUniverseValidationRunResponse,
+    status_code=201,
+)
+def run_full_universe_validation(
+    payload: FullUniverseValidationRunRequest,
+    service: FullUniverseValidationService = Depends(get_full_universe_validation_service),
+) -> FullUniverseValidationRunResponse:
+    result = service.run_campaign(
+        payload.start_date,
+        payload.end_date,
+        force_recompute=payload.force_recompute,
+    )
+    return FullUniverseValidationRunResponse(
+        campaign_id=str(result.campaign_id),
+        status=result.status,
+        ranking_runs_created=result.ranking_runs_created,
+        ranking_runs_reused=result.ranking_runs_reused,
+        validation_days_completed=result.validation_days_completed,
+        validation_days_failed=result.validation_days_failed,
+        ranked_days_total=result.ranked_days_total,
+    )
+
+
+@router.get("/full-universe/summary", response_model=FullUniverseValidationSummaryRead)
+def get_full_universe_validation_summary(
+    campaign_id: UUID | None = Query(default=None),
+    horizon: int = Query(default=20),
+    universe_code: str | None = Query(default=None),
+    strategy_name: str | None = Query(default=None),
+    strategy_version: str | None = Query(default=None),
+    service: FullUniverseValidationService = Depends(get_full_universe_validation_service),
+) -> FullUniverseValidationSummaryRead:
+    summary = service.get_summary(
+        campaign_id=campaign_id,
+        horizon=horizon,
+        universe_code=universe_code,
+        strategy_name=strategy_name,
+        strategy_version=strategy_version,
+    )
+    return FullUniverseValidationSummaryRead(**summary)
+
+
+@router.get("/full-universe/deciles", response_model=FullUniverseDecilesResponse)
+def get_full_universe_validation_deciles(
+    horizon: int = Query(default=20),
+    campaign_id: UUID | None = Query(default=None),
+    universe_code: str | None = Query(default=None),
+    strategy_name: str | None = Query(default=None),
+    strategy_version: str | None = Query(default=None),
+    service: FullUniverseValidationService = Depends(get_full_universe_validation_service),
+) -> FullUniverseDecilesResponse:
+    payload = service.get_deciles(
+        horizon,
+        campaign_id=campaign_id,
+        universe_code=universe_code,
+        strategy_name=strategy_name,
+        strategy_version=strategy_version,
+    )
+    return FullUniverseDecilesResponse(
+        campaign_id=payload["campaign_id"],
+        horizon=payload["horizon"],
+        deciles=[FullUniverseDecileRead(**row) for row in payload["deciles"]],
+    )

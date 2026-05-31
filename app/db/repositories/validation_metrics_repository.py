@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from uuid import UUID
+
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
+
+from app.models.platform_traceability import ValidationDecileMetric, ValidationHorizonMetric
+from app.models.ranking_run import RankingRun
+from app.models.ranking_validation_report import RankingValidationReport
+
+
+class ValidationMetricsRepository:
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def has_for_report(self, validation_report_id: UUID) -> bool:
+        count = self.db.scalar(
+            select(func.count())
+            .select_from(ValidationHorizonMetric)
+            .where(ValidationHorizonMetric.validation_report_id == validation_report_id)
+        )
+        return int(count or 0) > 0
+
+    def replace_for_report(
+        self,
+        report: RankingValidationReport,
+        ranking_run: RankingRun,
+        horizon_metrics: dict,
+    ) -> None:
+        self.db.execute(
+            delete(ValidationHorizonMetric).where(
+                ValidationHorizonMetric.validation_report_id == report.id
+            )
+        )
+        self.db.execute(
+            delete(ValidationDecileMetric).where(
+                ValidationDecileMetric.validation_report_id == report.id
+            )
+        )
+        now = datetime.now(UTC)
+        for horizon_key, payload in horizon_metrics.items():
+            horizon = int(horizon_key)
+            deciles = payload.get("deciles") or []
+            hit_rates = payload.get("hit_rates") or {}
+            top_decile = deciles[0]["mean_return"] if deciles else None
+            bottom_decile = deciles[-1]["mean_return"] if deciles else None
+            spread = payload.get("top_minus_bottom_spread")
+            self.db.add(
+                ValidationHorizonMetric(
+                    validation_report_id=report.id,
+                    ranking_run_id=ranking_run.id,
+                    strategy_name=ranking_run.strategy_name,
+                    strategy_version=ranking_run.strategy_version,
+                    regime_label=report.regime_label,
+                    horizon=horizon,
+                    ic_pearson=_to_float(payload.get("ic_pearson")),
+                    rank_ic_spearman=_to_float(payload.get("ic_spearman")),
+                    hit_rate=_to_float(hit_rates.get("top_vs_median_hit_rate")),
+                    directional_hit_rate=_to_float(hit_rates.get("rank_directional_hit_rate")),
+                    spread=_to_float(spread),
+                    top_decile_return=_to_float(top_decile),
+                    bottom_decile_return=_to_float(bottom_decile),
+                    sample_size=int(payload.get("sample_size") or 0),
+                    computed_at=now,
+                )
+            )
+            for bucket in deciles:
+                self.db.add(
+                    ValidationDecileMetric(
+                        validation_report_id=report.id,
+                        horizon=horizon,
+                        decile=int(bucket["decile"]),
+                        count=int(bucket.get("count") or 0),
+                        avg_return=_to_float(bucket.get("mean_return")),
+                        median_return=_to_float(bucket.get("median_return")),
+                        win_rate=_to_float(bucket.get("win_rate")),
+                    )
+                )
+        self.db.flush()
+
+
+def _to_float(value) -> float | None:
+    if value is None:
+        return None
+    return float(value)

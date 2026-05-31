@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+import time
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -10,14 +11,22 @@ from app.core.constants import (
     DataStatus,
     IngestBatchStatus,
     IngestPeriod,
+    IngestionMode,
+    IngestionRunStatus,
+    LineageEntityType,
+    LineageRelationshipType,
 )
-from app.core.exceptions import InvalidSymbolError, NotFoundError, PiPMError
+from app.core.exceptions import InvalidSymbolError, NotFoundError, PiPMError, ProviderError
+from app.core.structured_logging import log_event
+from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
+from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.models.market_data import MarketData
 from app.models.market_data_ingestion_run import MarketDataIngestionRun
 from app.providers.yahoo.client import YahooFinanceProvider
+from app.providers.yahoo.models import YahooOHLCVBar
 from app.schemas.market_data import MarketDataIngestResponse
 
 logger = logging.getLogger(__name__)
@@ -30,12 +39,16 @@ class MarketDataService:
         stock_repo: StockRepository,
         market_data_repo: MarketDataRepository,
         ingestion_run_repo: IngestionRunRepository,
+        ingestion_batch_repo: IngestionBatchRepository,
+        lineage_repo: RunLineageRepository,
         provider: YahooFinanceProvider,
     ) -> None:
         self.db = db
         self.stock_repo = stock_repo
         self.market_data_repo = market_data_repo
         self.ingestion_run_repo = ingestion_run_repo
+        self.ingestion_batch_repo = ingestion_batch_repo
+        self.lineage_repo = lineage_repo
         self.provider = provider
 
     def get_market_data(
@@ -57,22 +70,55 @@ class MarketDataService:
             limit=limit,
         )
 
-    def ingest(self, symbols: list[str], period: IngestPeriod) -> MarketDataIngestResponse:
+    def ingest(
+        self,
+        symbols: list[str],
+        period: IngestPeriod,
+        *,
+        ingestion_mode: IngestionMode = IngestionMode.FULL_REFRESH,
+    ) -> MarketDataIngestResponse:
+        started = time.perf_counter()
+        batch = self.ingestion_batch_repo.create_running(
+            provider=MARKET_DATA_SOURCE_YAHOO,
+            period=period.value,
+            ingestion_mode=ingestion_mode.value,
+            symbol_count_requested=len(symbols),
+        )
+        log_event(
+            logger,
+            "ingestion_started",
+            batch_id=batch.id,
+            provider=MARKET_DATA_SOURCE_YAHOO,
+            period=period.value,
+            ingestion_mode=ingestion_mode.value,
+            symbol_count=len(symbols),
+        )
+
         runs: list[MarketDataIngestionRun] = []
         symbols_succeeded = 0
         symbols_failed = 0
         total_inserted = 0
         total_updated = 0
         total_skipped = 0
+        errors: list[str] = []
 
         for symbol in symbols:
             run = self.ingestion_run_repo.create_running(
                 symbol=symbol,
                 provider=MARKET_DATA_SOURCE_YAHOO,
                 requested_period=period.value,
+                batch_id=batch.id,
+                ingestion_mode=ingestion_mode.value,
+            )
+            self.lineage_repo.link(
+                child_entity_type=LineageEntityType.INGESTION_SYMBOL.value,
+                child_entity_id=run.id,
+                parent_entity_type=LineageEntityType.INGESTION_BATCH.value,
+                parent_entity_id=batch.id,
+                relationship_type=LineageRelationshipType.BATCH_SYMBOL.value,
             )
             try:
-                result = self._ingest_single_symbol(symbol, period, run)
+                result = self._ingest_single_symbol(symbol, period, run, ingestion_mode)
                 runs.append(result)
                 symbols_succeeded += 1
                 total_inserted += run.rows_inserted
@@ -84,27 +130,65 @@ class MarketDataService:
                 self.stock_repo.set_data_status(symbol, DataStatus.ERROR)
                 runs.append(run)
                 symbols_failed += 1
+                errors.append(f"{symbol}: {exc}")
             except Exception as exc:
                 logger.exception("Unexpected ingestion failure for %s", symbol)
                 self.ingestion_run_repo.fail(run, str(exc))
                 self.stock_repo.set_data_status(symbol, DataStatus.ERROR)
                 runs.append(run)
                 symbols_failed += 1
+                errors.append(f"{symbol}: {exc}")
 
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        if symbols_failed == 0:
+            batch_status = IngestBatchStatus.SUCCESS.value
+        elif symbols_succeeded == 0:
+            batch_status = IngestionRunStatus.FAILED.value
+        else:
+            batch_status = IngestBatchStatus.PARTIAL_SUCCESS.value
+
+        error_summary = "; ".join(errors[:10]) if errors else None
+        self.ingestion_batch_repo.complete(
+            batch,
+            symbol_count_succeeded=symbols_succeeded,
+            symbol_count_failed=symbols_failed,
+            rows_inserted=total_inserted,
+            rows_updated=total_updated,
+            rows_skipped=total_skipped,
+            execution_duration_ms=elapsed_ms,
+            status=batch_status,
+            error_summary=error_summary,
+        )
         self.db.commit()
 
-        if symbols_failed == 0:
-            batch_status = IngestBatchStatus.SUCCESS
-        else:
-            batch_status = IngestBatchStatus.PARTIAL_SUCCESS
+        log_event(
+            logger,
+            "ingestion_completed",
+            batch_id=batch.id,
+            status=batch_status,
+            symbols_succeeded=symbols_succeeded,
+            symbols_failed=symbols_failed,
+            rows_inserted=total_inserted,
+            rows_updated=total_updated,
+            rows_skipped=total_skipped,
+            execution_duration_ms=elapsed_ms,
+        )
 
+        response_status = (
+            IngestBatchStatus.SUCCESS
+            if symbols_failed == 0
+            else IngestBatchStatus.PARTIAL_SUCCESS
+        )
         return MarketDataIngestResponse(
+            batch_id=batch.id,
             symbols_processed=symbols_succeeded,
             symbols_failed=symbols_failed,
             rows_inserted=total_inserted,
             rows_updated=total_updated,
             rows_skipped=total_skipped,
-            status=batch_status,
+            status=response_status,
+            ingestion_mode=ingestion_mode,
+            execution_duration_ms=elapsed_ms,
             runs=runs,
         )
 
@@ -113,22 +197,54 @@ class MarketDataService:
         symbol: str,
         period: IngestPeriod,
         run: MarketDataIngestionRun,
+        ingestion_mode: IngestionMode,
     ) -> MarketDataIngestionRun:
         metadata = self.provider.fetch_metadata(symbol)
-        bars = self.provider.fetch_history(symbol, period)
+        stock = self.stock_repo.upsert_from_metadata(metadata)
+        latest = self.market_data_repo.get_latest_market_data(stock.id)
 
+        bars = self._fetch_bars(symbol, period, ingestion_mode, latest)
         if not bars:
             raise InvalidSymbolError(f"No OHLCV history returned for symbol: {symbol}")
 
-        stock = self.stock_repo.upsert_from_metadata(metadata)
         counts = self.market_data_repo.upsert_bars(stock.id, bars, source=MARKET_DATA_SOURCE_YAHOO)
 
-        if counts.inserted == 0 and counts.updated == 0:
+        if counts.inserted == 0 and counts.updated == 0 and ingestion_mode != IngestionMode.INCREMENTAL:
             raise InvalidSymbolError(f"No valid OHLCV rows ingested for symbol: {symbol}")
 
-        return self.ingestion_run_repo.complete(
+        first_date, last_date = _bar_date_range(bars)
+        completed = self.ingestion_run_repo.complete(
             run,
             rows_inserted=counts.inserted,
             rows_updated=counts.updated,
             rows_skipped=counts.skipped,
+            first_date_loaded=first_date,
+            last_date_loaded=last_date,
         )
+        self.stock_repo.set_data_status(symbol, DataStatus.ACTIVE)
+        return completed
+
+    def _fetch_bars(
+        self,
+        symbol: str,
+        period: IngestPeriod,
+        ingestion_mode: IngestionMode,
+        latest: MarketData | None,
+    ) -> list[YahooOHLCVBar]:
+        if ingestion_mode == IngestionMode.INCREMENTAL and latest is not None:
+            start_date = latest.date + timedelta(days=1)
+            return self.provider.fetch_history_since(symbol, start_date)
+
+        bars = self.provider.fetch_history(symbol, period)
+        if ingestion_mode == IngestionMode.INCREMENTAL and latest is not None:
+            return [bar for bar in bars if bar.date > latest.date]
+        if ingestion_mode == IngestionMode.BACKFILL and latest is not None:
+            return [bar for bar in bars if bar.date < latest.date]
+        return bars
+
+
+def _bar_date_range(bars: list[YahooOHLCVBar]) -> tuple[date | None, date | None]:
+    if not bars:
+        return None, None
+    dates = [bar.date for bar in bars]
+    return min(dates), max(dates)
