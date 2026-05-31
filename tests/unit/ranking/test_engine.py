@@ -119,8 +119,39 @@ def test_benchmark_present_uses_configured_weights():
     assert weights["trend_quality"] == "0.20000000"
     assert weights["relative_strength"] == "0.15000000"
     assert len(output.ranked_stocks) == 1
-    components = {fs.factor_name for fs in output.ranked_stocks[0].factor_scores}
+    components = {
+        fs.factor_name
+        for fs in output.ranked_stocks[0].factor_scores
+    }
     assert "relative_strength" in components
+
+
+def test_breakout_benchmark_missing_excludes_rs_factors():
+    from app.ranking.strategies.breakout_v1 import BreakoutV1Strategy
+
+    stock_a = uuid4()
+    bars_a = [_bar(i, str(100 + i * 0.4), 1_000_000 + i * 1000) for i in range(280)]
+    loader = InMemoryLoader({stock_a: bars_a})
+    engine = RankingEngine(loader)
+    strategy = BreakoutV1Strategy()
+    as_of = bars_a[-1].date
+    included = (StockSnapshot(stock_a, "AAA.NS", "A", "NSE", None, "ACTIVE", True),)
+    config = UniverseFilterConfig(universe_code="PI_PM_CORE")
+    universe = TradableUniverse(
+        universe_code="PI_PM_CORE",
+        as_of_date=as_of,
+        filter_config=config,
+        filter_config_hash=config.config_hash(),
+        included=included,
+        excluded=(),
+        exclusion_summary={},
+    )
+
+    output = engine.run(universe, strategy, "^NSEI", None, as_of)
+    effective = output.metadata["effective_weights"]
+    assert "relative_strength" not in effective
+    assert "relative_strength_acceleration" not in effective
+    assert output.metadata["benchmark_available"] is False
 
 
 def test_insufficient_strategy_history_exclusion():

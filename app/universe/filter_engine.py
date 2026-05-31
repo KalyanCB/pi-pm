@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -24,6 +25,8 @@ from app.universe.models import (
     UniverseFilterConfig,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class UniverseFilterEngine:
     def __init__(
@@ -45,6 +48,11 @@ class UniverseFilterEngine:
         candidate_stocks = self.universe_repo.list_candidate_stocks(config.universe_code)
         included: list[StockSnapshot] = []
         excluded: list[FilterDecision] = []
+        passed_universe_selection = 0
+        passed_status_filter = 0
+        passed_history_filter = 0
+        passed_price_filter = 0
+        passed_liquidity_filter = 0
 
         for stock in candidate_stocks:
             snapshot = StockSnapshot(
@@ -67,6 +75,8 @@ class UniverseFilterEngine:
                 )
                 continue
 
+            passed_universe_selection += 1
+
             if config.require_stock_active and not stock.is_active:
                 excluded.append(
                     self._decision(snapshot, EXCLUSION_STOCK_INACTIVE, "Stock is marked inactive")
@@ -83,6 +93,8 @@ class UniverseFilterEngine:
                 )
                 continue
 
+            passed_status_filter += 1
+
             bars = self._load_bars(stock.id, as_of_date, config.market_data_source)
             eligible = bars_on_or_before(bars, as_of_date)
 
@@ -96,6 +108,8 @@ class UniverseFilterEngine:
                     )
                 )
                 continue
+
+            passed_history_filter += 1
 
             latest = latest_bar(bars, as_of_date)
             if latest is None:
@@ -118,6 +132,8 @@ class UniverseFilterEngine:
                     )
                 )
                 continue
+
+            passed_price_filter += 1
 
             avg_volume = self._average_volume(eligible, window=20)
             avg_close = self._average_close(eligible, window=20)
@@ -150,10 +166,33 @@ class UniverseFilterEngine:
                 )
                 continue
 
+            passed_liquidity_filter += 1
             included.append(snapshot)
 
         included.sort(key=lambda s: s.symbol)
         exclusion_summary = self._summarize_exclusions(excluded)
+
+        logger.info(
+            "ranking_pipeline_filter_trace universe_code=%s as_of_date=%s "
+            "candidate_memberships=%s active_universe_members=%s "
+            "stocks_after_universe_selection=%s stocks_after_status_filter=%s "
+            "stocks_after_history_filter=%s stocks_after_price_filter=%s "
+            "stocks_after_liquidity_filter=%s min_history_days=%s "
+            "min_avg_daily_traded_value=%s min_stock_price=%s exclusion_summary=%s",
+            config.universe_code,
+            as_of_date.isoformat(),
+            len(candidate_stocks),
+            len(membership_stocks),
+            passed_universe_selection,
+            passed_status_filter,
+            passed_history_filter,
+            passed_price_filter,
+            passed_liquidity_filter,
+            config.min_history_days,
+            config.min_avg_daily_traded_value,
+            config.min_stock_price,
+            exclusion_summary,
+        )
 
         return TradableUniverse(
             universe_code=config.universe_code,

@@ -55,3 +55,26 @@ class StockRepository:
 
     def get_by_id(self, stock_id: UUID) -> Stock | None:
         return self.db.get(Stock, stock_id)
+
+    def get_or_create_placeholder(
+        self,
+        symbol: str,
+        *,
+        name: str | None = None,
+        industry: str | None = None,
+    ) -> tuple[Stock, bool]:
+        normalized = symbol.strip().upper()
+        stock = self.get_by_symbol(normalized)
+        if stock is not None:
+            return stock, False
+
+        stock = Stock(
+            symbol=normalized,
+            name=name or normalized,
+            exchange="NSE",
+            industry=industry,
+            data_status=DataStatus.INACTIVE.value,
+        )
+        self.db.add(stock)
+        self.db.flush()
+        return stock, True

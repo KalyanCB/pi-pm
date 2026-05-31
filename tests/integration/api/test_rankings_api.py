@@ -242,3 +242,93 @@ def test_ranking_with_default_config(client, db_session):
     body = response.json()
     assert body["universe_code"] == "PI_PM_CORE"
     assert body["strategy_name"] == "momentum_v1"
+
+
+def test_breakout_v1_ranking_api_flow(client, db_session):
+    as_of = date(2025, 6, 1)
+    from app.core.constants import DataStatus
+    from app.models.market_data import MarketData
+    from app.models.stock import Stock
+    from app.models.stock_universe import StockUniverse
+    from app.models.universe_membership import UniverseMembership
+    from datetime import UTC, datetime, timedelta
+
+    universe = StockUniverse(code="PI_PM_CORE", name="Core", is_active=True)
+    db_session.add(universe)
+    db_session.flush()
+
+    symbols = ["AAA.NS", "BBB.NS", "CCC.NS"]
+    for idx, symbol in enumerate(symbols):
+        stock = Stock(
+            symbol=symbol,
+            name=symbol,
+            exchange="NSE",
+            data_status=DataStatus.ACTIVE.value,
+            is_active=True,
+        )
+        db_session.add(stock)
+        db_session.flush()
+        db_session.add(
+            UniverseMembership(universe_id=universe.id, stock_id=stock.id, removed_at=None)
+        )
+        for i in range(280):
+            bar_date = as_of - timedelta(days=279 - i)
+            close = 100 + idx * 10 + (i * 0.5)
+            db_session.add(
+                MarketData(
+                    stock_id=stock.id,
+                    date=bar_date,
+                    close=close,
+                    adj_close=close,
+                    volume=1_000_000 + i * 1000,
+                    source="yahoo",
+                    ingested_at=datetime.now(UTC),
+                )
+            )
+    benchmark = Stock(
+        symbol="^NSEI",
+        name="^NSEI",
+        exchange="NSE",
+        data_status=DataStatus.ACTIVE.value,
+        is_active=True,
+    )
+    db_session.add(benchmark)
+    db_session.flush()
+    for i in range(280):
+        bar_date = as_of - timedelta(days=279 - i)
+        close = 100 + i * 0.5
+        db_session.add(
+            MarketData(
+                stock_id=benchmark.id,
+                date=bar_date,
+                close=close,
+                adj_close=close,
+                volume=500_000 + i * 500,
+                source="yahoo",
+                ingested_at=datetime.now(UTC),
+            )
+        )
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/rankings/run",
+        json={
+            "universe_code": "PI_PM_CORE",
+            "as_of_date": as_of.isoformat(),
+            "strategy_name": "breakout_v1",
+            "strategy_version": "1.0.0",
+            "benchmark_symbol": "^NSEI",
+        },
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["strategy_name"] == "breakout_v1"
+    assert body["results_count"] == 3
+    assert body["metadata"]["benchmark_available"] is True
+    factor_names = {
+        name
+        for result in body["results"]
+        for name in (result.get("score_components") or {})
+    }
+    assert "high_proximity" in factor_names
+    assert "consolidation_breakout" in factor_names

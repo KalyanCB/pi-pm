@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
 from app.core.constants import (
+    BENCHMARK_DEPENDENT_FACTORS,
     EXCLUSION_FACTOR_COMPUTATION_FAILED,
     EXCLUSION_INSUFFICIENT_STRATEGY_HISTORY,
     NORMALIZATION_METHOD_PERCENTILE,
@@ -17,7 +19,7 @@ from app.ranking.normalizer import percentile_normalize, redistribute_weights
 from app.ranking.strategy import RankingStrategy
 from app.universe.models import FilterDecision, TradableUniverse
 
-RELATIVE_STRENGTH_FACTOR = "relative_strength"
+logger = logging.getLogger(__name__)
 
 
 class RankingEngine:
@@ -45,13 +47,14 @@ class RankingEngine:
         base_weights = strategy.base_weights()
         excluded_factors: set[str] = set()
         if not benchmark_available:
-            excluded_factors.add(RELATIVE_STRENGTH_FACTOR)
+            excluded_factors = BENCHMARK_DEPENDENT_FACTORS & set(base_weights.keys())
 
         effective_weights = redistribute_weights(base_weights, excluded_factors)
 
         stock_series: dict[str, list] = {}
         raw_by_stock: dict[str, dict[str, Decimal | None]] = {}
         ranking_exclusions: list[FilterDecision] = []
+        passed_strategy_history = 0
 
         for stock in tradable_universe.included:
             series = self.loader.load_series(stock.stock_id, as_of_date, source=source)
@@ -73,6 +76,7 @@ class RankingEngine:
                 )
                 continue
 
+            passed_strategy_history += 1
             bench = benchmark_series if benchmark_available else None
             raw_factors = strategy.compute_raw_factors(stock, series, bench, as_of_date)
             active_factors = {
@@ -94,6 +98,23 @@ class RankingEngine:
                 continue
 
             raw_by_stock[stock.symbol] = raw_factors
+
+        logger.info(
+            "ranking_pipeline_engine_trace universe_code=%s strategy=%s:%s as_of_date=%s "
+            "tradable_universe_in=%s stocks_after_strategy_history=%s "
+            "stocks_after_feature_generation=%s benchmark_available=%s "
+            "required_history_days=%s ranking_exclusion_preview=%s",
+            tradable_universe.universe_code,
+            strategy.name,
+            strategy.version,
+            as_of_date.isoformat(),
+            tradable_universe.stock_count,
+            passed_strategy_history,
+            len(raw_by_stock),
+            benchmark_available,
+            requirements.required_history_days,
+            _preview_exclusions(ranking_exclusions),
+        )
 
         normalized_by_factor: dict[str, dict[str, Decimal | None]] = defaultdict(dict)
         for symbol, raw_factors in raw_by_stock.items():
@@ -177,6 +198,14 @@ class RankingEngine:
         if not benchmark_available:
             metadata["weight_adjustment_reason"] = "benchmark_data_unavailable"
 
+        logger.info(
+            "ranking_pipeline_engine_complete universe_code=%s stocks_ranked=%s "
+            "ranking_exclusion_summary=%s",
+            tradable_universe.universe_code,
+            len(ranked_with_rank),
+            ranking_exclusion_summary,
+        )
+
         return RankingOutput(
             strategy_name=strategy.name,
             strategy_version=strategy.version,
@@ -194,3 +223,10 @@ class RankingEngine:
             },
             metadata=metadata,
         )
+
+
+def _preview_exclusions(exclusions: list[FilterDecision]) -> dict[str, int]:
+    summary: dict[str, int] = {}
+    for decision in exclusions:
+        summary[decision.reason_code] = summary.get(decision.reason_code, 0) + 1
+    return summary

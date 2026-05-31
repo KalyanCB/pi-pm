@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import MARKET_DATA_SOURCE_YAHOO
@@ -76,6 +76,24 @@ class MarketDataRepository:
         if source is not None:
             stmt = stmt.where(MarketData.source == source)
         return list(self.db.scalars(stmt).all())
+
+    def count_bars_on_or_before(
+        self,
+        stock_id: UUID,
+        as_of_date: date,
+        source: str | None = MARKET_DATA_SOURCE_YAHOO,
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(MarketData)
+            .where(
+                MarketData.stock_id == stock_id,
+                MarketData.date <= as_of_date,
+            )
+        )
+        if source is not None:
+            stmt = stmt.where(MarketData.source == source)
+        return int(self.db.scalar(stmt) or 0)
 
     def upsert_bars(
         self,

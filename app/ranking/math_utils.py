@@ -79,3 +79,39 @@ def average_volume(bars: list[PriceBar], window: int) -> Decimal | None:
     if not volumes:
         return None
     return Decimal(str(mean(volumes)))
+
+
+def rolling_max_close(bars: list[PriceBar], window: int) -> Decimal | None:
+    if len(bars) < window:
+        return None
+    return max(b.close for b in bars[-window:])
+
+
+def rolling_min_close(bars: list[PriceBar], window: int) -> Decimal | None:
+    if len(bars) < window:
+        return None
+    return min(b.close for b in bars[-window:])
+
+
+def average_true_range(bars: list[PriceBar], window: int) -> Decimal | None:
+    if len(bars) < window + 1:
+        return None
+    window_bars = bars[-(window + 1) :]
+    ranges: list[Decimal] = []
+    for prev, curr in zip(window_bars, window_bars[1:], strict=False):
+        ranges.append(abs(curr.close - prev.close))
+    if not ranges:
+        return None
+    return Decimal(str(mean(float(value) for value in ranges[-window:])))
+
+
+def relative_strength_spread(
+    stock_bars: list[PriceBar],
+    bench_bars: list[PriceBar],
+    lookback: int,
+) -> Decimal | None:
+    stock_ret = total_return(stock_bars, lookback)
+    bench_ret = total_return(bench_bars, lookback)
+    if stock_ret is None or bench_ret is None:
+        return None
+    return stock_ret - bench_ret
