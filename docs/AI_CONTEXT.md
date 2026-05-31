@@ -2,13 +2,14 @@
 
 **Purpose:** Onboard any AI assistant (ChatGPT, Claude, Gemini, Cursor) to Pi-PM without reading source code.
 
-**Last updated:** 2026-05-31
+**Last updated:** 2026-06-01  
+**Takeover entry point:** `docs/HANDOFF.md`
 
 ---
 
 ## What Is Pi-PM?
 
-Pi-PM is a **Personal Intelligence Portfolio Manager** — a Python/FastAPI backend for ranking Indian NSE equities using deterministic factor models, validating signal predictive power, and (eventually) managing a personal portfolio with LLM-assisted research.
+Pi-PM is a **Personal Intelligence Portfolio Manager** — a Python/FastAPI backend for ranking Indian NSE equities using deterministic factor models, validating signal predictive power, evaluating regime-aware policies (research), and (eventually) managing a personal portfolio with LLM-assisted research.
 
 **Critical rule:** LLMs never rank securities, determine position sizes, approve trades, or override risk controls. All money decisions are deterministic.
 
@@ -22,248 +23,186 @@ Pi-PM is a **Personal Intelligence Portfolio Manager** — a Python/FastAPI back
 | API | FastAPI 0.115+ |
 | Database | PostgreSQL 16 |
 | ORM | SQLAlchemy 2.0 |
-| Migrations | Alembic |
+| Migrations | Alembic (head: `20260531_0008`) |
 | Validation | Pydantic v2 |
 | Market data | Yahoo Finance (`yfinance`) |
-| Tests | pytest (121 tests) |
+| Tests | pytest (**150 tests**) |
 | Deployment | Docker Compose |
 
-**Repo root:** `/Users/kalyancb/pi-pm`  
+**Repo:** `/Users/kalyancb/pi-pm`  
 **API prefix:** `/api/v1`  
-**Default DB:** `postgresql+psycopg://pipm:pipm@localhost:5432/pipm`
+**Active branch:** `feature/sprint8`
 
 ---
 
-## Core Pipeline (Memorize This)
+## Core Pipeline
 
 ```
 Market Data Ingest
-  → Universe Filter (eligibility: history, ADTV, price, active status)
-  → Ranking Engine (factor scores → percentile normalize → composite score → rank)
-  → Persist ranking_runs + ranking_results + performance_snapshots
-  → Validation (forward returns 5/10/20/60d → IC, deciles, hit rates)
-  → Full-Universe Campaign (pool all days → aggregate metrics)
+  → Universe Filter
+  → Ranking Engine
+  → Validation (IC, deciles, regime)
+  → Traceability (Sprint 7)
+  → Regime Policy Replay (Sprint 8.1, research only)
 ```
 
 ---
 
 ## Domain Boundaries (Do Not Violate)
 
-| Domain | Package | Owns | Must NOT |
-|--------|---------|------|----------|
-| Universe | `app/universe/` | Eligibility filtering, exclusion codes | Score or rank stocks |
-| Ranking | `app/ranking/` | Factors, normalization, scoring, hashing | Filter universe or persist |
-| Market data cache | `app/market_data/` | Session-scoped bar loading | Business logic |
-| Validation | `app/validation/` | Forward returns, IC, deciles, regimes | Ranking logic |
-| Services | `app/services/` | Orchestration, transactions, defaults | Factor formulas |
-| API | `app/api/` | HTTP contracts | Business logic |
+| Domain | Package | Must NOT |
+|--------|---------|----------|
+| Universe | `app/universe/` | Score or rank |
+| Ranking | `app/ranking/` | Filter universe or persist |
+| Validation | `app/validation/` | Change ranking logic |
+| Regime policy | `app/regime_policy/` | Rerank, change factors, live trading |
+| Services | `app/services/` | Factor formulas in API layer |
 
 ---
 
 ## Key Configuration Defaults
 
-These come from `app/core/config.py` and `.env`:
-
-| Setting | Default | ⚠️ Gotcha |
-|---------|---------|-----------|
-| `ranking_default_universe_code` | `PI_PM_CORE` | Only ~15 stocks! Use `NIFTY_500` for full universe |
-| `ranking_default_strategy` | `momentum_v1` | Sprint 6.1 validates `breakout_v1` |
-| `ranking_default_benchmark` | `^NSEI` | Required for relative strength factors |
-| `ranking_min_history_days` | 63 | Universe filter minimum |
+| Setting | Default | Gotcha |
+|---------|---------|--------|
+| `ranking_default_universe_code` | `PI_PM_CORE` | **Use `NIFTY_500` for full universe** |
+| `ranking_default_strategy` | `momentum_v1` | Research uses `breakout_v1` |
 | `validation_high_vol_threshold` | 0.20 | Regime classification |
 
 ---
 
 ## Ranking Strategies
 
-### `momentum_v1` (1.0.0) — Default
+### `momentum_v1` (1.0.0)
 
-- **History:** 201 days (MA200 + 1)
-- **Factors:** vol_adj_momentum (40%), volume_expansion (25%), trend_quality (20%), relative_strength (15%)
-- **File:** `app/ranking/strategies/momentum_v1.py`
+- 201-day history, 4 factors
+- `app/ranking/strategies/momentum_v1.py`
 
-### `breakout_v1` (1.0.0) — Sprint 5
+### `breakout_v1` (1.0.0)
 
-- **History:** 252 days
-- **Factors:** vol_adj_momentum (20%), relative_strength (15%), trend_quality (10%), volume_surge (15%), high_proximity (15%), atr_expansion (10%), rs_acceleration (5%), consolidation_breakout (10%)
-- **File:** `app/ranking/strategies/breakout_v1.py`
-- **Benchmark-dependent:** `relative_strength`, `relative_strength_acceleration` — excluded with weight redistribution if benchmark missing
-
-Registry: `app/ranking/registry.py`
+- 252-day history, 8 factors
+- `app/ranking/strategies/breakout_v1.py`
+- Regime research shows alpha mainly in `BULL_LOW_VOL` at 20d
 
 ---
 
-## Universes
+## Validation & Traceability
 
-| Code | Description | ~Members |
-|------|-------------|----------|
-| `NIFTY_500` | NSE NIFTY 500 | 504 |
-| `NIFTY_100` | NSE NIFTY 100 | Seeded |
-| `NIFTY_50` | NSE NIFTY 50 | Seeded |
-| `PI_PM_CORE` | Small core watchlist | ~15 |
+### Per-run validation (Sprint 4.2)
 
-Bootstrap: `UniverseBootstrapService` + `data/nifty500_constituents.csv`
-
----
-
-## Validation Framework
-
-### Per-Run Validation (Sprint 4.2)
-
-- Computes forward returns at 5/10/20/60 **trading days**
-- Classifies regime: BULL/BEAR (SMA200) × HIGH_VOL/LOW_VOL (20d vol)
-- Metrics: Spearman IC, decile spread, hit rates
+- Horizons: 5/10/20/60 trading days
+- Regime: `{BULL|BEAR}_{LOW_VOL|HIGH_VOL}` via MA200 + vol
 - Tables: `ranking_validation_reports`, `ranking_performance_snapshots`
 
-### Full-Universe Campaign (Sprint 6.1)
+### Traceability (Sprint 7 / 7.1)
 
-- Orchestrates: backfill rankings → validate each day → pool all stock-day observations
-- Metrics: Pearson IC, Spearman Rank IC, top/bottom decile, spread, top 20/50, decile win rates, monotonicity
-- Tables: `full_universe_validation_campaigns`, `_runs`, `_metrics`, `_deciles`
-- Service: `FullUniverseValidationService`
-- Default: `NIFTY_500` + `breakout_v1`
+- `ranking_factor_contributions`, `validation_horizon_metrics`, `regime_history`, `run_lineage_records`
+- Backfill: `scripts/backfill_sprint7_traceability.py --all`
+- Reuse paths call `ensure_*` — see `docs/sprint71-traceability-operationalization.md`
 
----
+### Full-universe campaigns (Sprint 6.1)
 
-## Database Tables (16 Total)
-
-**Core:** `stocks`, `market_data`, `stock_universes`, `universe_memberships`  
-**Ingestion:** `market_data_ingestion_runs`  
-**Ranking:** `ranking_runs`, `ranking_results`, `ranking_performance_snapshots`  
-**Validation:** `ranking_validation_reports`  
-**Campaign:** `full_universe_validation_campaigns`, `_runs`, `_metrics`, `_deciles`  
-**Future:** `portfolio_positions`, `paper_trades`, `research_reports`
-
-See `docs/DATABASE_SCHEMA.md` for full details.
+- `FullUniverseValidationService` — backfill rankings + validate + pool metrics
+- **Warning:** O(n²) hit rate in campaign aggregation at scale
 
 ---
 
-## API Endpoints (21)
+## Regime Policy (Sprint 8.1)
 
-| Group | Key Endpoints |
-|-------|---------------|
-| Health | `GET /health` |
-| Stocks | `GET /stocks`, `GET /stocks/{symbol}/market-data` |
-| Market data | `POST /market-data/ingest` |
-| Rankings | `POST /rankings/run`, `GET /rankings/latest`, `GET /rankings/{id}/top` |
-| Backtest | `POST /backtest/generate-rankings`, `GET /backtest/summary` |
-| Validation | `POST /validation/backfill`, `POST /validation/runs/{id}/compute`, `GET /validation/summary` |
-| Full-universe | `POST /validation/full-universe/run`, `GET .../summary`, `GET .../deciles` |
+Research-only layer. **Not wired to live ranking.**
 
-See `docs/API_REFERENCE.md` for request/response examples.
+| Component | Path |
+|-----------|------|
+| Engine | `app/regime_policy/engine.py` |
+| Replay | `app/regime_policy/replay.py` |
+| Service | `app/services/regime_policy_service.py` |
+| API | `/api/v1/regime-policy/*` |
+| Presets | `scripts/init_regime_policy_presets.py` |
 
----
+**Policies:** E1 baseline, E2 hard gate, E3 soft gate, E4 threshold (experimental)
 
-## Idempotency
+**Backtest hang fix (8.1.1):** Use `compute_pooled_period_metrics`, not `compute_full_horizon_metrics` on pooled 200k+ rows. See `docs/HANDOFF.md` §9.
 
-Ranking runs use `inputs_hash` (SHA-256 of strategy + universe + date + filter config + benchmark). Identical inputs → reuse completed run. Failed runs have `inputs_hash = NULL` and can be retried.
+**Replay zero-metrics fix (8.1.2):** ALLOW days excluded when snapshot returns NULL — E1/E2 fall back to `validation_horizon_metrics`. See `docs/HANDOFF.md` §10.
 
 ---
 
-## Common Tasks
+## Database Session Pattern (Scripts)
 
-### Run a ranking (full universe)
+```python
+from app.core.config import get_settings
+from app.db.session import get_session_factory
 
-```bash
-curl -X POST http://localhost:8000/api/v1/rankings/run \
-  -H "Content-Type: application/json" \
-  -d '{
-    "universe_code": "NIFTY_500",
-    "strategy_name": "breakout_v1",
-    "strategy_version": "1.0.0",
-    "benchmark_symbol": "^NSEI"
-  }'
+get_settings()
+db = get_session_factory()()
+try:
+    ...
+    db.commit()
+finally:
+    db.close()
 ```
 
-### Run full-universe validation campaign
+**There is no `SessionLocal` export.**
 
-```bash
-curl -X POST http://localhost:8000/api/v1/validation/full-universe/run \
-  -H "Content-Type: application/json" \
-  -d '{"start_date": "2024-01-01", "end_date": "2025-05-31"}'
-```
+---
 
-### Apply migrations
+## API Groups
 
-```bash
-alembic upgrade head
-```
+| Group | Prefix | Sprint |
+|-------|--------|--------|
+| Health, stocks, market-data, rankings, backtest, validation | various | 1–6 |
+| Observability | `/observability` | 7 |
+| Regime policy | `/regime-policy` | 8.1 |
 
-### Run tests
-
-```bash
-pytest
-```
+Full catalog: `docs/API_REFERENCE.md`
 
 ---
 
 ## Sprint Status
 
-| Sprint | Feature | Status |
-|--------|---------|--------|
-| 1 | Foundation | ✅ |
-| 2 | Market intelligence | ✅ |
-| 3 | Ranking engine | ✅ |
-| 3.1 | Ranking hardening | ✅ |
-| 4.1 | Historical backtest | ✅ |
-| 4.2 | Signal validation | ✅ |
-| 5.1 | NIFTY 500 + breakout_v1 | ✅ |
-| 6.1 | Full-universe validation | ✅ Code; ⏳ Results TBD |
-| 7+ | Portfolio, LLM agents | ⏳ Planned |
-
----
-
-## Current Branch and Git State
-
-- **Branch:** `feature/sprint6`
-- **Base:** `main` @ Sprint 5 merge
-- **Note:** Sprint 6.1 code may be uncommitted — check `git status` before assuming CI/deployment parity
+| Sprint | Status |
+|--------|--------|
+| 1–6.1 | Complete |
+| 7 / 7.1 | Complete |
+| 8.1 | Complete (regime policy research) |
+| 8.2+ | Planned (factor IC, AI agent) |
 
 ---
 
 ## What NOT to Do
 
-1. **Do not add new signals** until Sprint 6.1 validation answers go/no-go questions
-2. **Do not use LLMs for ranking/sizing/trades**
-3. **Do not omit `universe_code`** — defaults to tiny `PI_PM_CORE`
-4. **Do not assume Docker has latest code** — rebuild after changes
-5. **Do not put business logic in API routes** — use services
+1. Do not modify ranking/validation unless explicitly scoped
+2. Do not wire regime policy into production ranking or paper trades
+3. Do not use `SessionLocal` in scripts
+4. Do not pool 100k+ rows through `compute_full_horizon_metrics`
+5. Do not omit `universe_code: NIFTY_500`
+6. Do not assume Docker has latest code without rebuild
 
 ---
 
-## Key Files Quick Map
+## Key Files
 
 ```
-app/
-├── api/v1/           # HTTP routes
-├── api/deps.py       # Dependency injection
-├── core/config.py    # Settings
-├── core/constants.py # Enums, strategy names
-├── db/repositories/  # Data access
-├── models/           # SQLAlchemy ORM
-├── schemas/          # Pydantic DTOs
-├── services/         # Orchestration
-├── ranking/          # Engine + strategies + factors
-├── universe/         # Filter engine + NIFTY loader
-├── validation/       # IC, deciles, campaigns
-├── backtest/         # Historical replayer
-└── providers/yahoo/  # Yahoo client
-
-migrations/versions/  # Alembic migrations
-tests/                # pytest suite
-docs/                 # Documentation (this file)
-scripts/              # Pipeline utilities
-data/                 # NIFTY 500 CSV
+app/regime_policy/          # Sprint 8.1 (policy only)
+app/services/traceability_service.py
+app/services/regime_policy_service.py
+app/api/v1/observability.py
+app/api/v1/regime_policy.py
+scripts/backfill_sprint7_traceability.py
+scripts/init_regime_policy_presets.py
+migrations/versions/20260531_0008_sprint81_regime_policy.py
 ```
 
 ---
 
-## Related Documentation
+## Documentation Index
 
-- `docs/PROJECT_MASTER.md` — Executive overview
-- `docs/ARCHITECTURE.md` — Diagrams and data flows
-- `docs/DATABASE_SCHEMA.md` — All tables and relationships
-- `docs/API_REFERENCE.md` — Endpoint catalog with examples
-- `docs/SPRINT_HISTORY.md` — Completed sprint details
-- `docs/ROADMAP.md` — Future plans
-- `docs/DECISION_LOG.md` — Architectural decisions
+| Doc | Use |
+|-----|-----|
+| `HANDOFF.md` | **Start here** for takeover |
+| `PROJECT_MASTER.md` | Executive summary |
+| `ARCHITECTURE.md` | Diagrams + layers |
+| `DATABASE_SCHEMA.md` | Tables |
+| `API_REFERENCE.md` | Endpoints |
+| `SPRINT_HISTORY.md` | Completed sprints |
+| `DECISION_LOG.md` | ADRs |
+| `sprint81-regime-aware-trading.md` | Regime backtest runbook |

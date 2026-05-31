@@ -2,14 +2,20 @@
 
 Pi-PM enforces strict separation between domains. Each domain owns specific decisions and must not leak responsibilities into adjacent layers.
 
+**Takeover:** [`HANDOFF.md`](./HANDOFF.md) · **Architecture:** [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+
 ## Domain Map
 
 ```
-app/universe/     → Eligibility filtering (pre-ranking)
-app/ranking/      → Scoring, normalization, ordering
-app/market_data/  → Bar loading cache (shared infrastructure)
-app/services/     → Orchestration and persistence
-app/api/          → HTTP contracts
+app/universe/       → Eligibility filtering (pre-ranking)
+app/ranking/        → Scoring, normalization, ordering
+app/validation/     → Forward-return IC, deciles, regime labels
+app/regime_policy/  → Post-ranking gating replay (research only, Sprint 8.1)
+app/backtest/       → Historical ranking replayer
+app/market_data/    → Bar loading cache (shared infrastructure)
+app/services/       → Orchestration and persistence
+app/db/repositories/→ Data access only
+app/api/            → HTTP contracts
 ```
 
 ## Universe Domain (`app/universe/`)
@@ -67,13 +73,45 @@ app/api/          → HTTP contracts
 - Implement factor formulas
 - Duplicate filter rules from universe domain
 
+## Validation Domain (`app/validation/`)
+
+**Owns:**
+- Forward-return computation from performance snapshots
+- Information coefficient (IC), decile spreads
+- Regime classification (`{BULL|BEAR}_{LOW_VOL|HIGH_VOL}`)
+- Full-universe campaign aggregation
+
+**Must NOT:**
+- Change ranking factors, weights, or normalization
+- Apply regime policy gating (that is `app/regime_policy/`)
+
+## Regime Policy Domain (`app/regime_policy/`) — Sprint 8.1
+
+**Owns:**
+- Deterministic ALLOW / BLOCK / REDUCE decisions from stored regime labels
+- Historical replay overlay on existing ranking results
+- Pooled period metrics and bootstrap confidence intervals for research
+
+**Inputs (read-only):** `ranking_results`, `ranking_performance_snapshots`, `ranking_validation_reports.regime_label`, `validation_horizon_metrics`
+
+**Must NOT:**
+- Rerank securities or recompute factor scores
+- Modify validation formulas or ranking strategies
+- Wire into live ranking, paper trading, or automatic production activation
+
+## Traceability (Sprint 7 / 7.1)
+
+Implemented in `app/services/traceability_service.py` and repositories — **instrumentation only**.
+
+**Must NOT:** Alter ranking scores, validation IC, or policy decisions.
+
 ## Explicitly Out of Scope (All Sprints to Date)
 
-- Portfolio management
+- Portfolio management (tables exist, services stubbed)
 - Risk officer logic
 - Trade execution
-- LLM / LangGraph integration
-- Performance analytics (snapshots are placeholder only)
+- LLM / LangGraph integration (planned Sprint 8.3)
+- Live regime policy activation
 
 ## Sprint 3.1 Additions
 

@@ -22,6 +22,11 @@ from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
 from app.models.ranking_validation_report import RankingValidationReport
+from app.models.regime_policy import (
+    RegimeBacktestRun,
+    RegimePolicyConfig,
+    RegimePolicyDecision,
+)
 from app.models.research_report import ResearchReport
 from app.models.stock import Stock
 from app.models.stock_universe import StockUniverse
@@ -52,4 +57,7 @@ __all__ = [
     "ExperimentRun",
     "RegimeHistory",
     "StrategyRegimePerformance",
+    "RegimePolicyConfig",
+    "RegimePolicyDecision",
+    "RegimeBacktestRun",
 ]

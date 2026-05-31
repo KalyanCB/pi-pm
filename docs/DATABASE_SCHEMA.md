@@ -1,8 +1,10 @@
 # Pi-PM — Database Schema
 
-**Last updated:** 2026-05-31  
-**Migration head:** `20260530_0006`  
-**Total tables:** 16
+**Last updated:** 2026-06-01  
+**Migration head:** `20260531_0008`  
+**Total tables:** ~27
+
+See also: `docs/HANDOFF.md`, `docs/sprint7-platform-traceability.md`, `docs/sprint81-regime-aware-trading.md`
 
 ---
 
@@ -41,6 +43,8 @@ erDiagram
 | `20260530_0004` | 3.1 | Alters `ranking_runs.inputs_hash` → nullable |
 | `20260530_0005` | 4.2 | `ranking_validation_reports` |
 | `20260530_0006` | 6.1 | `full_universe_validation_campaigns`, `_runs`, `_metrics`, `_deciles` |
+| `20260530_0007` | 7 | Traceability: `ingestion_batch_runs`, `ranking_factor_contributions`, `validation_horizon_metrics`, `validation_decile_metrics`, `run_lineage_records`, `experiment_runs`, `regime_history`, `strategy_regime_performance`; alters `ranking_runs`, `market_data_ingestion_runs` |
+| `20260531_0008` | 8.1 | `regime_policy_configs`, `regime_policy_decisions`, `regime_backtest_runs` |
 
 ---
 
@@ -354,6 +358,55 @@ Per-decile statistics per horizon per campaign.
 
 ---
 
+## Sprint 7 Traceability Tables
+
+Full ERD and column details: `docs/sprint7-platform-traceability.md`
+
+| Table | Purpose |
+|-------|---------|
+| `ingestion_batch_runs` | Batch ingestion audit |
+| `ranking_factor_contributions` | Per-stock factor decomposition |
+| `validation_horizon_metrics` | Queryable IC/spread/hit rate by horizon |
+| `validation_decile_metrics` | Decile bucket stats |
+| `run_lineage_records` | validation → ranking → ingestion graph |
+| `experiment_runs` | Research experiment registry |
+| `regime_history` | Daily regime classifications |
+| `strategy_regime_performance` | Precomputed regime IC/spread rollups |
+
+**Backfill:** `scripts/backfill_sprint7_traceability.py --all`
+
+---
+
+## Sprint 8.1 Regime Policy Tables
+
+| Table | Purpose |
+|-------|---------|
+| `regime_policy_configs` | Versioned policy definitions (E1–E4) |
+| `regime_policy_decisions` | Append-only audit trail per signal/day |
+| `regime_backtest_runs` | Backtest results + `research_findings` JSONB |
+
+### `regime_policy_configs`
+
+| Column | Notes |
+|--------|-------|
+| `policy_name`, `policy_type`, `policy_version` | e.g. `HARD_GATE_E2` |
+| `allowed_regimes`, `size_multipliers` | JSONB |
+| `min_decile`, `max_decile` | E4 threshold gate |
+| `default_action`, `status` | `draft` / `active` / `archived` |
+
+**Presets NOT in migration** — load via `scripts/init_regime_policy_presets.py`
+
+### `regime_backtest_runs`
+
+| Column | Notes |
+|--------|-------|
+| `window_spec` | JSONB — walk-forward ready (`single_holdout`, `rolling`, `walk_forward`) |
+| `train_metrics`, `holdout_metrics` | JSONB with bootstrap CI |
+| `research_findings` | Structured output for Research Copilot |
+| `experiment_run_id` | FK → `experiment_runs` |
+
+---
+
 ## Important Indexes Summary
 
 | Table | Index | Purpose |
@@ -385,5 +438,15 @@ Per-decile statistics per horizon per campaign.
 | `PortfolioPosition` | `app/models/portfolio_position.py` |
 | `PaperTrade` | `app/models/paper_trade.py` |
 | `ResearchReport` | `app/models/research_report.py` |
+| `IngestionBatchRun`, `RankingFactorContribution`, etc. | `app/models/platform_traceability.py` |
+| `RegimePolicyConfig`, `RegimePolicyDecision`, `RegimeBacktestRun` | `app/models/regime_policy.py` |
 
 Base mixins: `app/db/base.py` — `UUIDPrimaryKeyMixin`, timestamps
+
+---
+
+## Related Documentation
+
+- `docs/HANDOFF.md` — Takeover guide
+- `docs/sprint7-platform-traceability.md` — Traceability ERD
+- `docs/sprint81-regime-aware-trading.md` — Policy tables usage
