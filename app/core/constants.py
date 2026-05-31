@@ -76,6 +76,46 @@ class LineageRelationshipType(StrEnum):
     VALIDATES_RANKING = "validates_ranking"
     EXPERIMENT_RANKING = "experiment_ranking"
     RANKING_INGESTION = "ranking_ingestion"
+    POLICY_BACKTEST_USES_VALIDATION = "policy_backtest_uses_validation"
+
+
+class PolicyAction(StrEnum):
+    ALLOW = "ALLOW"
+    BLOCK = "BLOCK"
+    REDUCE = "REDUCE"
+
+
+class PolicyType(StrEnum):
+    BASELINE_E1 = "BASELINE_E1"
+    HARD_GATE_E2 = "HARD_GATE_E2"
+    SOFT_GATE_E3 = "SOFT_GATE_E3"
+    THRESHOLD_GATE_E4 = "THRESHOLD_GATE_E4"
+
+
+class PolicyConfigStatus(StrEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class RegimeBacktestRunStatus(StrEnum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ReplayWindowMode(StrEnum):
+    SINGLE_HOLDOUT = "single_holdout"
+    ROLLING = "rolling"
+    WALK_FORWARD = "walk_forward"
+
+
+REGIME_BULL_LOW_VOL = "BULL_LOW_VOL"
+REGIME_BEAR_LOW_VOL = "BEAR_LOW_VOL"
+REGIME_BULL_HIGH_VOL = "BULL_HIGH_VOL"
+REGIME_BEAR_HIGH_VOL = "BEAR_HIGH_VOL"
+
+DEFAULT_REGIME_POLICY_HOLDOUT_START = "2025-01-01"
 
 
 MARKET_DATA_SOURCE_YAHOO = "yahoo"

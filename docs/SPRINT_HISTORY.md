@@ -273,8 +273,89 @@ No new signals until five validation questions answered:
 ### Lessons Learned (Operational)
 
 - Docker must be rebuilt/restarted after code changes — stale image caused 404 on new endpoints
-- Sprint 6.1 code uncommitted on `feature/sprint6` — commit before relying on CI/deployment
 - Full-universe campaign is long-running — plan for hours not minutes
+- Campaign aggregation O(n²) hit rate — known performance issue
+
+---
+
+## Sprint 7 — Platform Traceability
+
+**Branch:** merged via PR #3  
+**Migration:** `20260530_0007`
+
+### Deliverables
+
+- Traceability tables: factor contributions, horizon/decile metrics, lineage, regime history, experiment registry
+- Observability API: `/api/v1/observability/*`
+- Structured logging events
+- Incremental ingestion modes
+
+### Key files
+
+- `app/services/traceability_service.py`
+- `app/services/observability_service.py`
+- `migrations/versions/20260530_0007_sprint7_platform_traceability.py`
+- `docs/sprint7-platform-traceability.md`
+
+---
+
+## Sprint 7.1 — Traceability Operationalization
+
+**Migration:** None (uses Sprint 7 schema)
+
+### Problem
+
+Sprint 7 tables were empty despite active ranking/validation — reuse early-returns skipped traceability writes.
+
+### Fix
+
+- `ensure_ranking_traceability()` / `ensure_validation_traceability()` on reuse paths
+- `scripts/backfill_sprint7_traceability.py --all`
+
+### Post-backfill counts (approximate)
+
+| Table | Rows |
+|-------|-----:|
+| ranking_factor_contributions | 1.18M |
+| validation_horizon_metrics | 1,636 |
+| regime_history | 348 |
+| run_lineage_records | 409 |
+
+**Runbook:** `docs/sprint71-traceability-operationalization.md`
+
+---
+
+## Sprint 8.1 — Regime-Aware Trading (Research)
+
+**Branch:** `feature/sprint8`  
+**Migration:** `20260531_0008`
+
+### Objective
+
+Test whether regime gating improves `breakout_v1` holdout performance vs baseline using historical replay (no reranking).
+
+### Deliverables
+
+- `RegimePolicyEngine` — E1–E4 policies (ALLOW/BLOCK/REDUCE)
+- `RegimePolicyReplayService` — overlay on stored validation data
+- Backtest comparison API with bootstrap CI + `research_findings`
+- Preset loader: `scripts/init_regime_policy_presets.py`
+
+### Critical fix (8.1.1)
+
+Backtest hung before first `regime_backtest_runs` insert due to O(n²) `compute_hit_rates` on ~200k pooled rows. Fixed with `compute_pooled_period_metrics` + batch SQL load.
+
+### Critical fix (8.1.2)
+
+E2 backtest showed ALLOW in decisions but `sample_count=0` / `ranked_days=0`. Replay dropped ALLOW days when performance snapshot returns were NULL. Fixed with E1/E2 precomputed horizon-metrics fallback + train-metrics fallback in `research_findings`.
+
+### Explicitly not done
+
+- Live ranking integration
+- Paper trading
+- Factor weight changes
+
+**Runbook:** `docs/sprint81-regime-aware-trading.md`
 
 ---
 
@@ -286,12 +367,17 @@ No new signals until five validation questions answered:
 | 4.2 | ~80 |
 | 5.1 | ~113 |
 | 6.1 | 121 |
+| 7 / 7.1 | 132 |
+| 8.1 | **150** |
 
 ---
 
 ## Related Documentation
 
+- `docs/HANDOFF.md` — **Takeover entry point**
 - `docs/PROJECT_MASTER.md` — Current status
 - `docs/ROADMAP.md` — Future sprints
-- `docs/sprint51-nifty500-report.md` — Sprint 5.1 detailed report
-- `docs/sprint61-full-universe-validation-report.md` — Sprint 6.1 runbook
+- `docs/sprint61-full-universe-validation-report.md`
+- `docs/sprint7-platform-traceability.md`
+- `docs/sprint71-traceability-operationalization.md`
+- `docs/sprint81-regime-aware-trading.md`

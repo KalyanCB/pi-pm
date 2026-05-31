@@ -19,6 +19,9 @@ from app.db.repositories.ranking_result_repository import RankingResultRepositor
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
+from app.db.repositories.regime_backtest_run_repository import RegimeBacktestRunRepository
+from app.db.repositories.regime_policy_config_repository import RegimePolicyConfigRepository
+from app.db.repositories.regime_policy_decision_repository import RegimePolicyDecisionRepository
 from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
@@ -33,6 +36,7 @@ from app.services.market_data_service import MarketDataService
 from app.services.observability_service import ObservabilityService
 from app.services.ranking_service import RankingService
 from app.services.regime_analytics_service import RegimeAnalyticsService
+from app.services.regime_policy_service import RegimePolicyPresetService, RegimePolicyService
 from app.services.signal_validation_service import SignalValidationService
 from app.services.stock_service import StockService
 from app.services.traceability_service import TraceabilityService
@@ -243,6 +247,50 @@ def get_experiment_service(
     experiment_run_repo: ExperimentRunRepository = Depends(get_experiment_run_repository),
 ) -> ExperimentService:
     return ExperimentService(db, experiment_run_repo)
+
+
+def get_regime_policy_config_repository(
+    db: Session = Depends(get_db),
+) -> RegimePolicyConfigRepository:
+    return RegimePolicyConfigRepository(db)
+
+
+def get_regime_policy_decision_repository(
+    db: Session = Depends(get_db),
+) -> RegimePolicyDecisionRepository:
+    return RegimePolicyDecisionRepository(db)
+
+
+def get_regime_backtest_run_repository(
+    db: Session = Depends(get_db),
+) -> RegimeBacktestRunRepository:
+    return RegimeBacktestRunRepository(db)
+
+
+def get_regime_policy_service(
+    db: Session = Depends(get_db),
+    config_repo: RegimePolicyConfigRepository = Depends(get_regime_policy_config_repository),
+    decision_repo: RegimePolicyDecisionRepository = Depends(get_regime_policy_decision_repository),
+    backtest_repo: RegimeBacktestRunRepository = Depends(get_regime_backtest_run_repository),
+    validation_repo: RankingValidationRepository = Depends(get_ranking_validation_repository),
+    validation_metrics_repo: ValidationMetricsRepository = Depends(get_validation_metrics_repository),
+    ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
+    lineage_repo: RunLineageRepository = Depends(get_run_lineage_repository),
+    experiment_service: ExperimentService = Depends(get_experiment_service),
+) -> RegimePolicyService:
+    preset_service = RegimePolicyPresetService(config_repo)
+    return RegimePolicyService(
+        db,
+        config_repo,
+        decision_repo,
+        backtest_repo,
+        validation_repo,
+        validation_metrics_repo,
+        ranking_run_repo,
+        lineage_repo,
+        experiment_service,
+        preset_service,
+    )
 
 
 def get_regime_analytics_service(

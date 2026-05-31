@@ -15,14 +15,6 @@ class ValidationMetricsRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def has_for_report(self, validation_report_id: UUID) -> bool:
-        count = self.db.scalar(
-            select(func.count())
-            .select_from(ValidationHorizonMetric)
-            .where(ValidationHorizonMetric.validation_report_id == validation_report_id)
-        )
-        return int(count or 0) > 0
-
     def replace_for_report(
         self,
         report: RankingValidationReport,
@@ -79,6 +71,51 @@ class ValidationMetricsRepository:
                     )
                 )
         self.db.flush()
+
+    def has_for_report(self, report_id: UUID) -> bool:
+        count = self.db.scalar(
+            select(func.count())
+            .select_from(ValidationHorizonMetric)
+            .where(ValidationHorizonMetric.validation_report_id == report_id)
+        )
+        return bool(count and count > 0)
+
+    def spreads_by_report_for_horizon(
+        self,
+        report_ids: list[UUID],
+        horizon: int,
+    ) -> dict[UUID, float]:
+        if not report_ids:
+            return {}
+        rows = self.db.execute(
+            select(
+                ValidationHorizonMetric.validation_report_id,
+                ValidationHorizonMetric.spread,
+            ).where(
+                ValidationHorizonMetric.validation_report_id.in_(report_ids),
+                ValidationHorizonMetric.horizon == horizon,
+                ValidationHorizonMetric.spread.is_not(None),
+            )
+        ).all()
+        return {row.validation_report_id: float(row.spread) for row in rows}
+
+    def sample_sizes_by_report_for_horizon(
+        self,
+        report_ids: list[UUID],
+        horizon: int,
+    ) -> dict[UUID, int]:
+        if not report_ids:
+            return {}
+        rows = self.db.execute(
+            select(
+                ValidationHorizonMetric.validation_report_id,
+                ValidationHorizonMetric.sample_size,
+            ).where(
+                ValidationHorizonMetric.validation_report_id.in_(report_ids),
+                ValidationHorizonMetric.horizon == horizon,
+            )
+        ).all()
+        return {row.validation_report_id: int(row.sample_size or 0) for row in rows}
 
 
 def _to_float(value) -> float | None:

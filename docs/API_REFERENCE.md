@@ -3,7 +3,7 @@
 **Base URL:** `http://localhost:8000`  
 **Prefix:** `/api/v1`  
 **OpenAPI:** `/openapi.json` | **Swagger UI:** `/docs`  
-**Last updated:** 2026-05-31
+**Last updated:** 2026-06-01
 
 ---
 
@@ -592,6 +592,101 @@ Decile breakdown for a campaign horizon.
 
 ---
 
+## Observability (Sprint 7)
+
+Prefix: `/api/v1/observability`
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health/platform` | Platform health summary |
+| GET | `/ingestion/batches` | Recent ingestion batches |
+| GET | `/ingestion/batches/{batch_id}` | Batch detail |
+| GET | `/rankings/runs` | Recent ranking runs with traceability fields |
+| GET | `/validation/metrics` | Queryable validation horizon metrics |
+| GET | `/lineage/{entity_type}/{entity_id}` | Lineage graph |
+| GET | `/rankings/{id}/stocks/{stock_id}/score-reconstruction` | Rebuild score from stored factors |
+| GET/POST | `/experiments` | List / start experiments |
+| POST | `/experiments/{id}/complete` | Complete experiment |
+| GET | `/regime/current` | Current or historical regime |
+| GET/POST | `/regime/performance` | List / refresh regime performance rollups |
+
+See `docs/sprint7-platform-traceability.md` for details.
+
+---
+
+## Regime Policy (Sprint 8.1 — Research Only)
+
+Prefix: `/api/v1/regime-policy`
+
+**Not wired to live ranking or paper trading.**
+
+### `GET /api/v1/regime-policy/configs`
+
+List policy configs. Query: `strategy_name`, `policy_type`, `status`.
+
+### `POST /api/v1/regime-policy/configs`
+
+Create draft policy config.
+
+### `POST /api/v1/regime-policy/configs/presets/load`
+
+Load E1–E4 `breakout_v1` preset configs (not in migration).
+
+```json
+{ "dry_run": false }
+```
+
+### `POST /api/v1/regime-policy/configs/{id}/activate`
+
+Activate config (archives prior active of same type). Research registry only.
+
+### `GET /api/v1/regime-policy/decisions`
+
+Audit trail. Query: `ranking_run_id`, `as_of_date`, `regime_label`, `action`, `experiment_run_id`.
+
+### `POST /api/v1/regime-policy/evaluate`
+
+Dry-run or persist policy decision for a ranking run.
+
+```json
+{
+  "ranking_run_id": "uuid",
+  "policy_config_id": "uuid",
+  "persist": false
+}
+```
+
+### `POST /api/v1/regime-policy/backtest/run`
+
+Run E1–E4 comparison with holdout split.
+
+```json
+{
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "universe_code": "NIFTY_500",
+  "horizon": 20,
+  "start_date": "2024-01-01",
+  "end_date": "2025-12-31",
+  "holdout_start_date": "2025-01-01",
+  "policy_config_ids": ["e1-uuid", "e2-uuid", "e3-uuid", "e4-uuid"],
+  "baseline_policy_config_id": "e1-uuid",
+  "experiment_name": "sprint81_regime_gate_comparison"
+}
+```
+
+**Response includes:** `experiment_run_id`, `backtest_run_ids`, `summary`, `best_policy_on_holdout`, per-policy `research_findings`.
+
+**Performance:** Uses batch SQL + fast pooled metrics. Do not revert to per-day SQL + `compute_full_horizon_metrics` on pooled data.
+
+### `GET /api/v1/regime-policy/backtest/runs`
+
+List backtest runs. Query: `experiment_run_id`, `policy_config_id`, `status`.
+
+See `docs/sprint81-regime-aware-trading.md`.
+
+---
+
 ## Endpoint Summary
 
 | Method | Path | Tag |
@@ -615,8 +710,18 @@ Decile breakdown for a campaign horizon.
 | POST | `/api/v1/validation/full-universe/run` | validation |
 | GET | `/api/v1/validation/full-universe/summary` | validation |
 | GET | `/api/v1/validation/full-universe/deciles` | validation |
+| GET | `/api/v1/observability/*` | observability |
+| GET/POST | `/api/v1/regime-policy/*` | regime-policy |
 
-**Total:** 21 endpoints
+**Total:** 40+ endpoints (see OpenAPI `/docs` for full list)
+
+---
+
+## Related Documentation
+
+- `docs/HANDOFF.md` — Takeover guide
+- `docs/sprint7-platform-traceability.md`
+- `docs/sprint81-regime-aware-trading.md`
 
 ---
 

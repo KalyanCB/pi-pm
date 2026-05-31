@@ -395,6 +395,91 @@ Production Docker Compose bakes code into image at build time. Dev compose mount
 
 ---
 
+## ADR-016: Regime Policy as Post-Ranking Research Layer
+
+**Date:** Sprint 8.1  
+**Status:** Accepted
+
+### Context
+
+`breakout_v1` shows regime-dependent alpha. Need to test gating without changing ranking engine.
+
+### Decision
+
+Implement `RegimePolicyEngine` as a separate layer reading stored validation/ranking artifacts. No live integration in 8.1.
+
+### Consequences
+
+- Safe research experiments via replay
+- Must not call ranking/validation services during backtest
+- Future live integration requires separate sprint + approval
+
+---
+
+## ADR-017: No Business Config in Migrations
+
+**Date:** Sprint 8.1  
+**Status:** Accepted
+
+### Decision
+
+E1–E4 preset configs loaded via `scripts/init_regime_policy_presets.py` and `POST /regime-policy/configs/presets/load`, not Alembic seed data.
+
+---
+
+## ADR-018: Fast Pooled Metrics for Policy Backtest
+
+**Date:** Sprint 8.1.1  
+**Status:** Accepted
+
+### Context
+
+Backtest hung: ~200k pooled stock-days through `compute_full_horizon_metrics` → O(n²) directional hit rate.
+
+### Decision
+
+Use `compute_pooled_period_metrics()` in `app/regime_policy/metrics.py` for train/holdout aggregation. Use `validation_horizon_metrics` for E1/E2 daily spreads. Batch-load scored returns in one query.
+
+### Consequences
+
+- Directional hit rate omitted from pooled policy metrics (top-vs-median retained)
+- Validation layer `statistics.py` unchanged
+- Per-day metrics (n≈500) still use full statistics
+
+---
+
+## ADR-019: Script Session Pattern
+
+**Date:** Sprint 8.1.1  
+**Status:** Accepted
+
+### Decision
+
+All CLI scripts use `get_settings()` + `get_session_factory()()`. There is no public `SessionLocal` export.
+
+---
+
+## ADR-020: E1/E2 Precomputed Horizon Metrics Fallback in Replay
+
+**Date:** Sprint 8.1.2  
+**Status:** Accepted
+
+### Context
+
+Backtest showed ALLOW decisions in `regime_policy_decisions` but zero `sample_count` / `ranked_days`. Engine was correct; replay excluded days when `batch_load_scored_returns_by_run()` returned no rows (NULL snapshot forward returns while `validation_horizon_metrics` had spread and sample_size from traceability backfill).
+
+### Decision
+
+For E1/E2 policies, when stock-level scored returns are empty but `validation_horizon_metrics` has spread + sample_size for the report, include the day via `_try_include_precomputed_day()`. Use train metrics in `research_findings` when holdout `ranked_days==0`.
+
+### Consequences
+
+- Audit trail (ALLOW decisions) aligns with included days and sample counts
+- Pooled IC/hit-rate may be unavailable for fallback-only days (spread from precomputed metrics)
+- Long-term fix: ensure snapshot returns populated via validation recompute on affected runs
+
+---
+
 ## Decision Template (Future Entries)
 
 ```markdown
@@ -420,6 +505,7 @@ What are the implications?
 
 ## Related Documentation
 
+- `docs/HANDOFF.md` — Takeover guide
 - `docs/ARCHITECTURE.md` — System design
 - `docs/domain-boundaries.md` — Domain rules
 - `docs/ROADMAP.md` — Future plans
