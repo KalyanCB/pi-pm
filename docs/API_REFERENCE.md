@@ -739,6 +739,79 @@ See `docs/sprint82-factor-ic-analytics.md` and `docs/sprint82-implementation-sum
 
 ---
 
+## Exit Research (Sprint 8.3 — Read-Only)
+
+Prefix: `/api/v1/analytics/exit`
+
+Simulates exit policies on validated ranking signal entries. Does not modify rankings, validation, or execution.
+
+### `POST /api/v1/analytics/exit/backfill`
+
+Trigger exit policy simulation backfill.
+
+**Body:**
+```json
+{
+  "strategy_name": "breakout_v1",
+  "strategy_version": "1.0.0",
+  "universe_code": "NIFTY_500",
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-30",
+  "holdout_start_date": "2025-01-01",
+  "force_recompute": false
+}
+```
+
+### Report endpoints
+
+Query params typically include `run_id`, `strategy_name`, `regime_label`, `horizon`, `dataset_split`.
+
+| GET path | Report |
+|----------|--------|
+| `/reports/comparison` | Exit policy comparison |
+| `/reports/alpha-decay` | Alpha decay |
+| `/reports/rank-deterioration` | Rank deterioration |
+| `/reports/regime-exit` | Regime exit |
+| `/reports/trend-failure` | Trend failure |
+| `/reports/recommended` | Recommended exit policy |
+
+### `GET /api/v1/analytics/exit/runs` / `runs/{run_id}`
+
+List and inspect backfill runs.
+
+See `docs/sprint83-exit-research-design.md` and `docs/sprint83-85-implementation-summary.md`.
+
+---
+
+## Research Intelligence (Sprint 8.5 — Read-Only)
+
+Prefix: `/api/v1/analytics/research-intelligence`
+
+Committee-grade reporting from validation, ranking, and factor analytics outputs.
+
+### `POST /api/v1/analytics/research-intelligence/generate`
+
+Generate report pack: coverage, ranking stats, IC/spread by strategy and regime, factor contribution, top 20, executive summary.
+
+**Body:**
+```json
+{
+  "universe_code": "NIFTY_500",
+  "start_date": "2024-01-01",
+  "end_date": "2025-05-30",
+  "holdout_start_date": "2025-01-01",
+  "persist": true
+}
+```
+
+### `GET /api/v1/analytics/research-intelligence/runs` / `runs/{run_id}`
+
+List and retrieve persisted generation runs.
+
+See `docs/sprint83-85-implementation-summary.md`.
+
+---
+
 ## Endpoint Summary
 
 | Method | Path | Tag |
@@ -765,6 +838,8 @@ See `docs/sprint82-factor-ic-analytics.md` and `docs/sprint82-implementation-sum
 | GET | `/api/v1/observability/*` | observability |
 | GET/POST | `/api/v1/regime-policy/*` | regime-policy |
 | GET/POST | `/api/v1/analytics/factors/*` | factor-analytics |
+| GET/POST | `/api/v1/analytics/exit/*` | exit-analytics |
+| GET/POST | `/api/v1/analytics/research-intelligence/*` | research-intelligence |
 
 **Total:** 45+ endpoints (see OpenAPI `/docs` for full list)
 
@@ -776,6 +851,8 @@ See `docs/sprint82-factor-ic-analytics.md` and `docs/sprint82-implementation-sum
 - `docs/sprint7-platform-traceability.md`
 - `docs/sprint81-regime-aware-trading.md`
 - `docs/sprint82-factor-ic-analytics.md`
+- `docs/sprint83-exit-research-design.md`
+- `docs/sprint83-85-implementation-summary.md`
 
 ---
 

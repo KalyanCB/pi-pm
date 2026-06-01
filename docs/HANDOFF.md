@@ -17,12 +17,12 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 |------|-------|
 | Repo | `/Users/kalyancb/pi-pm` |
 | Remote | `https://github.com/KalyanCB/pi-pm.git` |
-| Active branch | `feature/sprint82-factor-ic-analytics` (Sprint 8.2 factor IC analytics) |
+| Active branch | `feature/sprint-8.3-exit-research` (Sprint 8.3 exit research + 8.5 research intelligence) |
 | Base branch | `main` |
 | API | FastAPI @ `/api/v1` |
 | DB | PostgreSQL 16, user/db `pipm` |
-| Migration head | `20260601_0009` |
-| Tests | **177 passing** (`pytest`) |
+| Migration head | `20260604_0012` |
+| Tests | **189 passing** (`pytest`) |
 
 ---
 
