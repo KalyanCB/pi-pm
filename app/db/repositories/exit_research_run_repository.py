@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.constants import ExitResearchRunStatus
+from app.core.constants import ExitResearchPhase, ExitResearchRunStatus
 from app.models.exit_research import ExitResearchRun
 
 
@@ -27,6 +27,7 @@ class ExitResearchRunRepository:
     ) -> ExitResearchRun:
         run = ExitResearchRun(
             status=ExitResearchRunStatus.RUNNING.value,
+            current_phase=ExitResearchPhase.COLLECTING_ENTRIES.value,
             strategy_name=strategy_name,
             strategy_version=strategy_version,
             universe_code=universe_code,
@@ -37,6 +38,13 @@ class ExitResearchRunRepository:
             started_at=datetime.now(UTC),
         )
         self.db.add(run)
+        self.db.flush()
+        return run
+
+    def set_phase(self, run: ExitResearchRun, phase: ExitResearchPhase | str) -> ExitResearchRun:
+        value = phase.value if isinstance(phase, ExitResearchPhase) else phase
+        run.current_phase = value
+        run.last_progress_at = datetime.now(UTC)
         self.db.flush()
         return run
 
@@ -62,16 +70,45 @@ class ExitResearchRunRepository:
         self.db.flush()
         return run
 
+    def set_persistence_totals(
+        self,
+        run: ExitResearchRun,
+        *,
+        persistence_items_total: int,
+    ) -> ExitResearchRun:
+        run.persistence_items_total = persistence_items_total
+        run.persistence_items_processed = 0
+        self.db.flush()
+        return run
+
+    def update_persistence_progress(
+        self,
+        run: ExitResearchRun,
+        *,
+        persistence_items_processed: int,
+        percent_complete: float,
+        elapsed_seconds: float,
+    ) -> ExitResearchRun:
+        run.persistence_items_processed = persistence_items_processed
+        run.percent_complete = percent_complete
+        run.elapsed_seconds = elapsed_seconds
+        run.last_progress_at = datetime.now(UTC)
+        self.db.flush()
+        return run
+
     def complete(self, run: ExitResearchRun, *, signals_processed: int, metrics_written: int) -> ExitResearchRun:
         run.status = ExitResearchRunStatus.COMPLETED.value
+        run.current_phase = ExitResearchPhase.COMPLETED.value
         run.signals_processed = signals_processed
         run.metrics_written = metrics_written
         run.completed_at = datetime.now(UTC)
+        run.percent_complete = 100.0
         self.db.flush()
         return run
 
     def fail(self, run: ExitResearchRun, error_message: str) -> ExitResearchRun:
         run.status = ExitResearchRunStatus.FAILED.value
+        run.current_phase = ExitResearchPhase.FAILED.value
         run.error_message = error_message
         run.completed_at = datetime.now(UTC)
         self.db.flush()

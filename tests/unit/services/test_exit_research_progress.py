@@ -1,5 +1,6 @@
 from datetime import date
 
+from app.core.constants import ExitResearchPhase
 from app.db.repositories.exit_research_run_repository import ExitResearchRunRepository
 
 
@@ -29,6 +30,8 @@ def test_exit_research_run_progress_tracking(db_session):
     assert float(run.elapsed_seconds) == 42.5
     assert run.last_progress_at is not None
 
+    repo.set_phase(run, ExitResearchPhase.FINALIZING)
     completed = repo.complete(run, signals_processed=1000, metrics_written=50)
     assert completed.status == "completed"
+    assert completed.current_phase == ExitResearchPhase.COMPLETED.value
     assert completed.signals_processed == 1000

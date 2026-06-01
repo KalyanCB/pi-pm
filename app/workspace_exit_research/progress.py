@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING
 
 from app.core.structured_logging import log_event
-
-if TYPE_CHECKING:
-    from app.models.exit_research import ExitResearchRun
+from app.workspace_exit_research.constants import (
+    PERSISTENCE_PERCENT_FLOOR,
+    SIMULATION_PERCENT_CAP,
+)
 
 logger = logging.getLogger(__name__)
 
 PROGRESS_LOG_INTERVAL = 100
+PERSIST_LOG_INTERVAL = 10
 
 
 def log_backfill_startup(
@@ -36,6 +37,15 @@ def log_backfill_startup(
     return time.monotonic()
 
 
+def log_phase_changed(*, strategy_name: str, phase: str) -> None:
+    log_event(
+        logger,
+        "exit_research_phase_changed",
+        strategy=strategy_name,
+        phase=phase,
+    )
+
+
 def log_entry_progress(
     *,
     strategy_name: str,
@@ -44,7 +54,7 @@ def log_entry_progress(
     started_monotonic: float,
 ) -> None:
     elapsed = time.monotonic() - started_monotonic
-    pct = (processed / total * 100.0) if total else 0.0
+    pct = simulation_percent_complete(processed, total)
     rate = processed / elapsed if elapsed > 0 and processed else 0.0
     remaining = total - processed
     eta = remaining / rate if rate > 0 else None
@@ -58,6 +68,28 @@ def log_entry_progress(
         elapsed_sec=round(elapsed, 1),
         eta_sec=round(eta, 1) if eta is not None else None,
         rate=f"{rate:.1f}_entries_per_sec",
+    )
+
+
+def log_persist_progress(
+    *,
+    strategy_name: str,
+    phase: str,
+    processed: int,
+    total: int,
+    started_monotonic: float,
+) -> None:
+    elapsed = time.monotonic() - started_monotonic
+    pct = persistence_percent_complete(processed, total)
+    log_event(
+        logger,
+        "exit_research_persist_progress",
+        strategy=strategy_name,
+        phase=phase,
+        processed=processed,
+        total=total,
+        percent_complete=round(pct, 2),
+        elapsed_sec=round(elapsed, 1),
     )
 
 
@@ -111,16 +143,51 @@ def should_log_progress(processed: int, total: int) -> bool:
     return processed % PROGRESS_LOG_INTERVAL == 0 or processed == total
 
 
-def progress_fields(
+def should_log_persist_progress(processed: int, total: int) -> bool:
+    if total <= 0:
+        return False
+    return processed % PERSIST_LOG_INTERVAL == 0 or processed == total
+
+
+def simulation_percent_complete(processed: int, total: int) -> float:
+    if not total:
+        return 0.0
+    raw = processed / total * SIMULATION_PERCENT_CAP
+    if processed >= total:
+        return SIMULATION_PERCENT_CAP
+    return min(SIMULATION_PERCENT_CAP - 0.0001, raw)
+
+
+def persistence_percent_complete(processed: int, total: int) -> float:
+    if not total:
+        return PERSISTENCE_PERCENT_FLOOR
+    span = 100.0 - PERSISTENCE_PERCENT_FLOOR
+    return PERSISTENCE_PERCENT_FLOOR + (processed / total) * span
+
+
+def simulation_progress_fields(
     processed: int,
     total: int,
     started_monotonic: float,
 ) -> dict[str, float | int]:
     elapsed = time.monotonic() - started_monotonic
-    pct = (processed / total * 100.0) if total else 0.0
     return {
         "processed_entries": processed,
         "total_entries": total,
-        "percent_complete": round(pct, 4),
+        "percent_complete": round(simulation_percent_complete(processed, total), 4),
+        "elapsed_seconds": round(elapsed, 2),
+    }
+
+
+def persistence_progress_fields(
+    processed: int,
+    total: int,
+    started_monotonic: float,
+) -> dict[str, float | int]:
+    elapsed = time.monotonic() - started_monotonic
+    return {
+        "persistence_items_processed": processed,
+        "persistence_items_total": total,
+        "percent_complete": round(persistence_percent_complete(processed, total), 4),
         "elapsed_seconds": round(elapsed, 2),
     }

@@ -57,17 +57,50 @@ INFO exit_research_complete strategy=breakout_v1 runtime_sec=36000.0 simulations
 
 ## Database progress tracking
 
-Migration `20260605_0013_sprint83_exit_research_progress` adds to `exit_research_runs`:
+Migration `20260605_0013` — simulation progress:
 
 | Column | Type | Updated |
 |--------|------|---------|
 | `total_entries` | INTEGER NULL | At cohort load |
-| `processed_entries` | INTEGER DEFAULT 0 | Every 100 entries |
-| `percent_complete` | NUMERIC(8,4) | Every 100 entries |
-| `last_progress_at` | TIMESTAMPTZ | Every 100 entries |
-| `elapsed_seconds` | NUMERIC(12,2) | Every 100 entries |
+| `processed_entries` | INTEGER DEFAULT 0 | Every 100 entries (simulation) |
+| `percent_complete` | NUMERIC(8,4) | Capped at **90%** during simulation |
+| `last_progress_at` | TIMESTAMPTZ | Every progress tick |
+| `elapsed_seconds` | NUMERIC(12,2) | Every progress tick |
 
-Mid-run commits flush progress so operators can `SELECT` a running row without waiting for completion.
+Migration `20260606_0014` — phase + persistence progress:
+
+| Column | Type | Updated |
+|--------|------|---------|
+| `current_phase` | VARCHAR(32) | On each phase transition |
+| `persistence_items_total` | INTEGER NULL | Before policy/alpha writes |
+| `persistence_items_processed` | INTEGER DEFAULT 0 | Every 10 persistence items |
+
+**Percent semantics:** Simulation never reports 100% until the run completes. Persistence drives 90%→100% using `persistence_items_processed / persistence_items_total`.
+
+**Batch commits:** `PERSIST_COMMIT_INTERVAL=25` commits during policy and alpha upserts so `exit_research_policy_metrics` / `exit_research_alpha_decay_points` rows are visible while the job runs.
+
+### Phase log events
+
+```
+INFO exit_research_phase_changed strategy=breakout_v1 phase=persisting_policy_metrics
+INFO exit_research_persist_progress strategy=breakout_v1 phase=persisting_policy_metrics processed=25 total=1200 percent_complete=92.08 elapsed_sec=210.5
+```
+
+### Persistence architecture (post-20260606)
+
+| Phase | Work |
+|-------|------|
+| `collecting_entries` | Load signal cohort |
+| `simulating` | Per-entry policy + alpha decay simulation |
+| `aggregating_metrics` | Build pre-indexed policy buckets |
+| `persisting_policy_metrics` | Upsert policy rows (batched commits) |
+| `persisting_alpha_decay` | Upsert alpha decay curve rows |
+| `finalizing` | Complete run row |
+| `completed` / `failed` | Terminal |
+
+**Aggregation optimization:** `build_policy_metric_buckets()` indexes simulations by `(family, variant, regime, split)` in one pass over entries — replaces O(variants × splits × regimes × entries) rescans.
+
+Mid-run commits flush progress and persisted metrics so operators can `SELECT` a running row without waiting for completion.
 
 ## Benchmark methodology
 

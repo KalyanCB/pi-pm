@@ -118,6 +118,17 @@ class ExitResearchRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class ExitResearchPhase(StrEnum):
+    COLLECTING_ENTRIES = "collecting_entries"
+    SIMULATING = "simulating"
+    AGGREGATING_METRICS = "aggregating_metrics"
+    PERSISTING_POLICY_METRICS = "persisting_policy_metrics"
+    PERSISTING_ALPHA_DECAY = "persisting_alpha_decay"
+    FINALIZING = "finalizing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ResearchIntelligenceRunStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"

@@ -21,7 +21,7 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 | Base branch | `main` |
 | API | FastAPI @ `/api/v1` |
 | DB | PostgreSQL 16, user/db `pipm` |
-| Migration head | `20260604_0012` |
+| Migration head | `20260606_0014` |
 | Tests | **189 passing** (`pytest`) |
 
 ---
