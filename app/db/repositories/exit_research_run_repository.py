@@ -40,6 +40,28 @@ class ExitResearchRunRepository:
         self.db.flush()
         return run
 
+    def set_total_entries(self, run: ExitResearchRun, total_entries: int) -> ExitResearchRun:
+        run.total_entries = total_entries
+        run.processed_entries = 0
+        run.percent_complete = 0.0 if total_entries else None
+        self.db.flush()
+        return run
+
+    def update_progress(
+        self,
+        run: ExitResearchRun,
+        *,
+        processed_entries: int,
+        percent_complete: float,
+        elapsed_seconds: float,
+    ) -> ExitResearchRun:
+        run.processed_entries = processed_entries
+        run.percent_complete = percent_complete
+        run.elapsed_seconds = elapsed_seconds
+        run.last_progress_at = datetime.now(UTC)
+        self.db.flush()
+        return run
+
     def complete(self, run: ExitResearchRun, *, signals_processed: int, metrics_written: int) -> ExitResearchRun:
         run.status = ExitResearchRunStatus.COMPLETED.value
         run.signals_processed = signals_processed
