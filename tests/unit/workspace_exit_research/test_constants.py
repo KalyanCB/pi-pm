@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from app.workspace_exit_research.constants import (
+    ATR_TRAIL_MULTIPLIER,
     FIXED_HOLD_DAYS,
     RANK_EXIT_THRESHOLDS,
     REGIME_EXIT_VARIANTS,
@@ -17,3 +20,8 @@ def test_rank_exit_thresholds():
 def test_regime_and_trend_variants_present():
     assert "REGIME_IMMEDIATE" in REGIME_EXIT_VARIANTS
     assert "TREND_DMA20_BREAK" in TREND_FAILURE_VARIANTS
+
+
+def test_atr_trail_multiplier_is_decimal():
+    assert isinstance(ATR_TRAIL_MULTIPLIER, Decimal)
+    assert ATR_TRAIL_MULTIPLIER == Decimal("2.0")

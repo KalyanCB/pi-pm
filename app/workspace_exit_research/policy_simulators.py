@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import random
 from decimal import Decimal
-from statistics import median, pstdev
 
 from app.factor_analytics.constants import DATASET_SPLIT_ALL
 from app.factor_analytics.window import include_in_split
@@ -36,6 +34,13 @@ from app.workspace_exit_research.constants import (
     TREND_FAILURE_VARIANTS,
 )
 from app.workspace_exit_research.data_cache import RankPathCache, RegimePathCache, ResearchBarCache
+from app.workspace_exit_research.decimal_stats import (
+    bootstrap_ci as compute_bootstrap_ci,
+    hit_rate_decimal,
+    mean_decimal,
+    median_decimal,
+    pstdev_decimal,
+)
 from app.workspace_exit_research.models import (
     AlphaDecayPointResult,
     ExitSimulationResult,
@@ -219,20 +224,13 @@ def alpha_decay_returns(entry: SignalEntry, bars: list[PriceBar]) -> dict[int, D
     }
 
 
-def bootstrap_ci(values: list[float]) -> tuple[float | None, float | None]:
-    if not values:
-        return None, None
-    rng = random.Random(BOOTSTRAP_SEED)
-    n = len(values)
-    means = []
-    for _ in range(BOOTSTRAP_SAMPLE_COUNT):
-        sample = [values[rng.randrange(n)] for _ in range(n)]
-        means.append(sum(sample) / len(sample))
-    means.sort()
-    alpha = 1.0 - BOOTSTRAP_CONFIDENCE
-    lower_idx = int((alpha / 2) * BOOTSTRAP_SAMPLE_COUNT)
-    upper_idx = int((1 - alpha / 2) * BOOTSTRAP_SAMPLE_COUNT) - 1
-    return means[max(0, lower_idx)], means[min(BOOTSTRAP_SAMPLE_COUNT - 1, upper_idx)]
+def bootstrap_ci(values: list[Decimal]) -> tuple[float | None, float | None]:
+    return compute_bootstrap_ci(
+        values,
+        sample_count=BOOTSTRAP_SAMPLE_COUNT,
+        confidence=BOOTSTRAP_CONFIDENCE,
+        seed=BOOTSTRAP_SEED,
+    )
 
 
 class ExitMetricsEngine:
@@ -254,7 +252,7 @@ class ExitMetricsEngine:
             return None
         family = results[0].policy_family
         variant = results[0].policy_variant
-        returns = [float(r.period_return) for r in results if r.period_return is not None]
+        returns = [r.period_return for r in results if r.period_return is not None]
         if len(returns) < MIN_EXIT_SAMPLE_SIZE:
             return PolicyMetricResult(
                 family,
@@ -278,11 +276,12 @@ class ExitMetricsEngine:
                 as_of_date_start,
                 as_of_date_end,
             )
-        mean_val = sum(returns) / len(returns)
-        med = float(median(returns))
-        std = float(pstdev(returns)) if len(returns) > 1 else 0.0
-        hits = sum(1 for v in returns if v > 0) / len(returns)
-        holdings = [float(r.holding_days) for r in results if r.period_return is not None]
+        mean_val = float(mean_decimal(returns))
+        med = float(median_decimal(returns))
+        std = float(pstdev_decimal(returns))
+        hits = float(hit_rate_decimal(returns))
+        holdings = [Decimal(r.holding_days) for r in results if r.period_return is not None]
+        avg_holding = float(mean_decimal(holdings)) if holdings else None
         ci_lower, ci_upper = bootstrap_ci(returns)
         return PolicyMetricResult(
             family,
@@ -298,7 +297,7 @@ class ExitMetricsEngine:
             med,
             std,
             hits,
-            sum(holdings) / len(holdings) if holdings else None,
+            avg_holding,
             ci_lower,
             ci_upper,
             "ok",
@@ -309,13 +308,13 @@ class ExitMetricsEngine:
 
     def aggregate_alpha_decay(
         self,
-        day_returns: dict[int, list[float]],
+        day_returns: dict[int, list[Decimal]],
         *,
         regime_label: str,
         dataset_split: str,
     ) -> list[AlphaDecayPointResult]:
         points: list[AlphaDecayPointResult] = []
-        cumulative: list[float] = []
+        cumulative: list[Decimal] = []
         for day in range(1, ALPHA_DECAY_MAX_DAYS + 1):
             values = day_returns.get(day, [])
             if len(values) < MIN_EXIT_SAMPLE_SIZE:
@@ -331,17 +330,17 @@ class ExitMetricsEngine:
                     )
                 )
                 continue
-            mean_val = sum(values) / len(values)
+            mean_val = mean_decimal(values)
             cumulative.append(mean_val)
-            cum_mean = sum(cumulative) / len(cumulative)
+            cum_mean = mean_decimal(cumulative)
             points.append(
                 AlphaDecayPointResult(
                     day,
                     regime_label,
                     dataset_split,
                     len(values),
-                    mean_val,
-                    cum_mean,
+                    float(mean_val),
+                    float(cum_mean),
                     "ok",
                 )
             )

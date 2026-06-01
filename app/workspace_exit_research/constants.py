@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from app.factor_analytics.constants import (
     DATASET_SPLIT_ALL,
@@ -14,7 +15,7 @@ MIN_EXIT_SAMPLE_SIZE = 30
 INSUFFICIENT_SAMPLE_STATUS = "INSUFFICIENT_SAMPLE_SIZE"
 DEFAULT_RESEARCH_HORIZON = 20
 ALPHA_DECAY_MAX_DAYS = 60
-ATR_TRAIL_MULTIPLIER = 2.0
+ATR_TRAIL_MULTIPLIER = Decimal("2.0")
 BREAKOUT_LOOKBACK_DAYS = 63
 
 POLICY_FAMILY_FIXED_HOLD = "FIXED_HOLD"

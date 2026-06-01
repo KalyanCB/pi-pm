@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -91,7 +92,7 @@ class ExitResearchService:
             regime_cache.load(start_date=start_date, end_date=end_date)
 
             entry_sims: dict[tuple, list] = {}
-            alpha_by_stratum: dict[tuple[str, str], dict[int, list[float]]] = defaultdict(
+            alpha_by_stratum: dict[tuple[str, str], dict[int, list[Decimal]]] = defaultdict(
                 lambda: defaultdict(list)
             )
 
@@ -113,7 +114,7 @@ class ExitResearchService:
                             continue
                         for day, ret in decay.items():
                             if ret is not None:
-                                alpha_by_stratum[(regime, split)][day].append(float(ret))
+                                alpha_by_stratum[(regime, split)][day].append(ret)
 
             variant_keys: set[tuple[str, str]] = set()
             for sims in entry_sims.values():
