@@ -35,7 +35,15 @@ from app.providers.yahoo.client import YahooFinanceProvider
 from app.ranking.registry import RankingStrategyRegistry
 from app.services.backtest_service import BacktestService
 from app.services.experiment_service import ExperimentService
+from app.db.repositories.exit_research_metric_repository import ExitResearchMetricRepository
+from app.db.repositories.exit_research_run_repository import ExitResearchRunRepository
+from app.db.repositories.research_intelligence_repository import (
+    ResearchIntelligenceReportRepository,
+    ResearchIntelligenceRunRepository,
+)
+from app.services.exit_research_service import ExitResearchService
 from app.services.factor_predictive_power_service import FactorPredictivePowerService
+from app.services.research_intelligence_service import ResearchIntelligenceService
 from app.services.full_universe_validation_service import FullUniverseValidationService
 from app.services.market_data_service import MarketDataService
 from app.services.observability_service import ObservabilityService
@@ -323,6 +331,54 @@ def get_factor_predictive_power_service(
         run_repo,
         validation_repo,
         ranking_run_repo,
+    )
+
+
+def get_exit_research_run_repository(
+    db: Session = Depends(get_db),
+) -> ExitResearchRunRepository:
+    return ExitResearchRunRepository(db)
+
+
+def get_exit_research_metric_repository(
+    db: Session = Depends(get_db),
+) -> ExitResearchMetricRepository:
+    return ExitResearchMetricRepository(db)
+
+
+def get_exit_research_service(
+    db: Session = Depends(get_db),
+    run_repo: ExitResearchRunRepository = Depends(get_exit_research_run_repository),
+    metric_repo: ExitResearchMetricRepository = Depends(get_exit_research_metric_repository),
+) -> ExitResearchService:
+    return ExitResearchService(db, run_repo, metric_repo)
+
+
+def get_research_intelligence_run_repository(
+    db: Session = Depends(get_db),
+) -> ResearchIntelligenceRunRepository:
+    return ResearchIntelligenceRunRepository(db)
+
+
+def get_research_intelligence_report_repository(
+    db: Session = Depends(get_db),
+) -> ResearchIntelligenceReportRepository:
+    return ResearchIntelligenceReportRepository(db)
+
+
+def get_research_intelligence_service(
+    db: Session = Depends(get_db),
+    run_repo: ResearchIntelligenceRunRepository = Depends(get_research_intelligence_run_repository),
+    report_repo: ResearchIntelligenceReportRepository = Depends(
+        get_research_intelligence_report_repository
+    ),
+    validation_service: SignalValidationService = Depends(get_signal_validation_service),
+    factor_metric_repo: FactorPerformanceMetricRepository = Depends(
+        get_factor_performance_metric_repository
+    ),
+) -> ResearchIntelligenceService:
+    return ResearchIntelligenceService(
+        db, run_repo, report_repo, validation_service, factor_metric_repo
     )
 
 

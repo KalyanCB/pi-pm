@@ -1,6 +1,18 @@
 from fastapi import APIRouter
 
-from app.api.v1 import backtest, factor_analytics, health, market_data, observability, rankings, regime_policy, stocks, validation
+from app.api.v1 import (
+    backtest,
+    exit_analytics,
+    factor_analytics,
+    health,
+    market_data,
+    observability,
+    rankings,
+    regime_policy,
+    research_intelligence,
+    stocks,
+    validation,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -12,3 +24,9 @@ api_router.include_router(validation.router, prefix="/validation", tags=["valida
 api_router.include_router(observability.router, prefix="/observability", tags=["observability"])
 api_router.include_router(regime_policy.router, prefix="/regime-policy", tags=["regime-policy"])
 api_router.include_router(factor_analytics.router, prefix="/analytics/factors", tags=["factor-analytics"])
+api_router.include_router(exit_analytics.router, prefix="/analytics/exit", tags=["exit-analytics"])
+api_router.include_router(
+    research_intelligence.router,
+    prefix="/analytics/research-intelligence",
+    tags=["research-intelligence"],
+)
