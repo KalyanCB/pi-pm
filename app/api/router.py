@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     backtest,
+    daily_batch,
     exit_analytics,
     factor_analytics,
     health,
@@ -29,4 +30,9 @@ api_router.include_router(
     research_intelligence.router,
     prefix="/analytics/research-intelligence",
     tags=["research-intelligence"],
+)
+api_router.include_router(
+    daily_batch.router,
+    prefix="/ops/daily-batch",
+    tags=["ops-daily-batch"],
 )

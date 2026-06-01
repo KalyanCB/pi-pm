@@ -1,6 +1,6 @@
 # Pi-PM — Developer & AI Handoff Guide
 
-**Last updated:** 2026-06-02  
+**Last updated:** 2026-06-07  
 **Purpose:** Enable any developer, AI assistant, or LLM to take over Pi-PM without prior chat context.
 
 **Start here.** Then read linked docs for depth.
@@ -17,12 +17,12 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 |------|-------|
 | Repo | `/Users/kalyancb/pi-pm` |
 | Remote | `https://github.com/KalyanCB/pi-pm.git` |
-| Active branch | `feature/sprint-8.3-exit-research` (Sprint 8.3 exit research + 8.5 research intelligence) |
+| Active branch | `feature/sprint-8.6-daily-ingestion` (daily NIFTY 500 batch orchestration) |
 | Base branch | `main` |
 | API | FastAPI @ `/api/v1` |
 | DB | PostgreSQL 16, user/db `pipm` |
-| Migration head | `20260606_0014` |
-| Tests | **212 passing** (`pytest`) |
+| Migration head | `20260607_0015` |
+| Tests | **214 passing** (`pytest`) |
 
 ---
 
@@ -50,6 +50,8 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 - `docs/sprint83-exit-research-design.md` — exit research design (reference)
 - `docs/sprint83-85-implementation-summary.md` — exit research + research intelligence (8.3 / 8.5)
 - `docs/sprint83-backfill-performance.md` — backfill performance, phases, monitoring
+- `docs/daily-nifty500-batch-plan.md` — daily batch design (API-first)
+- `docs/daily-nifty500-batch-runbook.md` — daily batch operations
 
 ---
 
@@ -66,6 +68,7 @@ Market Data Ingest (Yahoo)
   → Factor IC Analytics (read-only)                               [Sprint 8.2]
   → Exit Research (policy simulation, read-only)                [Sprint 8.3]
   → Research Intelligence / executive reporting (read-only)       [Sprint 8.5]
+  → Daily batch orchestration (ingest → rank → validate → IC → exit) [Sprint 8.6]
 ```
 
 ---
@@ -83,6 +86,7 @@ Market Data Ingest (Yahoo)
 | 8.2 | Factor predictive power analytics (`/analytics/factors`) |
 | 8.3 | Exit research workspace (`/analytics/exit`) |
 | 8.5 | Research intelligence / executive reports (`/analytics/research-intelligence`) |
+| 8.6 | Daily NIFTY 500 batch (`/ops/daily-batch`) + ingest hardening | On branch `feature/sprint-8.6-daily-ingestion` |
 
 ### In Progress / Next
 
@@ -90,6 +94,15 @@ Market Data Ingest (Yahoo)
 |--------|---------|--------|
 | 8.4 | AI research agent | Planned |
 | Portfolio / paper trading | Tables exist, services stubbed | Not started |
+
+### Sprint 8.6 operational notes
+
+- **Daily batch:** `POST /api/v1/ops/daily-batch/runs` — sync orchestration of ingest → rankings → validation → factor IC → exit research. CLI: `scripts/run_daily_nifty500_batch.py`.
+- **Benchmark `^NSEI`:** Must be ingested through the target trading day or the planner/resolver will not rank that date.
+- **Incremental ingest:** Empty Yahoo response when already caught up no longer sets `data_status=ERROR` (fixed). Use `since_date` on `POST /market-data/ingest` to force refresh from a calendar date.
+- **Symbol pattern:** NSE tickers with `&` or `-` (e.g. `ARE&M.NS`, `BAJAJ-AUTO.NS`) are valid.
+- **Validation / factor / exit:** Require **forward** price data after each `as_of_date` (shortest horizon 5 trading days). Latest-bar-only days stay `insufficient_data` until later sessions are ingested.
+- **Universe hygiene:** Remove `DUMMYVEDL*.NS` from `NIFTY_500` if present (permanent ingest failures).
 
 ---
 

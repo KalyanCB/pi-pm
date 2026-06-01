@@ -35,12 +35,15 @@ from app.providers.yahoo.client import YahooFinanceProvider
 from app.ranking.registry import RankingStrategyRegistry
 from app.services.backtest_service import BacktestService
 from app.services.experiment_service import ExperimentService
+from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
+from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
 from app.db.repositories.exit_research_metric_repository import ExitResearchMetricRepository
 from app.db.repositories.exit_research_run_repository import ExitResearchRunRepository
 from app.db.repositories.research_intelligence_repository import (
     ResearchIntelligenceReportRepository,
     ResearchIntelligenceRunRepository,
 )
+from app.services.daily_batch_service import DailyBatchService
 from app.services.exit_research_service import ExitResearchService
 from app.services.factor_predictive_power_service import FactorPredictivePowerService
 from app.services.research_intelligence_service import ResearchIntelligenceService
@@ -414,6 +417,40 @@ def get_full_universe_validation_repository(
     db: Session = Depends(get_db),
 ) -> FullUniverseValidationRepository:
     return FullUniverseValidationRepository(db)
+
+
+def get_daily_batch_run_repository(db: Session = Depends(get_db)) -> DailyBatchRunRepository:
+    return DailyBatchRunRepository(db)
+
+
+def get_daily_batch_artifact_repository(
+    db: Session = Depends(get_db),
+) -> DailyBatchArtifactRepository:
+    return DailyBatchArtifactRepository(db)
+
+
+def get_daily_batch_service(
+    db: Session = Depends(get_db),
+    market_data_service: MarketDataService = Depends(get_market_data_service),
+    backtest_service: BacktestService = Depends(get_backtest_service),
+    validation_service: SignalValidationService = Depends(get_signal_validation_service),
+    factor_service: FactorPredictivePowerService = Depends(get_factor_predictive_power_service),
+    exit_service: ExitResearchService = Depends(get_exit_research_service),
+    ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
+    run_repo: DailyBatchRunRepository = Depends(get_daily_batch_run_repository),
+    artifact_repo: DailyBatchArtifactRepository = Depends(get_daily_batch_artifact_repository),
+) -> DailyBatchService:
+    return DailyBatchService(
+        db,
+        market_data_service=market_data_service,
+        backtest_service=backtest_service,
+        validation_service=validation_service,
+        factor_service=factor_service,
+        exit_service=exit_service,
+        ranking_run_repo=ranking_run_repo,
+        run_repo=run_repo,
+        artifact_repo=artifact_repo,
+    )
 
 
 def get_full_universe_validation_service(

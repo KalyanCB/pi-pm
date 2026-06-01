@@ -35,3 +35,27 @@ def test_ranking_replayer_tracks_created_and_reused():
     assert result.runs_reused == 1
     assert result.runs_failed == 0
     assert ranking_service.run_ranking_with_outcome.call_count == 2
+
+
+def test_ranking_replayer_passes_force_regenerate():
+    ranking_service = MagicMock()
+    ranking_service.run_ranking_with_outcome.return_value = RankingRunOutcome(
+        MagicMock(spec=RankingRun), False
+    )
+    replayer = RankingReplayer(ranking_service)
+    request = GenerateRankingsRequest(
+        universe_code="PI_PM_CORE",
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 1),
+        force_regenerate=True,
+    )
+    replayer.generate(
+        request,
+        [date(2025, 1, 1)],
+        universe_code="PI_PM_CORE",
+        strategy_name="momentum_v1",
+        strategy_version="1.0.0",
+        benchmark_symbol="^NSEI",
+    )
+    payload = ranking_service.run_ranking_with_outcome.call_args[0][0]
+    assert payload.force_regenerate is True

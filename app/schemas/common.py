@@ -1,3 +1,5 @@
+from datetime import date
+
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.constants import IngestPeriod, IngestionMode
@@ -8,6 +10,7 @@ class MarketDataIngestRequest(BaseModel):
     symbols: list[str] = Field(min_length=1)
     period: IngestPeriod = IngestPeriod.ONE_YEAR
     ingestion_mode: IngestionMode = IngestionMode.FULL_REFRESH
+    since_date: date | None = None
 
     @field_validator("symbols")
     @classmethod

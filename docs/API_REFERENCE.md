@@ -3,7 +3,7 @@
 **Base URL:** `http://localhost:8000`  
 **Prefix:** `/api/v1`  
 **OpenAPI:** `/openapi.json` | **Swagger UI:** `/docs`  
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-07
 
 ---
 
@@ -122,9 +122,20 @@ Ingest OHLCV from Yahoo Finance.
 ```json
 {
   "symbols": ["RELIANCE.NS", "TCS.NS", "^NSEI"],
-  "period": "5y"
+  "period": "5y",
+  "ingestion_mode": "incremental",
+  "since_date": "2026-06-01"
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `symbols` | Required. NSE/Yahoo tickers (`ARE&M.NS`, `BAJAJ-AUTO.NS` supported). |
+| `period` | `1mo`, `3mo`, `6mo`, `1y`, `5y` (metadata for provider). |
+| `ingestion_mode` | `full_refresh`, `incremental` (default delta), `backfill`. |
+| `since_date` | Optional. Force fetch from this calendar date via `fetch_history_since` (overrides incremental start). |
+
+**Incremental behavior:** If there are no new bars after the latest stored date, the run completes with zero rows and keeps `data_status=ACTIVE` (does not error).
 
 **Response 200/207:**
 ```json
@@ -822,6 +833,33 @@ See `docs/sprint83-85-implementation-summary.md`.
 
 ---
 
+## Daily Batch (Sprint 8.6 — Ops)
+
+**Prefix:** `/api/v1/ops/daily-batch`  
+**Runbook:** `docs/daily-nifty500-batch-runbook.md`
+
+### `POST /api/v1/ops/daily-batch/runs`
+
+Orchestrates incremental ingest → rankings → validation → factor IC → exit research for NIFTY_500 (sync V1).
+
+**Body (abbreviated):** `universe_code`, `benchmark_symbol`, `strategies[]`, `target_date`, `from_date`, `force_from_date`, `force_recompute`, `force_regenerate_rankings`, `dry_run`, `phases`, `idempotency_key`.
+
+**Response:** `run_id`, `status`, `plan`, `phases`, timing fields.
+
+### `GET /api/v1/ops/daily-batch/runs`
+
+List recent runs (`limit` query param).
+
+### `GET /api/v1/ops/daily-batch/runs/{run_id}`
+
+Poll run status, `current_phase`, `percent_complete`, `phase_results`.
+
+### `GET /api/v1/ops/daily-batch/runs/{run_id}/trace`
+
+Child artifact IDs (ingest batches, ranking runs, validation reports, factor/exit runs) and `current_load`.
+
+---
+
 ## Endpoint Summary
 
 | Method | Path | Tag |
@@ -850,8 +888,11 @@ See `docs/sprint83-85-implementation-summary.md`.
 | GET/POST | `/api/v1/analytics/factors/*` | factor-analytics |
 | GET/POST | `/api/v1/analytics/exit/*` | exit-analytics |
 | GET/POST | `/api/v1/analytics/research-intelligence/*` | research-intelligence |
+| POST/GET | `/api/v1/ops/daily-batch/runs` | ops-daily-batch |
+| GET | `/api/v1/ops/daily-batch/runs/{run_id}` | ops-daily-batch |
+| GET | `/api/v1/ops/daily-batch/runs/{run_id}/trace` | ops-daily-batch |
 
-**Total:** 45+ endpoints (see OpenAPI `/docs` for full list)
+**Total:** 48+ endpoints (see OpenAPI `/docs` for full list)
 
 ---
 
@@ -863,6 +904,8 @@ See `docs/sprint83-85-implementation-summary.md`.
 - `docs/sprint82-factor-ic-analytics.md`
 - `docs/sprint83-exit-research-design.md`
 - `docs/sprint83-85-implementation-summary.md`
+- `docs/daily-nifty500-batch-plan.md`
+- `docs/daily-nifty500-batch-runbook.md`
 
 ---
 

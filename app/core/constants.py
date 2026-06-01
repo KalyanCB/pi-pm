@@ -69,6 +69,9 @@ class LineageEntityType(StrEnum):
     RANKING_RUN = "ranking_run"
     VALIDATION_REPORT = "validation_report"
     EXPERIMENT_RUN = "experiment_run"
+    DAILY_BATCH_RUN = "daily_batch_run"
+    FACTOR_PERFORMANCE_RUN = "factor_performance_run"
+    EXIT_RESEARCH_RUN = "exit_research_run"
 
 
 class LineageRelationshipType(StrEnum):
@@ -77,6 +80,40 @@ class LineageRelationshipType(StrEnum):
     EXPERIMENT_RANKING = "experiment_ranking"
     RANKING_INGESTION = "ranking_ingestion"
     POLICY_BACKTEST_USES_VALIDATION = "policy_backtest_uses_validation"
+    DAILY_BATCH_INGESTION = "daily_batch_ingestion"
+    DAILY_BATCH_RANKING = "daily_batch_ranking"
+    DAILY_BATCH_VALIDATION = "daily_batch_validation"
+    DAILY_BATCH_FACTOR_IC = "daily_batch_factor_ic"
+    DAILY_BATCH_EXIT_RESEARCH = "daily_batch_exit_research"
+
+
+class DailyBatchRunStatus(StrEnum):
+    PENDING = "pending"
+    PLANNED = "planned"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DailyBatchPhase(StrEnum):
+    PREFLIGHT = "preflight"
+    PLANNING = "planning"
+    INGEST = "ingest"
+    RANKINGS = "rankings"
+    VALIDATION = "validation"
+    FACTOR_IC = "factor_ic"
+    EXIT_RESEARCH = "exit_research"
+    FINALIZING = "finalizing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DailyBatchArtifactType(StrEnum):
+    INGESTION_BATCH = "ingestion_batch"
+    RANKING_RUN = "ranking_run"
+    VALIDATION_REPORT = "validation_report"
+    FACTOR_PERFORMANCE_RUN = "factor_performance_run"
+    EXIT_RESEARCH_RUN = "exit_research_run"
 
 
 class PolicyAction(StrEnum):
@@ -160,7 +197,7 @@ class SymbolKind(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
-EQUITY_SYMBOL_PATTERN = r"^[A-Z0-9]+(\.[A-Z]{1,4})?$"
+EQUITY_SYMBOL_PATTERN = r"^[A-Z0-9][A-Z0-9&-]*(\.[A-Z]{1,4})?$"
 INDEX_SYMBOL_PATTERN = r"^\^[A-Z0-9]+$"
 
 # Backward-compatible alias for equity-only callers.

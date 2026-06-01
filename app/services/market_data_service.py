@@ -76,6 +76,7 @@ class MarketDataService:
         period: IngestPeriod,
         *,
         ingestion_mode: IngestionMode = IngestionMode.FULL_REFRESH,
+        since_date: date | None = None,
     ) -> MarketDataIngestResponse:
         started = time.perf_counter()
         batch = self.ingestion_batch_repo.create_running(
@@ -118,7 +119,9 @@ class MarketDataService:
                 relationship_type=LineageRelationshipType.BATCH_SYMBOL.value,
             )
             try:
-                result = self._ingest_single_symbol(symbol, period, run, ingestion_mode)
+                result = self._ingest_single_symbol(
+                    symbol, period, run, ingestion_mode, since_date=since_date
+                )
                 runs.append(result)
                 symbols_succeeded += 1
                 total_inserted += run.rows_inserted
@@ -198,13 +201,30 @@ class MarketDataService:
         period: IngestPeriod,
         run: MarketDataIngestionRun,
         ingestion_mode: IngestionMode,
+        *,
+        since_date: date | None = None,
     ) -> MarketDataIngestionRun:
         metadata = self.provider.fetch_metadata(symbol)
         stock = self.stock_repo.upsert_from_metadata(metadata)
         latest = self.market_data_repo.get_latest_market_data(stock.id)
 
-        bars = self._fetch_bars(symbol, period, ingestion_mode, latest)
+        bars = self._fetch_bars(symbol, period, ingestion_mode, latest, since_date=since_date)
         if not bars:
+            if (
+                since_date is None
+                and ingestion_mode == IngestionMode.INCREMENTAL
+                and latest is not None
+            ):
+                completed = self.ingestion_run_repo.complete(
+                    run,
+                    rows_inserted=0,
+                    rows_updated=0,
+                    rows_skipped=0,
+                    first_date_loaded=latest.date,
+                    last_date_loaded=latest.date,
+                )
+                self.stock_repo.set_data_status(symbol, DataStatus.ACTIVE)
+                return completed
             raise InvalidSymbolError(f"No OHLCV history returned for symbol: {symbol}")
 
         counts = self.market_data_repo.upsert_bars(stock.id, bars, source=MARKET_DATA_SOURCE_YAHOO)
@@ -230,7 +250,11 @@ class MarketDataService:
         period: IngestPeriod,
         ingestion_mode: IngestionMode,
         latest: MarketData | None,
+        *,
+        since_date: date | None = None,
     ) -> list[YahooOHLCVBar]:
+        if since_date is not None:
+            return self.provider.fetch_history_since(symbol, since_date)
         if ingestion_mode == IngestionMode.INCREMENTAL and latest is not None:
             start_date = latest.date + timedelta(days=1)
             return self.provider.fetch_history_since(symbol, start_date)
