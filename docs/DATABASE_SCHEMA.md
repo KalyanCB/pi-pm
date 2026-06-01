@@ -1,8 +1,8 @@
 # Pi-PM — Database Schema
 
-**Last updated:** 2026-06-01  
-**Migration head:** `20260601_0009`  
-**Total tables:** ~30
+**Last updated:** 2026-06-07  
+**Migration head:** `20260607_0015`  
+**Total tables:** ~32
 
 See also: `docs/HANDOFF.md`, `docs/sprint7-platform-traceability.md`, `docs/sprint81-regime-aware-trading.md`, `docs/sprint82-factor-ic-analytics.md`
 
@@ -46,6 +46,19 @@ erDiagram
 | `20260530_0007` | 7 | Traceability: `ingestion_batch_runs`, `ranking_factor_contributions`, `validation_horizon_metrics`, `validation_decile_metrics`, `run_lineage_records`, `experiment_runs`, `regime_history`, `strategy_regime_performance`; alters `ranking_runs`, `market_data_ingestion_runs` |
 | `20260531_0008` | 8.1 | `regime_policy_configs`, `regime_policy_decisions`, `regime_backtest_runs` |
 | `20260601_0009` | 8.2 | `factor_performance_runs`, `factor_daily_metrics`, `factor_performance_metrics` |
+| `20260607_0015` | 8.6 | `daily_batch_runs`, `daily_batch_run_artifacts` |
+
+---
+
+## Sprint 8.6 — Daily batch
+
+### `daily_batch_runs`
+
+Parent orchestration run: status, target/from dates, force flags, `plan_snapshot`, `phase_results`, `current_load` (JSONB), progress fields.
+
+### `daily_batch_run_artifacts`
+
+Child artifact links: `ingestion_batch`, `ranking_run`, `validation_report`, `factor_performance_run`, `exit_research_run` → parent `daily_batch_run_id`.
 
 ---
 

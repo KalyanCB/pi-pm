@@ -118,7 +118,11 @@ class RankingService:
             as_of_date=as_of_date,
         )
 
-        existing = self.ranking_run_repo.find_completed_by_inputs_hash(output.inputs_hash)
+        existing = (
+            None
+            if payload.force_regenerate
+            else self.ranking_run_repo.find_completed_by_inputs_hash(output.inputs_hash)
+        )
         if existing is not None:
             self.traceability_service.ensure_ranking_traceability(existing)
             elapsed_ms = int((time.perf_counter() - started) * 1000)

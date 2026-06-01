@@ -15,6 +15,7 @@ class GenerateRankingsRequest(BaseModel):
     strategy_version: str | None = None
     benchmark_symbol: str | None = None
     filter_config: UniverseFilterConfigSchema | None = None
+    force_regenerate: bool = False
 
     @model_validator(mode="after")
     def validate_date_range(self) -> GenerateRankingsRequest:

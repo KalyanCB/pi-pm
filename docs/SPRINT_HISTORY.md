@@ -1,6 +1,6 @@
 # Pi-PM — Sprint History
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-07
 
 ---
 
@@ -439,6 +439,36 @@ Committee-grade reporting from existing validation, ranking, and factor analytic
 
 ---
 
+## Sprint 8.6 — Daily NIFTY 500 Batch
+
+**Branch:** `feature/sprint-8.6-daily-ingestion`  
+**Migration:** `20260607_0015`
+
+### Objective
+
+API-orchestrated daily pipeline: incremental ingest → rankings → validation → factor IC → exit research, with run traceability and a thin HTTP CLI.
+
+### Deliverables
+
+- Tables: `daily_batch_runs`, `daily_batch_run_artifacts`
+- `app/ops/daily_batch/` — trading day resolver, planner, traceability recorder
+- `DailyBatchService` + `/api/v1/ops/daily-batch/*`
+- `RankingRunRequest.force_regenerate` / `GenerateRankingsRequest.force_regenerate`
+- Ingest: `since_date` on market-data ingest; empty incremental no longer sets `ERROR`
+- `EQUITY_SYMBOL_PATTERN` allows `&` and `-` in tickers
+- Scripts: `run_daily_nifty500_batch.py`, `reingest_symbols_since.py`, `monitor_daily_batch.sh`, `pipm_service_factory.py`
+
+### Explicitly not done
+
+- `force_ingest` on daily batch request (schema only)
+- Async batch (`202` + poll)
+- `research_intelligence` phase wiring
+
+**Plan:** `docs/daily-nifty500-batch-plan.md`  
+**Runbook:** `docs/daily-nifty500-batch-runbook.md`
+
+---
+
 ## Test Growth by Sprint
 
 | Sprint | Approx. Tests |
@@ -451,6 +481,7 @@ Committee-grade reporting from existing validation, ranking, and factor analytic
 | 8.1 | **150** |
 | 8.2 | **177** |
 | 8.3 / 8.5 | **212** |
+| 8.6 | **214** |
 
 ---
 

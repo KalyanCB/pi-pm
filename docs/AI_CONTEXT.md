@@ -2,7 +2,7 @@
 
 **Purpose:** Onboard any AI assistant (ChatGPT, Claude, Gemini, Cursor) to Pi-PM without reading source code.
 
-**Last updated:** 2026-06-01  
+**Last updated:** 2026-06-07  
 **Takeover entry point:** `docs/HANDOFF.md`
 
 ---
@@ -23,15 +23,15 @@ Pi-PM is a **Personal Intelligence Portfolio Manager** — a Python/FastAPI back
 | API | FastAPI 0.115+ |
 | Database | PostgreSQL 16 |
 | ORM | SQLAlchemy 2.0 |
-| Migrations | Alembic (head: `20260531_0008`) |
+| Migrations | Alembic (head: `20260607_0015`) |
 | Validation | Pydantic v2 |
 | Market data | Yahoo Finance (`yfinance`) |
-| Tests | pytest (**150 tests**) |
+| Tests | pytest (**214 tests**) |
 | Deployment | Docker Compose |
 
 **Repo:** `/Users/kalyancb/pi-pm`  
 **API prefix:** `/api/v1`  
-**Active branch:** `feature/sprint8`
+**Active branch:** `feature/sprint-8.6-daily-ingestion`
 
 ---
 
@@ -44,6 +44,8 @@ Market Data Ingest
   → Validation (IC, deciles, regime)
   → Traceability (Sprint 7)
   → Regime Policy Replay (Sprint 8.1, research only)
+  → Factor IC / Exit / Research Intelligence (8.2–8.5)
+  → Daily batch orchestration (8.6, `/ops/daily-batch`)
 ```
 
 ---

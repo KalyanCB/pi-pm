@@ -1,6 +1,6 @@
 # Pi-PM — Roadmap
 
-**Last updated:** 2026-06-02  
+**Last updated:** 2026-06-07  
 **Takeover:** `docs/HANDOFF.md`
 
 ---
@@ -24,6 +24,7 @@ Fill exit research conclusions after holdout review. Portfolio construction rema
 | 8.2 | Factor IC analytics (`/analytics/factors`) |
 | 8.3 | Exit research workspace (`/analytics/exit`) |
 | 8.5 | Research intelligence / executive reporting (`/analytics/research-intelligence`) |
+| 8.6 | Daily batch orchestration (`/ops/daily-batch`) + ingest `since_date` / empty-incremental fix |
 
 ---
 
@@ -33,9 +34,9 @@ Fill exit research conclusions after holdout review. Portfolio construction rema
 
 | Item | Description |
 |------|-------------|
-| Run NIFTY_500 exit research backfill | `scripts/backfill_sprint83_exit_research.py` |
-| Review exit policy comparison + recommended policy | HOLDOUT-first |
-| Merge `feature/sprint-8.3-exit-research` | After review |
+| Merge `feature/sprint-8.6-daily-ingestion` | After review |
+| Schedule daily batch post-close | cron + `assume_session_done` |
+| Remove `DUMMYVEDL*.NS` from NIFTY_500 seed | Avoid false ingest failures |
 
 ### P1 — Sprint 8.4 (Planned)
 

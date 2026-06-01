@@ -1,3 +1,4 @@
+from app.models.daily_batch import DailyBatchRun, DailyBatchRunArtifact
 from app.models.full_universe_validation import (
     FullUniverseValidationCampaign,
     FullUniverseValidationDecile,
@@ -82,4 +83,6 @@ __all__ = [
     "ExitResearchAlphaDecayPoint",
     "ResearchIntelligenceRun",
     "ResearchIntelligenceReport",
+    "DailyBatchRun",
+    "DailyBatchRunArtifact",
 ]

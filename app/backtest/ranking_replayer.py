@@ -37,6 +37,7 @@ class RankingReplayer:
                 strategy_version=strategy_version,
                 benchmark_symbol=benchmark_symbol,
                 filter_config=request.filter_config,
+                force_regenerate=request.force_regenerate,
             )
             try:
                 outcome = self.ranking_service.run_ranking_with_outcome(payload)

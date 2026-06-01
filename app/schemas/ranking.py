@@ -22,6 +22,7 @@ class RankingRunRequest(BaseModel):
     strategy_version: str | None = None
     benchmark_symbol: str | None = None
     filter_config: UniverseFilterConfigSchema | None = None
+    force_regenerate: bool = False
 
 
 class RankingResultRead(BaseModel):

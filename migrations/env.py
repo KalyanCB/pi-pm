@@ -24,6 +24,8 @@ from app.models import (  # noqa: F401
     FactorDailyMetric,
     FactorPerformanceMetric,
     FactorPerformanceRun,
+    DailyBatchRun,
+    DailyBatchRunArtifact,
     ExitResearchAlphaDecayPoint,
     ExitResearchPolicyMetric,
     ExitResearchRun,
