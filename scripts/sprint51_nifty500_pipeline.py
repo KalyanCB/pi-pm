@@ -52,7 +52,7 @@ from app.services.universe_filter_service import UniverseFilterService
 logger = logging.getLogger(__name__)
 
 VALIDATION_START = date(2024, 1, 1)
-VALIDATION_END = date(2025, 12, 31)
+VALIDATION_END = date(2026, 5, 29)
 MIN_RANKED_COUNT = 450
 TOP_N = 20
 
