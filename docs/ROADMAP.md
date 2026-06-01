@@ -1,17 +1,15 @@
 # Pi-PM — Roadmap
 
-**Last updated:** 2026-06-01  
+**Last updated:** 2026-06-02  
 **Takeover:** `docs/HANDOFF.md`
 
 ---
 
 ## Current Gate
 
-**Sprint 8.1 regime backtest must complete and results documented** before Sprint 8.2 factor analytics or any live policy integration.
+**Exit research (Sprint 8.3) backfill on NIFTY_500** should complete with visible phase progress and persisted metrics before portfolio construction or live policy integration.
 
-Key research question: Does E2 or E3 beat E1 on **2025 holdout** with statistical significance?
-
-Fill results in: `docs/sprint81-results-template.md`
+Fill exit research conclusions after holdout review. Portfolio construction remains deferred until optimal exit framework is identified.
 
 ---
 
@@ -23,84 +21,73 @@ Fill results in: `docs/sprint81-results-template.md`
 | 7 | Traceability tables + observability API |
 | 7.1 | Backfill + ensure on reuse paths |
 | 8.1 | Regime policy replay + backtest API |
+| 8.2 | Factor IC analytics (`/analytics/factors`) |
+| 8.3 | Exit research workspace (`/analytics/exit`) |
+| 8.5 | Research intelligence / executive reporting (`/analytics/research-intelligence`) |
 
 ---
 
 ## Prioritized Backlog
 
-### P0 — Immediate (Sprint 8.1 wrap-up)
+### P0 — Immediate
 
 | Item | Description |
 |------|-------------|
-| Run regime backtest on production validation data | POST `/regime-policy/backtest/run` |
-| Document results | `sprint81-results-template.md` |
-| Merge `feature/sprint8` | After review |
+| Run NIFTY_500 exit research backfill | `scripts/backfill_sprint83_exit_research.py` |
+| Review exit policy comparison + recommended policy | HOLDOUT-first |
+| Merge `feature/sprint-8.3-exit-research` | After review |
 
-### P1 — Sprint 8.2 (Planned)
-
-| Item | Description |
-|------|-------------|
-| Factor predictive power analytics | Per-factor IC by regime/horizon |
-| `factor_performance_metrics` table | Backfill from existing data |
-| No new technical indicators | Until factor IC proven |
-
-### P2 — Sprint 8.3 (Design complete; implementation next)
-
-| Item | Description |
-|------|-------------|
-| Exit research workspace (`workspace_exit_research`) | Given signal entry, which exit behaviors preserved edge? |
-| Five policy families | Fixed hold, alpha decay, rank deterioration, regime transition, trend failure |
-| Design doc | `docs/sprint83-exit-research-design.md` |
-
-### P3 — Sprint 8.4 (Planned)
+### P1 — Sprint 8.4 (Planned)
 
 | Item | Description |
 |------|-------------|
 | AI research agent | Hypothesis → experiment → report (reads exit/factor/regime metrics) |
 | Human approval checkpoints | No autonomous production changes |
 
-### P4 — Sprint 8.5 (Conditional)
+### P2 — Portfolio / Paper Trading (Deferred)
 
 | Item | Description |
 |------|-------------|
-| Regime-specific factor weights | Only if 8.2 supports it |
+| Portfolio construction research | After exit framework selected |
+| Paper trading wiring | Tables exist; services stubbed |
 
 ### Deferred
 
 | Item | Reason |
 |------|--------|
-| Portfolio / paper trading | After research gate |
 | Live broker | Future |
-| New ranking factors | Blocked until 8.2 |
+| New ranking factors | Research gate |
+| Regime-specific factor weights (original 8.5 scope) | Superseded by research intelligence reporting |
 | LLM ranking/sizing | Never |
 
 ---
 
 ## Sprint Plan (Updated)
 
-### Sprint 8.2 — Factor Predictive Power (Next)
+### Sprint 8.2 — Factor Predictive Power ✅
 
 - Per-factor Spearman IC across horizons and regimes
-- Backfill from `ranking_factor_contributions` + forward returns
 - APIs under `/api/v1/analytics/factors`
+- **Runbook:** `docs/sprint82-factor-ic-analytics.md`
 
-### Sprint 8.3 — Exit Research Workspace
+### Sprint 8.3 — Exit Research Workspace ✅
 
 - Isolated `workspace_exit_research` (read-only upstream)
-- Five dashboards: policy comparison, alpha decay, rank deterioration, regime transition, trend failure
-- Stratified metrics with n≥30 rule; holdout-first reporting
+- Five policy families + alpha decay curves
+- Phased backfill with batch persistence
 - **Design:** `docs/sprint83-exit-research-design.md`
+- **Ops:** `docs/sprint83-backfill-performance.md`
+
+### Sprint 8.5 — Research Intelligence ✅
+
+- Executive / committee reporting from validation + factor outputs
+- **Summary:** `docs/sprint83-85-implementation-summary.md`
 
 ### Sprint 8.4 — AI Research Agent
 
 - Read validation + factor + regime + exit metrics
 - Generate hypotheses and experiment proposals
 - Human approval before any writes
-
-### Sprint 8.5 — Regime-Specific Models (Conditional)
-
-- Only if 8.2 identifies regime-differential factor IC
-- Walk-forward validation required
 
 ---
 
@@ -110,9 +97,9 @@ Fill results in: `docs/sprint81-results-template.md`
 |------|----------|
 | Full-universe campaign O(n²) aggregation | P1 |
 | Async campaign + progress API (Sprint 6.2) | P1 |
-| Postman collection for observability + regime-policy | P2 |
+| Bulk upsert for exit metric persistence (optional) | P2 |
+| Postman collection for observability + analytics | P2 |
 | CI/CD (GitHub Actions) | P2 |
-| `strategy_regime_performance` auto-refresh | P2 |
 
 ---
 
@@ -120,4 +107,4 @@ Fill results in: `docs/sprint81-results-template.md`
 
 - `docs/HANDOFF.md`
 - `docs/SPRINT_HISTORY.md`
-- `docs/DECISION_LOG.md`
+- `docs/sprint83-85-implementation-summary.md`

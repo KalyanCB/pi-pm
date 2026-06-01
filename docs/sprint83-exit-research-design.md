@@ -1,11 +1,15 @@
 # Sprint 8.3 — Exit Research Workspace Design
 
-**Status:** Design only (no implementation)  
+**Status:** Design reference — **implementation shipped** on `feature/sprint-8.3-exit-research`  
+**Implementation summary:** `docs/sprint83-85-implementation-summary.md`  
+**Operations / performance:** `docs/sprint83-backfill-performance.md`  
 **Branch:** `feature/sprint-8.3-exit-research`  
-**Workspace package (planned):** `app/workspace_exit_research/`  
-**Migration revision (planned):** `20260603_0011_sprint83_exit_research`  
+**Workspace package:** `app/workspace_exit_research/`  
+**Migrations:** `20260603_0011` (core tables), `20260605_0013` (progress), `20260606_0014` (phases)  
 **Authoring date:** 2026-05-31  
 **Takeover:** `docs/HANDOFF.md`, `docs/sprint82-factor-ic-analytics.md`, `docs/sprint81-regime-aware-trading.md`
+
+> **Implementation notes (vs this design doc):** Signals are not materialized to `exit_research_signals`; cohorts load in-memory via `SignalCohortLoader`. API paths use `/api/v1/analytics/exit/*`. Persistence uses phased backfill with batch commits — see implementation summary.
 
 ---
 

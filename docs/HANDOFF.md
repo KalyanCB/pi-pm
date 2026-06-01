@@ -1,6 +1,6 @@
 # Pi-PM — Developer & AI Handoff Guide
 
-**Last updated:** 2026-06-01  
+**Last updated:** 2026-06-02  
 **Purpose:** Enable any developer, AI assistant, or LLM to take over Pi-PM without prior chat context.
 
 **Start here.** Then read linked docs for depth.
@@ -22,7 +22,7 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 | API | FastAPI @ `/api/v1` |
 | DB | PostgreSQL 16, user/db `pipm` |
 | Migration head | `20260606_0014` |
-| Tests | **189 passing** (`pytest`) |
+| Tests | **212 passing** (`pytest`) |
 
 ---
 
@@ -47,6 +47,9 @@ Pi-PM (Personal Intelligence Portfolio Manager) ranks Indian NSE equities using 
 - `docs/sprint81-results-template.md` — fill after backtest
 - `docs/sprint82-factor-ic-analytics.md` — factor IC analytics + backfill
 - `docs/sprint82-implementation-summary.md` — PR review package
+- `docs/sprint83-exit-research-design.md` — exit research design (reference)
+- `docs/sprint83-85-implementation-summary.md` — exit research + research intelligence (8.3 / 8.5)
+- `docs/sprint83-backfill-performance.md` — backfill performance, phases, monitoring
 
 ---
 
@@ -60,6 +63,9 @@ Market Data Ingest (Yahoo)
   → Validation (forward returns, IC, deciles, regime)
   → Traceability (factor contributions, horizon metrics, lineage)  [Sprint 7]
   → Regime Policy Replay / Backtest (research only)               [Sprint 8.1]
+  → Factor IC Analytics (read-only)                               [Sprint 8.2]
+  → Exit Research (policy simulation, read-only)                [Sprint 8.3]
+  → Research Intelligence / executive reporting (read-only)       [Sprint 8.5]
 ```
 
 ---
@@ -74,13 +80,15 @@ Market Data Ingest (Yahoo)
 | 7 | Platform traceability tables + observability API |
 | 7.1 | Traceability backfill + `ensure_*` on reuse paths |
 | 8.1 | Regime-aware trading policy layer (research only) |
+| 8.2 | Factor predictive power analytics (`/analytics/factors`) |
+| 8.3 | Exit research workspace (`/analytics/exit`) |
+| 8.5 | Research intelligence / executive reports (`/analytics/research-intelligence`) |
 
 ### In Progress / Next
 
 | Sprint | Feature | Status |
 |--------|---------|--------|
-| 8.2 | Factor predictive power analytics | Planned — not implemented |
-| 8.3 | AI research agent | Planned |
+| 8.4 | AI research agent | Planned |
 | Portfolio / paper trading | Tables exist, services stubbed | Not started |
 
 ---
@@ -160,6 +168,44 @@ python scripts/init_regime_policy_presets.py
 # 2. POST /regime-policy/backtest/run (see sprint81 doc)
 ```
 
+### Backfill factor IC analytics (Sprint 8.2)
+
+```bash
+python scripts/backfill_sprint82_factor_analytics.py \
+  --universe-code NIFTY_500 \
+  --start-date 2024-01-01 \
+  --end-date 2025-05-30
+```
+
+### Backfill exit research (Sprint 8.3)
+
+```bash
+python scripts/backfill_sprint83_exit_research.py \
+  --universe-code NIFTY_500 \
+  --start-date 2024-01-01 \
+  --end-date 2025-05-30
+```
+
+Monitor a long run (phase + visible metric rows):
+
+```sql
+SELECT status, current_phase, processed_entries, total_entries,
+       percent_complete, persistence_items_processed, persistence_items_total,
+       last_progress_at, elapsed_seconds, metrics_written
+FROM exit_research_runs ORDER BY started_at DESC LIMIT 1;
+```
+
+See `docs/sprint83-backfill-performance.md` for phase semantics and log events.
+
+### Generate research intelligence pack (Sprint 8.5)
+
+```bash
+python scripts/generate_sprint85_research_intelligence.py \
+  --universe-code NIFTY_500 \
+  --start-date 2024-01-01 \
+  --end-date 2025-05-30
+```
+
 ### Tests
 
 ```bash
@@ -180,6 +226,8 @@ python scripts/init_regime_policy_presets.py
 | E2 shows ALLOW decisions but `sample_count=0` | Fixed in 8.1.2 — see §10; check snapshot returns or horizon-metrics fallback |
 | Do not call `compute_full_horizon_metrics` on 200k+ pooled rows | O(n²) directional hit rate — use `compute_pooled_period_metrics` |
 | Ranking/validation logic is frozen unless scoped | Policy layer only post-ranking |
+| Exit backfill at 100% but `status=running` | Check `current_phase` — persistence runs after simulation; metric rows commit every 25 upserts |
+| `exit_research_policy_metrics` empty mid-run (old code) | Upgrade to `20260606_0014`+ for batch commits and phase tracking |
 
 ---
 

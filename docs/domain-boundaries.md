@@ -11,6 +11,9 @@ app/universe/       → Eligibility filtering (pre-ranking)
 app/ranking/        → Scoring, normalization, ordering
 app/validation/     → Forward-return IC, deciles, regime labels
 app/regime_policy/  → Post-ranking gating replay (research only, Sprint 8.1)
+app/factor_analytics/ → Factor IC analytics (read-only upstream, Sprint 8.2)
+app/workspace_exit_research/ → Exit policy simulation (read-only upstream, Sprint 8.3)
+app/workspace_research_reporting/ → Executive research reports (read-only upstream, Sprint 8.5)
 app/backtest/       → Historical ranking replayer
 app/market_data/    → Bar loading cache (shared infrastructure)
 app/services/       → Orchestration and persistence

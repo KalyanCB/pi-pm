@@ -164,7 +164,10 @@ Full catalog: `docs/API_REFERENCE.md`
 | 1–6.1 | Complete |
 | 7 / 7.1 | Complete |
 | 8.1 | Complete (regime policy research) |
-| 8.2+ | Planned (factor IC, AI agent) |
+| 8.2 | Complete (factor IC analytics) |
+| 8.3 | Complete (exit research) |
+| 8.5 | Complete (research intelligence) |
+| 8.4+ | Planned (AI research agent) |
 
 ---
 

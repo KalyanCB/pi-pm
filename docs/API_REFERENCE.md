@@ -775,9 +775,19 @@ Query params typically include `run_id`, `strategy_name`, `regime_label`, `horiz
 | `/reports/trend-failure` | Trend failure |
 | `/reports/recommended` | Recommended exit policy |
 
-### `GET /api/v1/analytics/exit/runs` / `runs/{run_id}`
+### `GET /api/v1/analytics/exit/runs`
 
-List and inspect backfill runs.
+List backfill runs. Response includes:
+
+| Field | Description |
+|-------|-------------|
+| `status` | `running`, `completed`, `failed` |
+| `current_phase` | e.g. `simulating`, `persisting_policy_metrics`, `completed` |
+| `processed_entries` / `total_entries` | Simulation progress |
+| `percent_complete` | Capped at 90% during simulation; 90–100% during persistence |
+| `persistence_items_processed` / `persistence_items_total` | Post-simulation write progress |
+
+Long runs: metric rows are visible before completion (batch commits every 25 upserts). See `docs/sprint83-backfill-performance.md`.
 
 See `docs/sprint83-exit-research-design.md` and `docs/sprint83-85-implementation-summary.md`.
 
