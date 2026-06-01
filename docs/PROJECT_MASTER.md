@@ -75,15 +75,21 @@ LLMs are excluded from ranking, sizing, trade approval, and risk override.
 
 ---
 
-## Next Sprints (Planned, Not Implemented)
+## Recent Sprints (Shipped on `feature/sprint-8.3-exit-research`)
 
 | Sprint | Focus |
 |--------|-------|
-| 8.2 | Factor predictive power analytics |
-| 8.3 | AI research agent (human approval gates) |
-| 8.4 | Regime-specific factor models (conditional) |
+| 8.2 | Factor predictive power analytics (`/analytics/factors`) |
+| 8.3 | Exit research workspace (`/analytics/exit`) |
+| 8.5 | Research intelligence / executive reporting |
 
-See `docs/ROADMAP.md`.
+## Next Sprint (Planned)
+
+| Sprint | Focus |
+|--------|-------|
+| 8.4 | AI research agent (human approval gates) |
+
+See `docs/ROADMAP.md` and `docs/sprint83-85-implementation-summary.md`.
 
 ---
 

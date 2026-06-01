@@ -22,6 +22,11 @@ from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
 from app.models.ranking_validation_report import RankingValidationReport
+from app.models.exit_research import (
+    ExitResearchAlphaDecayPoint,
+    ExitResearchPolicyMetric,
+    ExitResearchRun,
+)
 from app.models.factor_analytics import (
     FactorDailyMetric,
     FactorPerformanceMetric,
@@ -31,6 +36,10 @@ from app.models.regime_policy import (
     RegimeBacktestRun,
     RegimePolicyConfig,
     RegimePolicyDecision,
+)
+from app.models.research_intelligence import (
+    ResearchIntelligenceReport,
+    ResearchIntelligenceRun,
 )
 from app.models.research_report import ResearchReport
 from app.models.stock import Stock
@@ -68,4 +77,9 @@ __all__ = [
     "FactorPerformanceRun",
     "FactorPerformanceMetric",
     "FactorDailyMetric",
+    "ExitResearchRun",
+    "ExitResearchPolicyMetric",
+    "ExitResearchAlphaDecayPoint",
+    "ResearchIntelligenceRun",
+    "ResearchIntelligenceReport",
 ]

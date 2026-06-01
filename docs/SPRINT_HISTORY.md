@@ -389,6 +389,56 @@ Read-only factor IC analytics: which factors have edge in BULL_LOW_VOL and wheth
 
 ---
 
+## Sprint 8.3 — Exit Research Workspace
+
+**Branch:** `feature/sprint-8.3-exit-research`  
+**Migrations:** `20260603_0011`, `20260605_0013`, `20260606_0014`
+
+### Objective
+
+Read-only exit policy simulation on validated ranking signal entries: fixed hold, rank deterioration, regime exit, trend failure, alpha decay.
+
+### Deliverables
+
+- `app/workspace_exit_research/` — simulators, aggregation index, forward-return index, progress logging
+- Tables: `exit_research_runs`, `exit_research_policy_metrics`, `exit_research_alpha_decay_points`
+- `ExitResearchService` + `/api/v1/analytics/exit/*`
+- Phased backfill with batch commits (`PERSIST_COMMIT_INTERVAL=25`)
+- Script: `scripts/backfill_sprint83_exit_research.py`
+- Decimal-safe simulators; pre-indexed aggregation
+
+### Explicitly not done
+
+- Ranking / validation / regime / factor logic changes
+- Portfolio simulation or execution
+- `exit_research_signals` table (design doc; in-memory cohort loader instead)
+
+**Design:** `docs/sprint83-exit-research-design.md`  
+**Summary:** `docs/sprint83-85-implementation-summary.md`  
+**Performance / ops:** `docs/sprint83-backfill-performance.md`
+
+---
+
+## Sprint 8.5 — Research Intelligence
+
+**Branch:** `feature/sprint-8.3-exit-research` (same feature branch)  
+**Migration:** `20260604_0012`
+
+### Objective
+
+Committee-grade reporting from existing validation, ranking, and factor analytics outputs.
+
+### Deliverables
+
+- `app/workspace_research_reporting/`
+- Tables: `research_intelligence_runs`, `research_intelligence_reports`
+- `ResearchIntelligenceService` + `/api/v1/analytics/research-intelligence/*`
+- Script: `scripts/generate_sprint85_research_intelligence.py`
+
+**Summary:** `docs/sprint83-85-implementation-summary.md`
+
+---
+
 ## Test Growth by Sprint
 
 | Sprint | Approx. Tests |
@@ -400,6 +450,7 @@ Read-only factor IC analytics: which factors have edge in BULL_LOW_VOL and wheth
 | 7 / 7.1 | 132 |
 | 8.1 | **150** |
 | 8.2 | **177** |
+| 8.3 / 8.5 | **212** |
 
 ---
 
