@@ -11,6 +11,10 @@ from app.ranking.math_utils import (
     simple_moving_average,
 )
 from app.validation.forward_returns import compute_forward_return
+from app.workspace_exit_research.forward_returns_index import (
+    BarForwardReturnIndex,
+    alpha_decay_returns_indexed,
+)
 from app.workspace_exit_research.constants import (
     ALPHA_DECAY_MAX_DAYS,
     ATR_TRAIL_MULTIPLIER,
@@ -218,10 +222,40 @@ def simulate_trend_failure(
 
 
 def alpha_decay_returns(entry: SignalEntry, bars: list[PriceBar]) -> dict[int, Decimal | None]:
-    return {
-        day: compute_forward_return(bars, entry.entry_date, day)
-        for day in range(1, ALPHA_DECAY_MAX_DAYS + 1)
-    }
+    index = BarForwardReturnIndex(bars, entry.entry_date)
+    return alpha_decay_returns_indexed(index, max_days=ALPHA_DECAY_MAX_DAYS)
+
+
+def run_fixed_hold_batch(
+    entry: SignalEntry,
+    bars: list[PriceBar],
+) -> list[ExitSimulationResult]:
+    return [simulate_fixed_hold(entry, days, bars) for days in FIXED_HOLD_DAYS]
+
+
+def run_rank_deterioration_batch(
+    entry: SignalEntry,
+    bars: list[PriceBar],
+    rank_cache: RankPathCache,
+) -> list[ExitSimulationResult]:
+    return [
+        simulate_rank_exit(entry, threshold, bars, rank_cache) for threshold in RANK_EXIT_THRESHOLDS
+    ]
+
+
+def run_regime_exit_batch(
+    entry: SignalEntry,
+    bars: list[PriceBar],
+    regime_cache: RegimePathCache,
+) -> list[ExitSimulationResult]:
+    return [simulate_regime_exit(entry, variant, bars, regime_cache) for variant in REGIME_EXIT_VARIANTS]
+
+
+def run_trend_failure_batch(
+    entry: SignalEntry,
+    bars: list[PriceBar],
+) -> list[ExitSimulationResult]:
+    return [simulate_trend_failure(entry, variant, bars) for variant in TREND_FAILURE_VARIANTS]
 
 
 def bootstrap_ci(values: list[Decimal]) -> tuple[float | None, float | None]:
@@ -371,12 +405,8 @@ def run_all_simulations(
     regime_cache: RegimePathCache,
 ) -> list[ExitSimulationResult]:
     results: list[ExitSimulationResult] = []
-    for days in FIXED_HOLD_DAYS:
-        results.append(simulate_fixed_hold(entry, days, bars))
-    for threshold in RANK_EXIT_THRESHOLDS:
-        results.append(simulate_rank_exit(entry, threshold, bars, rank_cache))
-    for variant in REGIME_EXIT_VARIANTS:
-        results.append(simulate_regime_exit(entry, variant, bars, regime_cache))
-    for variant in TREND_FAILURE_VARIANTS:
-        results.append(simulate_trend_failure(entry, variant, bars))
+    results.extend(run_fixed_hold_batch(entry, bars))
+    results.extend(run_rank_deterioration_batch(entry, bars, rank_cache))
+    results.extend(run_regime_exit_batch(entry, bars, regime_cache))
+    results.extend(run_trend_failure_batch(entry, bars))
     return results
