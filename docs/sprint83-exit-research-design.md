@@ -9,13 +9,13 @@
 **Authoring date:** 2026-05-31  
 **Takeover:** `docs/HANDOFF.md`, `docs/sprint82-factor-ic-analytics.md`, `docs/sprint81-regime-aware-trading.md`
 
-> **Implementation notes (vs this design doc):** Signals are not materialized to `exit_research_signals`; cohorts load in-memory via `SignalCohortLoader`. API paths use `/api/v1/analytics/exit/*`. Persistence uses phased backfill with batch commits — see implementation summary.
+> **Implementation notes (vs this design doc):** Signals are not materialized to `exit_research_signals`; cohorts load in-memory via `SignalCohortLoader`. API paths use `/api/v1/analytics/exit/`*. Persistence uses phased backfill with batch commits — see implementation summary.
 
 ---
 
 ## Executive Summary
 
-Sprint 8.3 introduces **`workspace_exit_research`**, a read-only analytics workspace that answers:
+Sprint 8.3 introduces `**workspace_exit_research`**, a read-only analytics workspace that answers:
 
 > **Given a signal entry (a top-ranked stock on a validated ranking day), which exit behaviors historically preserved or improved signal edge?**
 
@@ -59,18 +59,20 @@ Parallel, untouched:
 
 ### 1.2 Layering (mirror Sprint 8.2)
 
-| Layer | Planned path | Responsibility |
-|-------|----------------|----------------|
-| Constants | `workspace_exit_research/constants.py` | Horizons, thresholds, policy IDs, min sample=30 |
-| Models (domain) | `workspace_exit_research/models.py` | `SignalEntry`, `ExitOutcome`, policy specs |
-| Loaders | `workspace_exit_research/signal_cohort_loader.py` | SQL batch load entries + bars |
-| Simulators | `workspace_exit_research/policy_simulators/*.py` | One module per policy family |
-| Metrics | `workspace_exit_research/metrics_engine.py` | Mean/median/std/CI, stratified rollups |
-| Reports | `workspace_exit_research/reports.py` | Dashboard DTO builders |
-| Service | `app/services/exit_research_service.py` | Transactions, backfill orchestration |
-| Repositories | `app/db/repositories/exit_research_*` | Upserts, idempotent runs |
-| API | `app/api/v1/exit_analytics.py` | REST under `/analytics/exit` |
-| Script | `scripts/backfill_sprint83_exit_research.py` | CLI backfill |
+
+| Layer           | Planned path                                      | Responsibility                                  |
+| --------------- | ------------------------------------------------- | ----------------------------------------------- |
+| Constants       | `workspace_exit_research/constants.py`            | Horizons, thresholds, policy IDs, min sample=30 |
+| Models (domain) | `workspace_exit_research/models.py`               | `SignalEntry`, `ExitOutcome`, policy specs      |
+| Loaders         | `workspace_exit_research/signal_cohort_loader.py` | SQL batch load entries + bars                   |
+| Simulators      | `workspace_exit_research/policy_simulators/*.py`  | One module per policy family                    |
+| Metrics         | `workspace_exit_research/metrics_engine.py`       | Mean/median/std/CI, stratified rollups          |
+| Reports         | `workspace_exit_research/reports.py`              | Dashboard DTO builders                          |
+| Service         | `app/services/exit_research_service.py`           | Transactions, backfill orchestration            |
+| Repositories    | `app/db/repositories/exit_research_*`             | Upserts, idempotent runs                        |
+| API             | `app/api/v1/exit_analytics.py`                    | REST under `/analytics/exit`                    |
+| Script          | `scripts/backfill_sprint83_exit_research.py`      | CLI backfill                                    |
+
 
 **Dependency rule:** `workspace_exit_research` may import `app.validation.forward_returns`, `app.validation.statistics` (bootstrap helpers), `app.ranking.math_utils` (DMA, ATR), and `app.factor_analytics.window` (train/holdout splits). It must **not** import ranking engine, validation report builders, regime policy engine, or factor metrics engine.
 
@@ -88,13 +90,15 @@ A **signal entry** is one `(ranking_run_id, stock_id)` observation where:
 
 ### 1.4 Exit policy families (five research questions)
 
-| ID | Policy family | Question |
-|----|---------------|----------|
-| Q1 | `FIXED_HOLD` | Does edge persist at fixed 5/10/20/40/60 **trading-day** holds? |
-| Q2 | `ALPHA_DECAY` | How does forward return evolve day 1–60? |
-| Q3 | `RANK_DETERIORATION` | Should we exit when cross-sectional strength falls below percentile thresholds? |
-| Q4 | `REGIME_TRANSITION` | Should we exit on regime deterioration (immediate / delayed)? |
-| Q5 | `TREND_FAILURE` | Do price-based stops (DMA, breakout level, ATR trail) protect edge? |
+
+| ID  | Policy family        | Question                                                                        |
+| --- | -------------------- | ------------------------------------------------------------------------------- |
+| Q1  | `FIXED_HOLD`         | Does edge persist at fixed 5/10/20/40/60 **trading-day** holds?                 |
+| Q2  | `ALPHA_DECAY`        | How does forward return evolve day 1–60?                                        |
+| Q3  | `RANK_DETERIORATION` | Should we exit when cross-sectional strength falls below percentile thresholds? |
+| Q4  | `REGIME_TRANSITION`  | Should we exit on regime deterioration (immediate / delayed)?                   |
+| Q5  | `TREND_FAILURE`      | Do price-based stops (DMA, breakout level, ATR trail) protect edge?             |
+
 
 Each policy produces an **exit trading day index** (days after entry) and **holding-period return** (entry close → exit close, trading days).
 
@@ -115,13 +119,15 @@ POST /analytics/exit/backfill
 
 ### 1.6 Integration without impacting validated outputs
 
-| Concern | Mitigation |
-|---------|------------|
-| Ranking scores change | Never call `RankingEngine` |
-| Validation IC changes | Never call `SignalValidationService.compute_run` |
-| Regime labels change | Read `ranking_validation_reports.regime_label` + `regime_history` as stored; version via `parameter_set` hash |
-| Factor IC backfill | No writes to `factor_*` tables; no reads required for core path |
-| Regime backtest | No writes to `regime_backtest_runs` |
+
+| Concern               | Mitigation                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Ranking scores change | Never call `RankingEngine`                                                                                    |
+| Validation IC changes | Never call `SignalValidationService.compute_run`                                                              |
+| Regime labels change  | Read `ranking_validation_reports.regime_label` + `regime_history` as stored; version via `parameter_set` hash |
+| Factor IC backfill    | No writes to `factor_`* tables; no reads required for core path                                               |
+| Regime backtest       | No writes to `regime_backtest_runs`                                                                           |
+
 
 Register workspace runs in `experiment_runs` (optional FK) for lineage — same pattern as regime backtest — **without** implying production activation.
 
@@ -177,13 +183,15 @@ class ExitOutcome:
 
 **Q1 — Fixed hold (`FIXED_HOLD`)**
 
+
 | `policy_variant` | `holding_days` |
-|------------------|----------------|
-| `FIXED_HOLD_5` | 5 |
-| `FIXED_HOLD_10` | 10 |
-| `FIXED_HOLD_20` | 20 |
-| `FIXED_HOLD_40` | 40 |
-| `FIXED_HOLD_60` | 60 |
+| ---------------- | -------------- |
+| `FIXED_HOLD_5`   | 5              |
+| `FIXED_HOLD_10`  | 10             |
+| `FIXED_HOLD_20`  | 20             |
+| `FIXED_HOLD_40`  | 40             |
+| `FIXED_HOLD_60`  | 60             |
+
 
 Use `compute_forward_return(bars, entry_date, n)` from `app/validation/forward_returns.py`. Horizons 5/10/20/60 may reuse `ranking_performance_snapshots` when non-NULL; **40-day must always be computed from bars** (not in snapshot schema).
 
@@ -207,21 +215,25 @@ Use `compute_forward_return(bars, entry_date, n)` from `app/validation/forward_r
 - **Daily regime:** Prefer `regime_history` for benchmark `^NSEI`; fallback to validation report regime on ranking dates only.
 - Variants:
 
-| `policy_variant` | Behavior |
-|------------------|----------|
-| `REGIME_EXIT_IMMEDIATE` | Exit close on first deterioration day |
-| `REGIME_EXIT_DELAY_3` | Exit close 3 trading days after deterioration signal |
-| `REGIME_EXIT_DELAY_5` | Exit close 5 trading days after deterioration signal |
-| `REGIME_EXIT_NEVER` | Hold 60 trading days (benchmark control) |
+
+| `policy_variant`        | Behavior                                             |
+| ----------------------- | ---------------------------------------------------- |
+| `REGIME_EXIT_IMMEDIATE` | Exit close on first deterioration day                |
+| `REGIME_EXIT_DELAY_3`   | Exit close 3 trading days after deterioration signal |
+| `REGIME_EXIT_DELAY_5`   | Exit close 5 trading days after deterioration signal |
+| `REGIME_EXIT_NEVER`     | Hold 60 trading days (benchmark control)             |
+
 
 **Q5 — Trend failure (`TREND_FAILURE`)** — fixed parameters, no grid search
 
-| `policy_variant` | Rule |
-|------------------|------|
-| `TREND_CLOSE_BELOW_DMA20` | Exit when close < SMA(20) computed from bars through that day |
-| `TREND_CLOSE_BELOW_DMA50` | Exit when close < SMA(50) |
-| `TREND_CLOSE_BELOW_BREAKOUT` | Exit when close < `breakout_level` (63-day high close frozen at entry) |
-| `TREND_ATR_TRAIL_2X` | Trailing stop = max(entry_close, daily peak close since entry) − 2.0 × ATR(14) at entry; exit when close breaches stop |
+
+| `policy_variant`             | Rule                                                                                                                   |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `TREND_CLOSE_BELOW_DMA20`    | Exit when close < SMA(20) computed from bars through that day                                                          |
+| `TREND_CLOSE_BELOW_DMA50`    | Exit when close < SMA(50)                                                                                              |
+| `TREND_CLOSE_BELOW_BREAKOUT` | Exit when close < `breakout_level` (63-day high close frozen at entry)                                                 |
+| `TREND_ATR_TRAIL_2X`         | Trailing stop = max(entry_close, daily peak close since entry) − 2.0 × ATR(14) at entry; exit when close breaches stop |
+
 
 ### 2.3 Aggregated metric record
 
@@ -254,11 +266,11 @@ No `market_cap` column exists today. At signal materialization:
 
 1. Prefer Yahoo `marketCap` from provider metadata cache if available in ingest snapshot (future-friendly).
 2. Else proxy: `median(close × volume, 20d) * float_shares` when shares outstanding ingested.
-3. Else **ADTV proxy** using existing universe filter inputs:  
-   - LARGE: 20d ADTV ≥ ₹50 Cr  
-   - MID: ₹10–50 Cr  
-   - SMALL: < ₹10 Cr  
-   - UNKNOWN: insufficient bars  
+3. Else **ADTV proxy** using existing universe filter inputs:
+  - LARGE: 20d ADTV ≥ ₹50 Cr  
+  - MID: ₹10–50 Cr  
+  - SMALL: < ₹10 Cr  
+  - UNKNOWN: insufficient bars
 
 Buckets are **stored on `exit_research_signals`** so stratification is stable across reruns. Changing bucket rules requires a new `parameter_set` version, not silent mutation.
 
@@ -305,16 +317,18 @@ app/api/v1/exit_analytics.py
 
 ### 3.3 Read dependencies (unchanged tables)
 
-| Table | Use |
-|-------|-----|
-| `ranking_runs` | Date, strategy, universe filters |
-| `ranking_results` | Rank, score, top-decile membership |
+
+| Table                           | Use                                       |
+| ------------------------------- | ----------------------------------------- |
+| `ranking_runs`                  | Date, strategy, universe filters          |
+| `ranking_results`               | Rank, score, top-decile membership        |
 | `ranking_performance_snapshots` | Optional fast path for 5/10/20/60 returns |
-| `ranking_validation_reports` | Regime at entry, validation gate |
-| `regime_history` | Daily regime path for Q4 |
-| `market_data` | Prices, DMA, ATR, forward paths |
-| `stocks` | Sector |
-| `experiment_runs` | Optional lineage |
+| `ranking_validation_reports`    | Regime at entry, validation gate          |
+| `regime_history`                | Daily regime path for Q4                  |
+| `market_data`                   | Prices, DMA, ATR, forward paths           |
+| `stocks`                        | Sector                                    |
+| `experiment_runs`               | Optional lineage                          |
+
 
 ---
 
@@ -322,21 +336,23 @@ app/api/v1/exit_analytics.py
 
 ### 4.1 `exit_research_runs`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `status` | VARCHAR(16) | pending, running, completed, failed |
-| `strategy_name`, `strategy_version` | VARCHAR | Default `breakout_v1` / `1.0.0` |
-| `universe_code` | VARCHAR(64) | Default `NIFTY_500` |
-| `as_of_date_start`, `as_of_date_end` | DATE | |
-| `holdout_start_date` | DATE | Default `2025-01-01` |
-| `entry_filter` | JSONB | e.g. `{"top_decile_only": true}` |
-| `parameter_set` | JSONB | Policy thresholds, bucket rules version |
-| `signals_materialized` | INT | |
-| `metrics_written` | INT | |
-| `started_at`, `completed_at` | TIMESTAMPTZ | |
-| `error_message` | TEXT | |
-| `experiment_run_id` | UUID FK nullable | → `experiment_runs` |
+
+| Column                               | Type             | Notes                                   |
+| ------------------------------------ | ---------------- | --------------------------------------- |
+| `id`                                 | UUID PK          |                                         |
+| `status`                             | VARCHAR(16)      | pending, running, completed, failed     |
+| `strategy_name`, `strategy_version`  | VARCHAR          | Default `breakout_v1` / `1.0.0`         |
+| `universe_code`                      | VARCHAR(64)      | Default `NIFTY_500`                     |
+| `as_of_date_start`, `as_of_date_end` | DATE             |                                         |
+| `holdout_start_date`                 | DATE             | Default `2025-01-01`                    |
+| `entry_filter`                       | JSONB            | e.g. `{"top_decile_only": true}`        |
+| `parameter_set`                      | JSONB            | Policy thresholds, bucket rules version |
+| `signals_materialized`               | INT              |                                         |
+| `metrics_written`                    | INT              |                                         |
+| `started_at`, `completed_at`         | TIMESTAMPTZ      |                                         |
+| `error_message`                      | TEXT             |                                         |
+| `experiment_run_id`                  | UUID FK nullable | → `experiment_runs`                     |
+
 
 **Index:** `(status, started_at)`
 
@@ -344,20 +360,22 @@ app/api/v1/exit_analytics.py
 
 One row per signal entry (idempotent per run config).
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `exit_research_run_id` | UUID FK | |
-| `ranking_run_id`, `stock_id` | UUID FK | |
-| `entry_date` | DATE | |
-| `entry_rank`, `entry_score`, `entry_close` | | |
-| `regime_label` | VARCHAR(32) | |
-| `sector` | VARCHAR(64) nullable | |
-| `market_cap_bucket` | VARCHAR(16) | |
-| `signal_strength_decile` | SMALLINT | 1–10 |
-| `dataset_split` | VARCHAR(16) | TRAIN/HOLDOUT |
-| `breakout_level`, `dma_20`, `dma_50`, `atr_14` | NUMERIC nullable | Frozen structural |
-| `created_at` | TIMESTAMPTZ | |
+
+| Column                                         | Type                 | Notes             |
+| ---------------------------------------------- | -------------------- | ----------------- |
+| `id`                                           | UUID PK              |                   |
+| `exit_research_run_id`                         | UUID FK              |                   |
+| `ranking_run_id`, `stock_id`                   | UUID FK              |                   |
+| `entry_date`                                   | DATE                 |                   |
+| `entry_rank`, `entry_score`, `entry_close`     |                      |                   |
+| `regime_label`                                 | VARCHAR(32)          |                   |
+| `sector`                                       | VARCHAR(64) nullable |                   |
+| `market_cap_bucket`                            | VARCHAR(16)          |                   |
+| `signal_strength_decile`                       | SMALLINT             | 1–10              |
+| `dataset_split`                                | VARCHAR(16)          | TRAIN/HOLDOUT     |
+| `breakout_level`, `dma_20`, `dma_50`, `atr_14` | NUMERIC nullable     | Frozen structural |
+| `created_at`                                   | TIMESTAMPTZ          |                   |
+
 
 **Unique:** `(exit_research_run_id, ranking_run_id, stock_id)`
 
@@ -367,38 +385,42 @@ One row per signal entry (idempotent per run config).
 
 Aggregate results per policy × stratum × split.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `exit_research_run_id` | UUID FK | |
-| `policy_family` | VARCHAR(32) | |
-| `policy_variant` | VARCHAR(64) | |
-| `stratum_type` | VARCHAR(32) | ALL, REGIME, SECTOR, CAP_BUCKET, SIGNAL_DECILE |
-| `stratum_value` | VARCHAR(64) | e.g. `BULL_LOW_VOL`, `Energy` |
-| `dataset_split` | VARCHAR(16) | ALL, TRAIN, HOLDOUT |
-| `sample_size` | INT | |
-| `mean_return`, `median_return`, `std_dev` | NUMERIC(18,8) | |
-| `hit_rate` | NUMERIC(18,8) | |
-| `confidence_interval_low`, `confidence_interval_high` | NUMERIC(18,8) | |
-| `avg_holding_days`, `median_holding_days` | NUMERIC nullable | Q3–Q5 |
-| `max_drawdown` | NUMERIC(18,8) nullable | |
-| `status` | VARCHAR(32) | ok, INSUFFICIENT_SAMPLE_SIZE |
-| `extra` | JSONB | Policy-specific (exit reason mix, censorship rate) |
+
+| Column                                                | Type                   | Notes                                              |
+| ----------------------------------------------------- | ---------------------- | -------------------------------------------------- |
+| `id`                                                  | UUID PK                |                                                    |
+| `exit_research_run_id`                                | UUID FK                |                                                    |
+| `policy_family`                                       | VARCHAR(32)            |                                                    |
+| `policy_variant`                                      | VARCHAR(64)            |                                                    |
+| `stratum_type`                                        | VARCHAR(32)            | ALL, REGIME, SECTOR, CAP_BUCKET, SIGNAL_DECILE     |
+| `stratum_value`                                       | VARCHAR(64)            | e.g. `BULL_LOW_VOL`, `Energy`                      |
+| `dataset_split`                                       | VARCHAR(16)            | ALL, TRAIN, HOLDOUT                                |
+| `sample_size`                                         | INT                    |                                                    |
+| `mean_return`, `median_return`, `std_dev`             | NUMERIC(18,8)          |                                                    |
+| `hit_rate`                                            | NUMERIC(18,8)          |                                                    |
+| `confidence_interval_low`, `confidence_interval_high` | NUMERIC(18,8)          |                                                    |
+| `avg_holding_days`, `median_holding_days`             | NUMERIC nullable       | Q3–Q5                                              |
+| `max_drawdown`                                        | NUMERIC(18,8) nullable |                                                    |
+| `status`                                              | VARCHAR(32)            | ok, INSUFFICIENT_SAMPLE_SIZE                       |
+| `extra`                                               | JSONB                  | Policy-specific (exit reason mix, censorship rate) |
+
 
 **Unique:** `(exit_research_run_id, policy_family, policy_variant, stratum_type, stratum_value, dataset_split)`
 
 ### 4.4 `exit_research_alpha_decay_points` (Q2 only)
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `exit_research_run_id` | UUID FK | |
-| `forward_day` | SMALLINT | 1–60 |
-| `stratum_type`, `stratum_value` | | Same stratification |
-| `dataset_split` | VARCHAR(16) | |
-| `sample_size` | INT | |
-| `mean_return`, `median_return` | NUMERIC | |
-| `cumulative_mean_return` | NUMERIC | |
-| `status` | VARCHAR(32) | |
+
+| Column                          | Type        | Notes               |
+| ------------------------------- | ----------- | ------------------- |
+| `exit_research_run_id`          | UUID FK     |                     |
+| `forward_day`                   | SMALLINT    | 1–60                |
+| `stratum_type`, `stratum_value` |             | Same stratification |
+| `dataset_split`                 | VARCHAR(16) |                     |
+| `sample_size`                   | INT         |                     |
+| `mean_return`, `median_return`  | NUMERIC     |                     |
+| `cumulative_mean_return`        | NUMERIC     |                     |
+| `status`                        | VARCHAR(32) |                     |
+
 
 **Unique:** `(exit_research_run_id, forward_day, stratum_type, stratum_value, dataset_split)`
 
@@ -414,30 +436,34 @@ Store per-signal outcomes for API drill-down (cap volume; enable via `parameter_
 
 ### 5.1 Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/backfill` | Start materialization + simulation for date window |
-| GET | `/runs` | List `exit_research_runs` |
-| GET | `/runs/{run_id}` | Run status + counts |
-| GET | `/policy-comparison` | Dashboard 1 — all variants, ALL stratum |
-| GET | `/alpha-decay` | Dashboard 2 — curve + summary metrics |
-| GET | `/rank-deterioration` | Dashboard 3 — threshold sweep |
-| GET | `/regime-transition` | Dashboard 4 — delay variants |
-| GET | `/trend-failure` | Dashboard 5 — price stop variants |
-| GET | `/signals/sample` | Optional: paginated sample for audit |
+
+| Method | Path                  | Description                                        |
+| ------ | --------------------- | -------------------------------------------------- |
+| POST   | `/backfill`           | Start materialization + simulation for date window |
+| GET    | `/runs`               | List `exit_research_runs`                          |
+| GET    | `/runs/{run_id}`      | Run status + counts                                |
+| GET    | `/policy-comparison`  | Dashboard 1 — all variants, ALL stratum            |
+| GET    | `/alpha-decay`        | Dashboard 2 — curve + summary metrics              |
+| GET    | `/rank-deterioration` | Dashboard 3 — threshold sweep                      |
+| GET    | `/regime-transition`  | Dashboard 4 — delay variants                       |
+| GET    | `/trend-failure`      | Dashboard 5 — price stop variants                  |
+| GET    | `/signals/sample`     | Optional: paginated sample for audit               |
+
 
 ### 5.2 Common query parameters
 
-| Param | Required | Description |
-|-------|----------|-------------|
-| `run_id` | Yes* | Latest completed if omitted (explicit default rules in service) |
-| `universe_code` | No | Filter |
-| `strategy_name` | No | Default `breakout_v1` |
-| `dataset_split` | No | `HOLDOUT` default for research conclusions |
-| `regime_label` | No | Filter stratum |
-| `sector` | No | |
-| `market_cap_bucket` | No | |
-| `signal_strength_decile` | No | |
+
+| Param                    | Required | Description                                                     |
+| ------------------------ | -------- | --------------------------------------------------------------- |
+| `run_id`                 | Yes*     | Latest completed if omitted (explicit default rules in service) |
+| `universe_code`          | No       | Filter                                                          |
+| `strategy_name`          | No       | Default `breakout_v1`                                           |
+| `dataset_split`          | No       | `HOLDOUT` default for research conclusions                      |
+| `regime_label`           | No       | Filter stratum                                                  |
+| `sector`                 | No       |                                                                 |
+| `market_cap_bucket`      | No       |                                                                 |
+| `signal_strength_decile` | No       |                                                                 |
+
 
 ### 5.3 Response contract (metrics row)
 
@@ -528,11 +554,13 @@ Uses `get_session_factory()()` (not `SessionLocal`).
 
 ### 6.4 Runtime estimates
 
-| Phase | Risk | Mitigation |
-|-------|------|------------|
-| Rank path join | O(signals × days) | Pre-index runs by date; SQL window functions |
-| Bar load | Large IO | Batch by stock_id chunks of 50 |
-| Bootstrap | CPU | Stratified aggregates only; bootstrap final means not per-signal |
+
+| Phase          | Risk              | Mitigation                                                       |
+| -------------- | ----------------- | ---------------------------------------------------------------- |
+| Rank path join | O(signals × days) | Pre-index runs by date; SQL window functions                     |
+| Bar load       | Large IO          | Batch by stock_id chunks of 50                                   |
+| Bootstrap      | CPU               | Stratified aggregates only; bootstrap final means not per-signal |
+
 
 Target: full NIFTY_500 × 2y history < 15 minutes on dev hardware (measure in implementation).
 
@@ -579,14 +607,16 @@ Front-end is out of scope; APIs return dashboard-ready aggregates.
 
 ### 8.1 Research validity checks (automated in job)
 
-| Check | Rule |
-|-------|------|
-| Entry lookahead | Entry close must be last bar on `as_of_date`, not future |
-| Regime lookahead | Regime for day `d` uses bars ≤ `d` only (reuse validation regime rules) |
-| Rank lookahead | Rank on day `d` uses ranking run with `as_of_date <= d` |
-| Holdout integrity | Default reporting uses `HOLDOUT` split; train for exploration only |
-| Censorship disclosure | Report `% censored` per policy in `extra` |
-| Minimum n | Enforce n≥30 for `status=ok` |
+
+| Check                 | Rule                                                                    |
+| --------------------- | ----------------------------------------------------------------------- |
+| Entry lookahead       | Entry close must be last bar on `as_of_date`, not future                |
+| Regime lookahead      | Regime for day `d` uses bars ≤ `d` only (reuse validation regime rules) |
+| Rank lookahead        | Rank on day `d` uses ranking run with `as_of_date <= d`                 |
+| Holdout integrity     | Default reporting uses `HOLDOUT` split; train for exploration only      |
+| Censorship disclosure | Report `% censored` per policy in `extra`                               |
+| Minimum n             | Enforce n≥30 for `status=ok`                                            |
+
 
 ### 8.2 Manual validation checklist (post-backfill)
 
@@ -606,15 +636,17 @@ Front-end is out of scope; APIs return dashboard-ready aggregates.
 
 ### 9.1 Unit tests (`tests/unit/workspace_exit_research/`)
 
-| Module | Cases |
-|--------|-------|
-| `fixed_hold` | Known bar series → exact return |
-| `alpha_decay` | 60-day path monotonicity |
-| `rank_deterioration` | Threshold breach day |
-| `regime_transition` | Immediate vs delay counting |
-| `trend_failure` | DMA cross, ATR trail ratchet |
-| `metrics_engine` | n<30 → INSUFFICIENT; bootstrap CI bounds |
-| `signal_cohort_loader` | Top decile filter |
+
+| Module                 | Cases                                    |
+| ---------------------- | ---------------------------------------- |
+| `fixed_hold`           | Known bar series → exact return          |
+| `alpha_decay`          | 60-day path monotonicity                 |
+| `rank_deterioration`   | Threshold breach day                     |
+| `regime_transition`    | Immediate vs delay counting              |
+| `trend_failure`        | DMA cross, ATR trail ratchet             |
+| `metrics_engine`       | n<30 → INSUFFICIENT; bootstrap CI bounds |
+| `signal_cohort_loader` | Top decile filter                        |
+
 
 ### 9.2 Integration tests
 
@@ -636,25 +668,29 @@ Extend `tests/conftest.py` with miniature ranking run + 30 bars/market_data patt
 
 ### 10.1 Bias and methodological risks
 
-| Risk | Severity | Mitigation in design |
-|------|----------|----------------------|
-| **Survivorship bias** | High | Universe membership uses historical `universe_memberships`; include delisted if present in DB; document if only active stocks |
-| **Look-ahead bias** | High | Frozen entry levels; ranks/regimes dated ≤ evaluation day; code review checklist |
-| **Holdout contamination** | Medium | Default API `dataset_split=HOLDOUT`; never tune thresholds on holdout |
-| **Sparse strata** | High | n<30 → INSUFFICIENT_SAMPLE_SIZE; do not merge strata without explicit rule |
-| **Rank path staleness** | Medium | Rank updates only on ranking dates (~daily backtest); document as structural limitation |
-| **Overlapping signals** | Medium | Multiple entries same stock across dates treated independent (research choice); document; optional de-duplication in v2 |
-| **Friction ignored** | Low | Research-only; disclose |
-| **Multiple testing** | Medium | Many policy variants → emphasize pre-registration of primary comparisons (fixed 20d vs best exit) in research template |
+
+| Risk                      | Severity | Mitigation in design                                                                                                          |
+| ------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Survivorship bias**     | High     | Universe membership uses historical `universe_memberships`; include delisted if present in DB; document if only active stocks |
+| **Look-ahead bias**       | High     | Frozen entry levels; ranks/regimes dated ≤ evaluation day; code review checklist                                              |
+| **Holdout contamination** | Medium   | Default API `dataset_split=HOLDOUT`; never tune thresholds on holdout                                                         |
+| **Sparse strata**         | High     | n<30 → INSUFFICIENT_SAMPLE_SIZE; do not merge strata without explicit rule                                                    |
+| **Rank path staleness**   | Medium   | Rank updates only on ranking dates (~daily backtest); document as structural limitation                                       |
+| **Overlapping signals**   | Medium   | Multiple entries same stock across dates treated independent (research choice); document; optional de-duplication in v2       |
+| **Friction ignored**      | Low      | Research-only; disclose                                                                                                       |
+| **Multiple testing**      | Medium   | Many policy variants → emphasize pre-registration of primary comparisons (fixed 20d vs best exit) in research template        |
+
 
 ### 10.2 Architectural risks
 
-| Risk | Mitigation |
-|------|------------|
-| Scope creep into trading | Hard boundary in domain-boundaries.md update |
-| Package coupling | No imports from regime_policy / factor_analytics engines |
-| DB growth (`signal_outcomes`) | Off by default |
-| Runtime | Batched SQL + chunked bar loads |
+
+| Risk                          | Mitigation                                               |
+| ----------------------------- | -------------------------------------------------------- |
+| Scope creep into trading      | Hard boundary in domain-boundaries.md update             |
+| Package coupling              | No imports from regime_policy / factor_analytics engines |
+| DB growth (`signal_outcomes`) | Off by default                                           |
+| Runtime                       | Batched SQL + chunked bar loads                          |
+
 
 ### 10.3 Missing research questions (future, not 8.3)
 
@@ -676,14 +712,16 @@ Extend `tests/conftest.py` with miniature ranking run + 30 bars/market_data patt
 
 ### 11.2 Documentation updates (implementation PR)
 
-| Doc | Change |
-|-----|--------|
-| `docs/DATABASE_SCHEMA.md` | Sprint 8.3 tables |
-| `docs/API_REFERENCE.md` | `/analytics/exit/*` |
+
+| Doc                         | Change                            |
+| --------------------------- | --------------------------------- |
+| `docs/DATABASE_SCHEMA.md`   | Sprint 8.3 tables                 |
+| `docs/API_REFERENCE.md`     | `/analytics/exit/*`               |
 | `docs/domain-boundaries.md` | `workspace_exit_research` section |
-| `docs/HANDOFF.md` | Sprint 8.3 runbook link |
-| `docs/SPRINT_HISTORY.md` | Entry after ship |
-| `docs/DECISION_LOG.md` | ADR-022 Exit research isolation |
+| `docs/HANDOFF.md`           | Sprint 8.3 runbook link           |
+| `docs/SPRINT_HISTORY.md`    | Entry after ship                  |
+| `docs/DECISION_LOG.md`      | ADR-022 Exit research isolation   |
+
 
 ### 11.3 Rollout
 
@@ -702,8 +740,8 @@ Drop tables via downgrade revision; no upstream data affected.
 
 ### Phase 0 — Design approval (current)
 
-- [x] Design document
-- [ ] ADR-022 stakeholder sign-off
+- Design document
+- ADR-022 stakeholder sign-off
 
 ### Phase 1 — Schema & skeleton (3–4 days)
 
@@ -739,7 +777,7 @@ Drop tables via downgrade revision; no upstream data affected.
 ### Phase 6 — Docs & handoff (1 day)
 
 - Update HANDOFF, API_REFERENCE, domain-boundaries
-- No changes to `app/ranking/**`, `app/validation/**`, `app/regime_policy/**`, `app/factor_analytics/**` except shared util imports
+- No changes to `app/ranking/`**, `app/validation/`**, `app/regime_policy/**`, `app/factor_analytics/**` except shared util imports
 
 **Estimated effort:** 18–22 dev days (single engineer), excluding UI.
 
@@ -778,24 +816,28 @@ With ~15 policy variants × 5 strata types × multiple splits, exhaustive search
 
 ### Extension points (safe)
 
-| Extension | Isolation |
-|-----------|-----------|
-| New policy variant | Add simulator module + enum; no upstream change |
-| New stratification | Add column on signals + metrics stratum_type |
-| LLM narrative (Sprint 8.4+) | Read metrics tables only |
-| Paper trading | Separate sprint; consumes **selected** policy externally |
+
+| Extension                   | Isolation                                                |
+| --------------------------- | -------------------------------------------------------- |
+| New policy variant          | Add simulator module + enum; no upstream change          |
+| New stratification          | Add column on signals + metrics stratum_type             |
+| LLM narrative (Sprint 8.4+) | Read metrics tables only                                 |
+| Paper trading               | Separate sprint; consumes **selected** policy externally |
+
 
 ---
 
 ## Research Standards Compliance Matrix
 
-| Requirement | Design element |
-|-------------|----------------|
+
+| Requirement                                                    | Design element                                                   |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- |
 | Stratify by regime, sector, cap bucket, signal-strength decile | `stratum_type` on metrics; dimensions on `exit_research_signals` |
-| sample_size, mean, median, std_dev, CI | `exit_research_policy_metrics` columns |
-| n < 30 → INSUFFICIENT_SAMPLE_SIZE | `MIN_EXIT_RESEARCH_SAMPLE_SIZE = 30` in constants |
-| No ranking/validation/regime/factor changes | Isolation rules §1.6 |
-| Five dashboards | §7 + API §5.1 |
+| sample_size, mean, median, std_dev, CI                         | `exit_research_policy_metrics` columns                           |
+| n < 30 → INSUFFICIENT_SAMPLE_SIZE                              | `MIN_EXIT_RESEARCH_SAMPLE_SIZE = 30` in constants                |
+| No ranking/validation/regime/factor changes                    | Isolation rules §1.6                                             |
+| Five dashboards                                                | §7 + API §5.1                                                    |
+
 
 ---
 
@@ -805,3 +847,4 @@ With ~15 policy variants × 5 strata types × multiple splits, exhaustive search
 - `docs/sprint81-regime-aware-trading.md` — replay + bootstrap patterns
 - `docs/sprint7-platform-traceability.md` — data lineage
 - `docs/ROADMAP.md` — Sprint 8.3 entry
+
