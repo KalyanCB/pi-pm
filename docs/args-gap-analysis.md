@@ -1,120 +1,225 @@
-# ARGS Gap Analysis — AICS → ARGS on Pi-PM
+# ARGS Design & Integration Summary (PO Review)
 
-**Date:** 2026-06-08  
-**Reference:** `docs/aics-ai-investment-committee-architecture.md`  
-**Codename:** ARGS (AI Research & Governance System)
+**Product:** Pi-PM — ARGS (AI Research & Governance System)  
+**Status:** Phase 1 **shipped** on branch `feature/args-phase1` (commits `04fb536`, `2f16492`)  
+**Last updated:** 2026-06-08  
+**Audience:** Product Owner, engineering leads  
+**Deep references:**
 
-## Constitutional mapping
+- Architecture (source design): `docs/aics-ai-investment-committee-architecture.md`
+- Implementation status: `docs/args-implementation-plan.md`
+- Engineering audit: `docs/args-phase1-audit-report.md`
 
+---
 
-| AICS concept             | ARGS concept                             | Phase 1 status                                                  |
-| ------------------------ | ---------------------------------------- | --------------------------------------------------------------- |
-| Investment committee run | `research_runs`                          | New table                                                       |
-| CIO Agent                | CRO Agent                                | Summarize/aggregate/consensus/disagreement only                 |
-| CIO decisions            | `cro_reviews`                            | No `recommendation_label`, `position_size_pct`, `stop_loss_pct` |
-| Final recommendations    | `governance_research_reports` + evidence | Research narrative only; no BUY/SELL/HOLD                       |
-| `/committee/*`           | `/research/*`                            | New router                                                      |
+## 1. Executive summary
 
+ARGS is a **research and explainability layer** on top of Pi-PM’s deterministic ranking engine. It does **not** make investment decisions.
 
-**Hard rules (unchanged intent):** LLMs never rank securities, never emit trade decisions, never size positions or stops. Deterministic engines own investment decisions.
+After rankings are produced, ARGS:
 
-## Naming conflict: `research_reports`
+1. Builds an immutable **Investment Review Packet** per top-ranked stock.
+2. Runs five **research committees** (TARC, FRC, QRC, NRCC, RC) in parallel.
+3. Aggregates committee output via a **CRO** (Chief Research Officer agent).
+4. Persists a **governance research report** with evidence and full **lineage** back to the ranking run.
 
+**PO takeaway:** ARGS helps analysts and PMs **understand why names ranked highly** and **what committees agree or disagree on** — without replacing the ranking engine or emitting buy/sell/hold.
 
-| Table / model                                    | Purpose                                                         | ARGS action                                                                   |
-| ------------------------------------------------ | --------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `research_reports` / `ResearchReport`            | Per-stock LLM equity research (`app/models/research_report.py`) | **Keep unchanged**                                                            |
-| User term "research_reports" (governance output) | Multi-committee governance artifact                             | `**governance_research_reports`** + `**governance_research_report_evidence**` |
+---
 
+## 2. Product principles (non-negotiable)
 
-Models: `GovernanceResearchReport`, `GovernanceResearchReportEvidence`.
+| Rule | Product meaning |
+|------|-----------------|
+| LLMs never rank securities | Rank comes only from `ranking_runs` / `ranking_results` |
+| LLMs never emit trade actions | No BUY/SELL/HOLD, sizing, or stop-loss in ARGS outputs |
+| Deterministic engines decide | Rankings, validation, factor IC, exit research remain source of truth |
+| Research labels only | Committees may use `supportive` / `neutral` / `cautious` — not trade labels |
+| Evidence required | Committee findings must cite packet fields (`supporting_evidence`) |
 
-## Existing Pi-PM capabilities → ARGS inputs
+These are enforced in schema, prompts, runtime validation, and tests.
 
-### Ranking (`app/ranking/`, `ranking_runs`, `ranking_results`)
+---
 
-- **Reuse:** `RankingRunRepository`, `RankingResultRepository.list_top`
-- **Packet field:** `ranking` block (rank, composite_score, score_components, inputs_hash)
-- **Gap:** None for Phase 1; read-only
+## 3. Naming: AICS → ARGS
 
-### Validation (`app/validation/`, `ranking_validation_reports`, horizon/decile metrics)
+| Original architecture (AICS) | ARGS (implemented) | Notes |
+|-------------------------------|-------------------|--------|
+| `investment_committee_runs` | `research_runs` | Top-level workflow run |
+| CIO Agent | **CRO Agent** | Summarize / aggregate / dissent only |
+| `cio_decisions` | `cro_reviews` | No trade recommendation fields |
+| `final_recommendations` | `governance_research_reports` | Research narrative, not orders |
+| `/api/v1/committee/*` | `/api/v1/research/*` | Public API prefix |
 
-- **Reuse:** `RankingValidationRepository`, `ValidationMetricsRepository`
-- **Packet field:** `validation` (report_id, status, horizon_metrics, decile_metrics, regime_label)
-- **Gap:** `require_completed_validation` gate in run config (Phase 1 supported)
+**Important:** Legacy table `research_reports` (per-stock equity notes) is **unchanged**. ARGS output lives in `governance_research_reports`.
 
-### Factor analytics (`factor_performance_metrics`, `FactorPerformanceMetricRepository`)
+---
 
-- **Reuse:** Latest IC summaries by strategy/universe/regime
-- **Packet field:** `quant_evidence.factor_ic`
-- **Gap:** Optional empty when no factor run exists (QRC cites absence)
+## 4. User journey (Phase 1)
 
-### Exit research (`exit_research_`*, `ExitResearchMetricRepository`)
+```mermaid
+sequenceDiagram
+    participant PM as Portfolio / Research user
+    participant API as POST /api/v1/research/run
+    participant ARGS as ArgsResearchRunService
+    participant Rank as ranking_runs (existing)
+    participant DB as PostgreSQL
 
-- **Reuse:** Policy metrics / alpha decay for strategy
-- **Packet field:** `quant_evidence.exit_research`
-- **Gap:** Optional; stub committees tolerate missing exit block
+    PM->>Rank: Rankings already completed (daily batch or manual)
+    PM->>API: ranking_run_id, top_n, committee_codes
+    API->>ARGS: Start research run
+    ARGS->>DB: Build packets from ranking + validation + quant data
+    ARGS->>ARGS: Parallel committees (TARC…RC) + CRO
+    ARGS->>DB: Persist reviews, CRO, governance reports, lineage
+    PM->>API: GET /research/{id}/explain, /lineage, /packet
+```
 
-### Lineage (`run_lineage_records`, `RunLineageRepository`, `TraceabilityService`)
+**Prerequisite:** A **completed** `ranking_run_id`. Optionally completed validation (`require_completed_validation: true` by default).
 
-- **Reuse:** Same repository + link pattern as ranking/validation/daily batch
-- **Extend:** `LineageEntityType` / `LineageRelationshipType` in `app/core/constants.py`
-- **Gap:** New entity types for research_run, packet, committee_review, cro_review, governance_report
+---
 
-### Daily batch (`daily_batch_runs`, Sprint 8.6)
+## 5. What Pi-PM already provides (reused)
 
-- **Reuse:** Optional `daily_batch_run_id` on `research_runs`
-- **Gap:** Phase 2 — trigger research phase after rankings (not wired in Phase 1)
+| Capability | Pi-PM source | ARGS packet / workflow use |
+|------------|--------------|----------------------------|
+| Rankings | `ranking_runs`, `ranking_results` | Packet `ranking` block; workflow entry |
+| Validation | `ranking_validation_reports`, horizon/decile metrics | Packet `validation`; QRC input |
+| Factor IC | `factor_performance_metrics` | Packet `quant_evidence.factor_ic`; QRC input |
+| Exit research | `exit_research_policy_metrics` | Packet `quant_evidence.exit_research`; QRC input |
+| Regime | Validation regime + `strategy_regime_performance` | Packet `regime`; TARC/QRC input |
+| Historical returns | `ranking_performance_snapshots` | Packet `historical_performance`; RC input |
+| Market data | `market_data` | Packet `market_snapshot`; FRC input |
+| Lineage | `run_lineage_records` | Extended entity types for ARGS chain |
 
-### Research intelligence (`research_intelligence_`*, `/analytics/research-intelligence`)
+**No duplicate ranking or validation engines** — ARGS reads upstream artifacts only.
 
-- **Reuse:** Optional `research_context.research_intelligence_report_id` in packet
-- **Gap:** Not required for Phase 1 E2E
+---
 
-### Regime (`regime_history`, `strategy_regime_performance`)
+## 6. What ARGS adds (new)
 
-- **Reuse:** `RegimeAnalyticsRepository` / validation report regime_label
-- **Packet field:** `regime`
+| Component | Purpose | Phase 1 status |
+|-----------|---------|----------------|
+| `research_runs` | Orchestration run metadata | **Shipped** |
+| `investment_review_packets` | Immutable JSONB snapshot + content hash | **Shipped** |
+| `committee_reviews` | Per-committee LLM research output | **Shipped** |
+| `cro_reviews` | Aggregated committee synthesis | **Shipped** |
+| `governance_research_reports` | Final research artifact per symbol | **Shipped** |
+| `governance_research_report_evidence` | Structured evidence refs | **Shipped** |
+| `prompt_versions`, `llm_execution_records` | Prompt + model audit | **Shipped** |
+| `/api/v1/research/*` | Run, explain, lineage APIs | **Shipped** |
+| LangGraph workflow | Parallel committees → CRO | **Shipped** (minimal 2-node graph) |
+| Per-agent LLM routing | Provider/model/key per committee | **Shipped** |
 
-### Per-stock `research_reports`
+---
 
-- **No merge** with governance reports; separate product surface
+## 7. Committee design (Phase 1)
 
-## AICS tables deferred to Phase 2+
+| Committee | Role | Data allowed | LLM | Phase 1 status |
+|-----------|------|--------------|-----|----------------|
+| **TARC** | Technical interpretation | Ranking, score components, technical factors, regime | Yes | **Implemented** |
+| **FRC** | Fundamental context | Market snapshot, fundamental snapshot, research context | Yes | **Implemented** (fundamental block empty until data feed) |
+| **QRC** | Quant / validation grounding | Validation, decile, factor IC, exit research, regime | Yes | **Implemented** |
+| **NRCC** | News / catalysts | `news_snapshot` only | Yes | **Implemented** (degraded mode when news feed empty) |
+| **RC** | Risk research | Ranking, validation, historical performance, regime, portfolio context | Yes | **Implemented** (no sizing/stops) |
+| **CRO** | Synthesis | Committee outputs only | Yes | **Implemented** |
 
-- `committee_registry`, `committee_configurations` (in-code registry Phase 1)
-- `committee_votes`, `committee_execution_logs` (logs via `llm_execution_records` only)
-- `recommendation_explanations`, `recommendation_change_log`
-- `agent_execution_audit` (minimal audit via run status + LLM records)
+**NRCC degraded behavior:** If `news_snapshot.items` is empty, NRCC returns `status=degraded` with neutral research label — run continues.
 
-## Committee review schema (Phase 1)
+---
 
-Omit AICS `vote`, `recommendation`, trade-leaning `score`. Store:
+## 8. Investment Review Packet (canonical input)
 
-- `findings`, `strengths`, `risks`, `supporting_evidence`, `confidence`, `extensions`
-- Status: pending | completed | failed | degraded | timeout
+All committees receive the **same byte-identified packet** (`packet_hash` = SHA-256 of canonical JSON, excluding `packet_built_at`).
 
-## CRO review schema (Phase 1)
+| Packet section | Source | Phase 1 |
+|----------------|--------|---------|
+| `ranking` | `ranking_runs` + `ranking_results` | Populated |
+| `technical_factors` | Score components | Populated |
+| `validation` | Horizon + decile metrics | Populated when validation exists |
+| `regime` | Validation + strategy regime performance | Populated |
+| `quant_evidence.factor_ic` | Factor performance metrics | Populated when metrics exist |
+| `quant_evidence.exit_research` | Exit policy metrics | Populated when metrics exist |
+| `historical_performance` | Ranking performance snapshots | Populated when snapshots exist |
+| `market_snapshot` | Latest market bar + sector | Populated |
+| `fundamental_snapshot` | — | **Empty placeholder** (Phase 2 data feed) |
+| `news_snapshot` | — | **Empty** → NRCC degraded |
+| `source_lineage` | IDs for ranking, validation, quant runs | Populated |
 
-- `aggregation_snapshot`, `rationale`, `dissent_summary`, `confidence`
-- Explicitly **omit:** `recommendation_label`, `position_size_pct`, `stop_loss_pct`, `final_score` as trade signal
+---
 
-## Plugin parity (Phase 1)
+## 9. Lineage chain (explainability)
 
+Persisted edges (via `run_lineage_records`):
 
-| Committee | Phase 1                                                   |
-| --------- | --------------------------------------------------------- |
-| TARC      | LLM (mockable); ranking factors + technical metrics only  |
-| QRC       | LLM (mockable); validation/decile/factor/exit/regime only |
-| FRC       | Stub                                                      |
-| NRCC      | Stub                                                      |
-| RC        | Stub (no position_size / stop_loss in output)             |
+```text
+governance_research_report
+  → cro_review
+  → committee_review(s)
+  → investment_review_packet
+  → ranking_result
+  → ranking_run
+  (+ validation_report where applicable)
+```
 
+API: `GET /api/v1/research/{id}/lineage` and `GET /api/v1/research/{id}/explain`.
 
-## TARC doc (`docs/tarc-architecture-design.md`)
+---
 
-Rule-based TARC prototype remains reference for factor mapping; ARGS TARC is LLM interpretive layer on packet technical block only.
+## 10. LLM flexibility (loosely coupled)
 
-## Summary
+Each agent (TARC, FRC, QRC, NRCC, RC, CRO) resolves its own:
 
-Pi-PM already provides deterministic ranking, validation, factor IC, exit research, and lineage. ARGS Phase 1 adds governance workflow tables (distinct from `research_reports`), packet builder, committee plugins, CRO aggregation, LangGraph orchestration, and `/api/v1/research/`* — without trade recommendations or LLM ranking.
+- **Provider** (`mock`, `openai`, `openai_compatible`, or custom via `register_llm_provider`)
+- **Model**
+- **API key**
+- **Base URL**
+- **Timeout**
+
+Global env defaults with per-agent overrides. See `docs/args-implementation-plan.md` § LLM configuration.
+
+**Default in dev/test:** `ARGS_LLM_PROVIDER=mock` (no external API calls).
+
+---
+
+## 11. Gaps deferred to Phase 2
+
+| Item | Why deferred | PO impact |
+|------|--------------|-----------|
+| Daily batch auto-trigger after rankings | Ops integration | Manual/on-demand research runs only |
+| `fundamental_snapshot` data provider (FRC) | External data contract | FRC uses sector/market context only |
+| `news_snapshot` feed (NRCC) | News API contract | NRCC runs in degraded mode |
+| Postgres LangGraph checkpoint / replay | Ops complexity | Re-run = new `research_run` |
+| `committee_registry` DB table | In-code registry sufficient for Phase 1 | Config via env, not admin UI |
+| Daily batch `research_intelligence` phase hook | Separate sprint | No automatic nightly ARGS yet |
+| Production hardening (50+ tests, RBAC, audit export) | Phase 2 quality gate | See audit report |
+
+---
+
+## 12. PO acceptance checklist (Phase 1)
+
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | ARGS does not emit trade recommendations | **Pass** |
+| 2 | Research run requires existing ranking run | **Pass** |
+| 3 | Packet hash stable for same inputs | **Pass** |
+| 4 | Five committees + CRO execute end-to-end | **Pass** |
+| 5 | Explain + lineage APIs return persisted data | **Pass** |
+| 6 | Evidence validation on committee output | **Pass** |
+| 7 | Per-agent LLM configuration | **Pass** |
+| 8 | NRCC graceful degradation without news | **Pass** |
+| 9 | Factor/exit blocks in packet when upstream data exists | **Pass** (empty when no upstream runs) |
+| 10 | Automated daily ARGS after NIFTY batch | **Deferred Phase 2** |
+| 11 | Full fundamental + news data feeds | **Deferred Phase 2** |
+
+**Recommended PO decision:** **Accept Phase 1** for internal pilot / mock-LLM demo and **OpenAI pilot** with per-agent keys. **Defer production sign-off** until Phase 2 daily-batch hook and external data feeds are scoped.
+
+---
+
+## 13. Related documents
+
+| Document | Use |
+|----------|-----|
+| `docs/aics-ai-investment-committee-architecture.md` | Full technical architecture (AICS origin) |
+| `docs/args-implementation-plan.md` | Shipped files, APIs, env vars, verification |
+| `docs/args-phase1-audit-report.md` | Engineering audit scores and defect list |
+| `docs/tarc-architecture-design.md` | Historical TARC reference (superseded for workflow by ARGS) |

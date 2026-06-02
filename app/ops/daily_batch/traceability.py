@@ -75,6 +75,55 @@ class DailyBatchTraceabilityRecorder:
             status=status,
         )
 
+    def record_regime_history_backfill(
+        self,
+        daily_batch_id: UUID,
+        artifact_id: UUID,
+        *,
+        rows_written: int,
+    ) -> None:
+        self.artifact_repo.add(
+            daily_batch_run_id=daily_batch_id,
+            artifact_type=DailyBatchArtifactType.REGIME_HISTORY_BACKFILL.value,
+            artifact_id=artifact_id,
+            status="completed",
+        )
+
+    def record_regime_performance_refresh(
+        self,
+        daily_batch_id: UUID,
+        artifact_id: UUID,
+        *,
+        strategy_name: str,
+    ) -> None:
+        self.artifact_repo.add(
+            daily_batch_run_id=daily_batch_id,
+            artifact_type=DailyBatchArtifactType.REGIME_PERFORMANCE_REFRESH.value,
+            artifact_id=artifact_id,
+            strategy_name=strategy_name,
+            status="completed",
+        )
+
+    def record_research_intelligence_run(
+        self,
+        daily_batch_id: UUID,
+        run_id: UUID,
+        *,
+        status: str,
+    ) -> None:
+        self._link(
+            daily_batch_id,
+            LineageEntityType.RESEARCH_INTELLIGENCE_RUN,
+            run_id,
+            LineageRelationshipType.DAILY_BATCH_RESEARCH,
+        )
+        self.artifact_repo.add(
+            daily_batch_run_id=daily_batch_id,
+            artifact_type=DailyBatchArtifactType.RESEARCH_INTELLIGENCE_RUN.value,
+            artifact_id=run_id,
+            status=status,
+        )
+
     def record_exit_research_run(self, daily_batch_id: UUID, run_id: UUID, *, strategy_name: str, status: str) -> None:
         self._link(
             daily_batch_id,

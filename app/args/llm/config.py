@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -77,6 +76,7 @@ def _resolve_agent_config(settings: Settings, agent_code: str) -> AgentLlmConfig
     api_key = _coalesce(
         getattr(settings, f"args_llm_{key}_api_key", ""),
         settings.args_llm_openai_api_key,
+        settings.openai_api_key,
         default=None,
     )
     base_url = _coalesce(

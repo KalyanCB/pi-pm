@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     args_llm_provider: str = "mock"
     args_llm_default_model: str = "gpt-4o-mini"
     args_llm_openai_api_key: str = ""
+    # Backward-compatible generic key name sometimes used in .env files.
+    openai_api_key: str = ""
     args_llm_openai_base_url: str = "https://api.openai.com/v1"
     args_llm_timeout_seconds: int = 60
     # TARC

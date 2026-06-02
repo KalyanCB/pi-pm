@@ -75,6 +75,21 @@ class ArgsExplainabilityService:
                 }
                 for g in reports
             ],
+            "stock_setup_research": [
+                {
+                    "symbol": p.symbol,
+                    "status": (p.payload or {}).get("stock_setup_evidence", {}).get("status"),
+                    "match_count": (p.payload or {}).get("stock_setup_evidence", {}).get(
+                        "match_count"
+                    ),
+                    "top_regime": (
+                        ((p.payload or {}).get("stock_setup_evidence", {}).get(
+                            "regime_statistics"
+                        ) or [{}])[0].get("regime_label")
+                    ),
+                }
+                for p in packets
+            ],
             "packet_count": len(packets),
         }
 

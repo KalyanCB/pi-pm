@@ -72,3 +72,8 @@ def test_packet_builder_reproducible_hash(db_session):
     assert "historical_performance" in p1.payload
     assert compute_packet_hash(p1.payload) == p1.packet_hash
     assert "packet_built_at" in p1.payload
+    assert "evidence_coverage" in p1.payload
+    assert "historical_validation_context" in p1.payload
+    assert "evidence_confidence" in p1.payload
+    assert "stock_setup_evidence" in p1.payload
+    assert p1.payload["stock_setup_evidence"]["status"] == "unavailable"

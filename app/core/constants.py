@@ -73,11 +73,13 @@ class LineageEntityType(StrEnum):
     DAILY_BATCH_RUN = "daily_batch_run"
     FACTOR_PERFORMANCE_RUN = "factor_performance_run"
     EXIT_RESEARCH_RUN = "exit_research_run"
+    RESEARCH_INTELLIGENCE_RUN = "research_intelligence_run"
     RESEARCH_RUN = "research_run"
     INVESTMENT_REVIEW_PACKET = "investment_review_packet"
     COMMITTEE_REVIEW = "committee_review"
     CRO_REVIEW = "cro_review"
     GOVERNANCE_RESEARCH_REPORT = "governance_research_report"
+    STOCK_SETUP_RESEARCH = "stock_setup_research"
 
 
 class LineageRelationshipType(StrEnum):
@@ -91,15 +93,19 @@ class LineageRelationshipType(StrEnum):
     DAILY_BATCH_VALIDATION = "daily_batch_validation"
     DAILY_BATCH_FACTOR_IC = "daily_batch_factor_ic"
     DAILY_BATCH_EXIT_RESEARCH = "daily_batch_exit_research"
+    DAILY_BATCH_REGIME_HISTORY = "daily_batch_regime_history"
+    DAILY_BATCH_REGIME_PERFORMANCE = "daily_batch_regime_performance"
     RANKING_PRODUCES_PACKET = "ranking_produces_packet"
     RESEARCH_RUN_PRODUCES_PACKET = "research_run_produces_packet"
     PACKET_SOURCES_RANKING_RESULT = "packet_sources_ranking_result"
     PACKET_SOURCES_VALIDATION_REPORT = "packet_sources_validation_report"
     PACKET_REVIEWED_BY_COMMITTEE = "packet_reviewed_by_committee"
     REVIEWS_AGGREGATED_TO_CRO = "reviews_aggregated_to_cro"
-    COMMITTEE_REVIEW_AGGREGATED_TO_CRO = "committee_review_aggregated_to_cro"
+    COMMITTEE_REVIEW_AGGREGATED_TO_CRO = "committee_agg_to_cro"
     CRO_ISSUES_GOVERNANCE_REPORT = "cro_issues_governance_report"
     DAILY_BATCH_RESEARCH = "daily_batch_research"
+    RANK_RESULT_STOCK_SETUP = "rank_result_stock_setup"
+    PACKET_SRC_STOCK_SETUP = "packet_src_stock_setup"
 
 
 class DailyBatchRunStatus(StrEnum):
@@ -116,7 +122,10 @@ class DailyBatchPhase(StrEnum):
     INGEST = "ingest"
     RANKINGS = "rankings"
     VALIDATION = "validation"
+    REGIME_HISTORY = "regime_history"
+    REGIME_PERFORMANCE = "regime_performance"
     FACTOR_IC = "factor_ic"
+    RESEARCH_INTELLIGENCE = "research_intelligence"
     EXIT_RESEARCH = "exit_research"
     FINALIZING = "finalizing"
     COMPLETED = "completed"
@@ -128,7 +137,10 @@ class DailyBatchArtifactType(StrEnum):
     RANKING_RUN = "ranking_run"
     VALIDATION_REPORT = "validation_report"
     FACTOR_PERFORMANCE_RUN = "factor_performance_run"
+    REGIME_HISTORY_BACKFILL = "regime_history_backfill"
+    REGIME_PERFORMANCE_REFRESH = "regime_performance_refresh"
     EXIT_RESEARCH_RUN = "exit_research_run"
+    RESEARCH_INTELLIGENCE_RUN = "research_intelligence_run"
 
 
 class PolicyAction(StrEnum):

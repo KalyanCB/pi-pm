@@ -35,7 +35,10 @@ def aggregate_committee_reviews(
     ]
     system = (
         f"{COMMITTEE_CRO} research officer. Summarize committee consensus and disagreement only. "
-        "Never recommend buy/sell/hold, rank securities, or suggest position sizes."
+        "Never recommend buy/sell/hold, rank securities, or suggest position sizes. "
+        "Respond with a valid JSON object only. "
+        "Return rationale that references at least two committee findings and one disagreement/caveat. "
+        "Do not return empty or generic rationale."
     )
     user = json.dumps({"symbol": symbol, "committees": committee_summaries}, default=str)
     completion = llm.complete(system=system, user=user)
@@ -45,9 +48,13 @@ def aggregate_committee_reviews(
         "label_distribution": label_counts,
         "committee_summaries": committee_summaries,
     }
+    rationale = str(parsed.get("rationale", "")).strip()
+    if len(rationale) < 80:
+        rationale = _fallback_rationale(symbol, committee_summaries, disagreements)
+
     output = CroAggregationOutput(
         aggregation_snapshot=snapshot,
-        rationale=parsed.get("rationale", "Aggregated committee research."),
+        rationale=rationale,
         dissent_summary=parsed.get("dissent_summary", {"disagreements": disagreements}),
         confidence=float(parsed.get("confidence", 0.75)),
         summary=parsed.get("summary", f"Research synthesis for {symbol}."),
@@ -65,3 +72,27 @@ def aggregate_committee_reviews(
         input_tokens=completion.input_tokens,
         output_tokens=completion.output_tokens,
     )
+
+
+def _fallback_rationale(
+    symbol: str,
+    committee_summaries: list[dict[str, object]],
+    disagreements: list[str],
+) -> str:
+    top = committee_summaries[:2]
+    fragments = [
+        f"{item.get('committee_code')}: {str(item.get('findings') or '').strip()}"
+        for item in top
+        if str(item.get("findings") or "").strip()
+    ]
+    caveat = (
+        f"Key caution from {', '.join(disagreements)}."
+        if disagreements
+        else "No major label disagreement detected."
+    )
+    joined = (
+        " ".join(fragments)
+        if fragments
+        else "Committee findings were available but partially sparse."
+    )
+    return f"For {symbol}, CRO synthesis: {joined} {caveat}"

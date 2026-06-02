@@ -83,12 +83,17 @@ class SignalValidationService:
         start_date: date,
         end_date: date,
         *,
+        universe_code: str | None = None,
         force_recompute: bool = False,
     ) -> ValidationBackfillResult:
         if end_date < start_date:
             raise ValidationError("end_date must be on or after start_date")
 
-        runs = self.ranking_run_repo.list_completed_in_range(start_date, end_date)
+        runs = self.ranking_run_repo.list_completed_in_range(
+            start_date,
+            end_date,
+            universe_code=universe_code,
+        )
         validated = 0
         reused = 0
         failed = 0

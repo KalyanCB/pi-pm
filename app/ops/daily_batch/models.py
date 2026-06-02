@@ -21,7 +21,12 @@ class DailyBatchPlan:
     ranking_gaps: dict[str, list[date]] = field(default_factory=dict)
     validation_gap_count: int = 0
     factor_ic_needed: bool = False
+    regime_history_needed: bool = False
+    regime_performance_needed: bool = False
     exit_research_needed: bool = False
+    research_intelligence_needed: bool = False
+    factor_ic_window_start: date | None = None
+    factor_ic_window_end: date | None = None
     already_current: bool = False
 
     def to_dict(self) -> dict:
@@ -34,6 +39,15 @@ class DailyBatchPlan:
             },
             "validation_gap_count": self.validation_gap_count,
             "factor_ic_needed": self.factor_ic_needed,
+            "regime_history_needed": self.regime_history_needed,
+            "regime_performance_needed": self.regime_performance_needed,
             "exit_research_needed": self.exit_research_needed,
+            "research_intelligence_needed": self.research_intelligence_needed,
+            "factor_ic_window_start": (
+                self.factor_ic_window_start.isoformat() if self.factor_ic_window_start else None
+            ),
+            "factor_ic_window_end": (
+                self.factor_ic_window_end.isoformat() if self.factor_ic_window_end else None
+            ),
             "already_current": self.already_current,
         }

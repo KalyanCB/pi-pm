@@ -87,6 +87,22 @@ class ResearchIntelligenceReportRepository:
         self.db.flush()
         return existing
 
+    def get_latest_run(self, *, universe_code: str) -> ResearchIntelligenceRun | None:
+        return self.db.scalar(
+            select(ResearchIntelligenceRun)
+            .where(ResearchIntelligenceRun.universe_code == universe_code)
+            .order_by(ResearchIntelligenceRun.completed_at.desc().nullslast())
+            .limit(1)
+        )
+
+    def list_for_run(self, run_id: UUID) -> list[ResearchIntelligenceReport]:
+        stmt = (
+            select(ResearchIntelligenceReport)
+            .where(ResearchIntelligenceReport.run_id == run_id)
+            .order_by(ResearchIntelligenceReport.report_type)
+        )
+        return list(self.db.scalars(stmt).all())
+
     def get_latest(self, *, report_type: str, universe_code: str) -> ResearchIntelligenceReport | None:
         stmt = (
             select(ResearchIntelligenceReport)

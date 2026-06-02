@@ -52,6 +52,7 @@ from app.models.args import (
     PromptVersion,
     ResearchRun,
 )
+from app.models.stock_setup_research import StockSetupResearch, StockSetupResearchMetric
 from app.models.research_report import ResearchReport
 from app.models.stock import Stock
 from app.models.stock_universe import StockUniverse
@@ -103,4 +104,6 @@ __all__ = [
     "GovernanceResearchReportEvidence",
     "PromptVersion",
     "LlmExecutionRecord",
+    "StockSetupResearch",
+    "StockSetupResearchMetric",
 ]

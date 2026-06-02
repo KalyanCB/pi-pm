@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
+
+from app.backtest.trading_calendar import TradingCalendar
+from app.core.constants import MARKET_DATA_SOURCE_YAHOO
 
 from app.core.config import Settings
 from app.db.repositories.market_data_repository import MarketDataRepository
@@ -12,6 +16,13 @@ from app.db.repositories.stock_repository import StockRepository
 from app.market_data.cache import MarketDataCache
 from app.models.platform_traceability import RegimeHistory, StrategyRegimePerformance
 from app.validation.regimes import classify_regime
+
+
+@dataclass(frozen=True)
+class RegimeHistoryBackfillResult:
+    trading_days_attempted: int
+    rows_written: int
+    rows_skipped: int
 
 
 class RegimeAnalyticsService:
@@ -28,6 +39,44 @@ class RegimeAnalyticsService:
         self.regime_repo = regime_repo
         self.stock_repo = stock_repo
         self.market_data_repo = market_data_repo
+        self.calendar = TradingCalendar(market_data_repo)
+
+    def backfill_regime_history(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        benchmark_symbol: str | None = None,
+    ) -> RegimeHistoryBackfillResult:
+        """Populate regime_history for each benchmark trading day in [start_date, end_date]."""
+        symbol = (benchmark_symbol or self.settings.ranking_default_benchmark).upper()
+        benchmark_stock = self.stock_repo.get_by_symbol(symbol)
+        if benchmark_stock is None:
+            return RegimeHistoryBackfillResult(
+                trading_days_attempted=0, rows_written=0, rows_skipped=0
+            )
+
+        trading_days = self.calendar.trading_days_in_range(
+            start_date,
+            end_date,
+            universe_stock_ids=[],
+            benchmark_stock_id=benchmark_stock.id,
+            source=MARKET_DATA_SOURCE_YAHOO,
+        )
+        written = 0
+        skipped = 0
+        for as_of in trading_days:
+            stored = self.compute_and_store_regime(as_of_date=as_of, benchmark_symbol=symbol)
+            if stored is None:
+                skipped += 1
+            else:
+                written += 1
+        self.db.flush()
+        return RegimeHistoryBackfillResult(
+            trading_days_attempted=len(trading_days),
+            rows_written=written,
+            rows_skipped=skipped,
+        )
 
     def compute_and_store_regime(
         self,

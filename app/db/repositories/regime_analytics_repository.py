@@ -47,6 +47,22 @@ class RegimeAnalyticsRepository:
         self.db.flush()
         return row
 
+    def count_regime_history(
+        self,
+        *,
+        benchmark_symbol: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> int:
+        stmt = select(func.count()).select_from(RegimeHistory)
+        if benchmark_symbol:
+            stmt = stmt.where(RegimeHistory.benchmark_symbol == benchmark_symbol)
+        if start_date:
+            stmt = stmt.where(RegimeHistory.as_of_date >= start_date)
+        if end_date:
+            stmt = stmt.where(RegimeHistory.as_of_date <= end_date)
+        return int(self.db.scalar(stmt) or 0)
+
     def get_current(
         self,
         *,

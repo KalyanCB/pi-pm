@@ -72,6 +72,26 @@ class ValidationMetricsRepository:
                 )
         self.db.flush()
 
+    def count_for_strategy(
+        self,
+        strategy_name: str,
+        strategy_version: str,
+        *,
+        horizon: int | None = None,
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(ValidationHorizonMetric)
+            .where(
+                ValidationHorizonMetric.strategy_name == strategy_name,
+                ValidationHorizonMetric.strategy_version == strategy_version,
+            )
+        )
+        if horizon is not None:
+            stmt = stmt.where(ValidationHorizonMetric.horizon == horizon)
+        count = self.db.scalar(stmt)
+        return int(count or 0)
+
     def has_for_report(self, report_id: UUID) -> bool:
         count = self.db.scalar(
             select(func.count())

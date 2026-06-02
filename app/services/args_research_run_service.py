@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.args.builders.investment_review_packet_builder import InvestmentReviewPacketBuilder
+from app.args.builders.packet_evidence_coverage import derive_governance_confidence
 from app.args.graph.workflow import ArgsResearchWorkflow
 from app.args.llm.registry import CommitteeLlmRegistry
 from app.args.loaders.ranking_candidate_loader import RankingCandidateLoader
@@ -33,6 +35,7 @@ from app.db.repositories.ranking_validation_repository import RankingValidationR
 from app.db.repositories.research_run_repository import ResearchRunRepository
 from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
+from app.services.stock_setup_research_service import StockSetupResearchService
 from app.models.args import (
     CommitteeReview,
     CroReview,
@@ -60,6 +63,7 @@ class ArgsResearchRunService:
         ranking_result_repo: RankingResultRepository,
         validation_repo: RankingValidationRepository,
         stock_repo: StockRepository,
+        stock_setup_service: StockSetupResearchService | None = None,
         llm_registry: CommitteeLlmRegistry | None = None,
         registry: CommitteeRegistry | None = None,
     ) -> None:
@@ -76,7 +80,11 @@ class ArgsResearchRunService:
         self.loader = RankingCandidateLoader(
             db, ranking_run_repo, ranking_result_repo, validation_repo
         )
-        self.packet_builder = InvestmentReviewPacketBuilder(db, validation_repo)
+        self.packet_builder = InvestmentReviewPacketBuilder(
+            db,
+            validation_repo,
+            stock_setup_service=stock_setup_service,
+        )
         self.stock_repo = stock_repo
         self.llm_registry = llm_registry or CommitteeLlmRegistry.from_settings()
         self.registry = registry or CommitteeRegistry()
@@ -135,7 +143,7 @@ class ArgsResearchRunService:
                     symbol=stock.symbol,
                     packet_version=packet.packet_version,
                     packet_hash=packet.packet_hash,
-                    payload=packet.payload,
+                    payload=_json_safe(packet.payload),
                     built_at=datetime.now(UTC),
                 )
                 persisted_packets.append(self.packet_repo.add(row))
@@ -277,6 +285,15 @@ class ArgsResearchRunService:
             if packet is None:
                 continue
             agg = row["aggregation"]
+            committee_confs = [
+                float(cr.confidence)
+                for cr in reviews_by_symbol.get(packet.symbol, [])
+                if cr.confidence is not None
+            ]
+            governance_confidence = derive_governance_confidence(
+                packet.payload,
+                committee_confidences=committee_confs or None,
+            )
             llm_rec = self.llm_record_repo.record(
                 model=row.get("model", "mock-cro"),
                 input_tokens=row.get("input_tokens", 0),
@@ -288,7 +305,7 @@ class ArgsResearchRunService:
                 aggregation_snapshot=agg["aggregation_snapshot"],
                 rationale=agg["rationale"],
                 dissent_summary=agg.get("dissent_summary"),
-                confidence=agg.get("confidence"),
+                confidence=governance_confidence,
                 prompt_version_id=cro_prompt.id,
                 llm_execution_id=llm_rec.id,
                 created_at=datetime.now(UTC),
@@ -317,9 +334,9 @@ class ArgsResearchRunService:
                 as_of_date=ranking_run.as_of_date,
                 summary=agg["summary"],
                 narrative_md=agg["rationale"],
-                structured=agg.get("structured"),
+                structured=_json_safe(agg.get("structured")),
                 research_score=None,
-                confidence=agg.get("confidence"),
+                confidence=governance_confidence,
                 created_at=datetime.now(UTC),
             )
             self.governance_report_repo.add(report)
@@ -329,7 +346,7 @@ class ArgsResearchRunService:
                         report_id=report.id,
                         evidence_type="committee",
                         evidence_ref=str(ev.get("ref", "unknown")),
-                        payload=ev,
+                        payload=_json_safe(ev),
                         created_at=datetime.now(UTC),
                     )
                 )
@@ -381,6 +398,22 @@ class ArgsResearchRunService:
                 parent_entity_id=validation_report_id,
                 relationship_type=LineageRelationshipType.PACKET_SOURCES_VALIDATION_REPORT.value,
             )
+        stock_setup_id = (packet_row.payload or {}).get("source_lineage", {}).get(
+            "stock_setup_research_id"
+        )
+        if stock_setup_id:
+            try:
+                stock_setup_uuid = UUID(stock_setup_id)
+            except ValueError:
+                stock_setup_uuid = None
+            if stock_setup_uuid is not None:
+                self.lineage_repo.link(
+                    child_entity_type=LineageEntityType.INVESTMENT_REVIEW_PACKET.value,
+                    child_entity_id=packet_row.id,
+                    parent_entity_type=LineageEntityType.STOCK_SETUP_RESEARCH.value,
+                    parent_entity_id=stock_setup_uuid,
+                    relationship_type=LineageRelationshipType.PACKET_SRC_STOCK_SETUP.value,
+                )
 
     def _run_summary(
         self,
@@ -436,3 +469,15 @@ def _packet_read(packet: InvestmentReviewPacket) -> dict:
         "payload": packet.payload,
         "built_at": packet.built_at.isoformat(),
     }
+
+
+def _json_safe(value):
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
