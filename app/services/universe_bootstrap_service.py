@@ -5,7 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.core.constants import UNIVERSE_NIFTY_500
+from app.core.constants import UNIVERSE_NIFTY_500, UNIVERSE_NIFTY_1000
 from app.core.exceptions import NotFoundError
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
@@ -14,6 +14,7 @@ from app.universe.nifty500_loader import (
     fetch_nifty500_constituents,
     load_nifty500_constituents,
 )
+from app.universe.nse_index_loader import load_nifty1000_constituents
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,18 @@ class UniverseBootstrapService:
             constituents = load_nifty500_constituents(csv_path)
 
         return self._bootstrap_memberships(universe.id, UNIVERSE_NIFTY_500, constituents)
+
+    def bootstrap_nifty1000(
+        self,
+        *,
+        csv_path: Path | None = None,
+    ) -> UniverseBootstrapResult:
+        universe = self.universe_repo.get_by_code(UNIVERSE_NIFTY_1000)
+        if universe is None:
+            raise NotFoundError(f"Universe not found: {UNIVERSE_NIFTY_1000}")
+
+        constituents = load_nifty1000_constituents(csv_path)
+        return self._bootstrap_memberships(universe.id, UNIVERSE_NIFTY_1000, constituents)
 
     def bootstrap_from_constituents(
         self,

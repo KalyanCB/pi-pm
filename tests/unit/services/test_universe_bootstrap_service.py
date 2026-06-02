@@ -2,10 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from app.core.constants import UNIVERSE_NIFTY_500
+from app.core.constants import UNIVERSE_NIFTY_500, UNIVERSE_NIFTY_1000
 from app.models.stock_universe import StockUniverse
 from app.services.universe_bootstrap_service import UniverseBootstrapService
 from app.universe.nifty500_loader import load_nifty500_constituents
+
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 
 
 @pytest.fixture
@@ -13,6 +15,18 @@ def nifty500_universe(db_session, universe_repo):
     universe = StockUniverse(
         code=UNIVERSE_NIFTY_500,
         name="NIFTY 500",
+        is_active=True,
+    )
+    db_session.add(universe)
+    db_session.flush()
+    return universe
+
+
+@pytest.fixture
+def nifty1000_universe(db_session, universe_repo):
+    universe = StockUniverse(
+        code=UNIVERSE_NIFTY_1000,
+        name="NIFTY 1000",
         is_active=True,
     )
     db_session.add(universe)
@@ -51,3 +65,18 @@ def test_bootstrap_is_idempotent(
     assert second.membership_total == 3
     assert second.stocks_created == 0
     assert second.memberships_added == 0
+
+
+def test_bootstrap_nifty1000_from_fixture(
+    db_session, stock_repo, universe_repo, nifty1000_universe
+) -> None:
+    fixture = FIXTURES / "nifty1000_sample.csv"
+    service = UniverseBootstrapService(db_session, stock_repo, universe_repo)
+
+    result = service.bootstrap_nifty1000(csv_path=fixture)
+
+    assert result.universe_code == UNIVERSE_NIFTY_1000
+    assert result.constituents_loaded == 4
+    assert result.stocks_created == 4
+    assert result.membership_total == 4
+    assert universe_repo.count_active_memberships(UNIVERSE_NIFTY_1000) == 4
