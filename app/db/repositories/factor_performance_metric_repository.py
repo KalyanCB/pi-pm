@@ -203,3 +203,98 @@ class FactorPerformanceMetricRepository:
             FactorPerformanceMetric.regime_label,
         ).limit(limit)
         return list(self.db.scalars(stmt).all())
+
+    def list_metrics_covering_as_of(
+        self,
+        *,
+        strategy_name: str,
+        strategy_version: str,
+        universe_code: str,
+        as_of_date,
+        regime_labels: list[str] | None = None,
+        dataset_split: str | None = None,
+        limit: int = 500,
+    ) -> list[FactorPerformanceMetric]:
+        """Return metrics from the latest factor window with as_of_date_end <= as_of_date."""
+        from sqlalchemy import func
+
+        latest_end = self.db.scalar(
+            select(func.max(FactorPerformanceMetric.as_of_date_end)).where(
+                FactorPerformanceMetric.strategy_name == strategy_name,
+                FactorPerformanceMetric.strategy_version == strategy_version,
+                FactorPerformanceMetric.universe_code == universe_code,
+                FactorPerformanceMetric.as_of_date_end <= as_of_date,
+            )
+        )
+        if latest_end is None:
+            return []
+
+        stmt = select(FactorPerformanceMetric).where(
+            FactorPerformanceMetric.strategy_name == strategy_name,
+            FactorPerformanceMetric.strategy_version == strategy_version,
+            FactorPerformanceMetric.universe_code == universe_code,
+            FactorPerformanceMetric.as_of_date_end == latest_end,
+        )
+        if regime_labels:
+            stmt = stmt.where(FactorPerformanceMetric.regime_label.in_(regime_labels))
+        if dataset_split:
+            stmt = stmt.where(FactorPerformanceMetric.dataset_split == dataset_split)
+        stmt = stmt.order_by(
+            FactorPerformanceMetric.factor_name,
+            FactorPerformanceMetric.horizon,
+            FactorPerformanceMetric.regime_label,
+        ).limit(limit)
+        return list(self.db.scalars(stmt).all())
+
+    def list_daily_for_ranking_run(
+        self,
+        *,
+        ranking_run_id: UUID,
+        limit: int = 200,
+    ) -> list[FactorDailyMetric]:
+        stmt = (
+            select(FactorDailyMetric)
+            .where(FactorDailyMetric.ranking_run_id == ranking_run_id)
+            .order_by(FactorDailyMetric.factor_name, FactorDailyMetric.horizon)
+            .limit(limit)
+        )
+        return list(self.db.scalars(stmt).all())
+
+    def list_daily_covering_as_of(
+        self,
+        *,
+        strategy_name: str,
+        strategy_version: str,
+        universe_code: str,
+        as_of_date,
+        regime_labels: list[str] | None = None,
+        limit: int = 200,
+    ) -> list[FactorDailyMetric]:
+        """Daily IC rows for strategy/universe on the latest stored as_of_date <= ranking as_of."""
+        from sqlalchemy import func
+
+        latest_date = self.db.scalar(
+            select(func.max(FactorDailyMetric.as_of_date)).where(
+                FactorDailyMetric.strategy_name == strategy_name,
+                FactorDailyMetric.strategy_version == strategy_version,
+                FactorDailyMetric.universe_code == universe_code,
+                FactorDailyMetric.as_of_date <= as_of_date,
+            )
+        )
+        if latest_date is None:
+            return []
+
+        stmt = select(FactorDailyMetric).where(
+            FactorDailyMetric.strategy_name == strategy_name,
+            FactorDailyMetric.strategy_version == strategy_version,
+            FactorDailyMetric.universe_code == universe_code,
+            FactorDailyMetric.as_of_date == latest_date,
+        )
+        if regime_labels:
+            stmt = stmt.where(FactorDailyMetric.regime_label.in_(regime_labels))
+        stmt = stmt.order_by(
+            FactorDailyMetric.factor_name,
+            FactorDailyMetric.horizon,
+            FactorDailyMetric.regime_label,
+        ).limit(limit)
+        return list(self.db.scalars(stmt).all())

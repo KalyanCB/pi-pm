@@ -31,19 +31,25 @@ from app.schemas.daily_batch import (
     DailyBatchTraceResponse,
 )
 from app.services.backtest_service import BacktestService
+from app.ops.daily_batch.evidence_windows import DEFAULT_REGIME_PERFORMANCE_HORIZON
 from app.services.exit_research_service import ExitResearchService
 from app.services.factor_predictive_power_service import FactorPredictivePowerService
 from app.services.market_data_service import MarketDataService
+from app.services.regime_analytics_service import RegimeAnalyticsService
+from app.services.research_intelligence_service import ResearchIntelligenceService
 from app.services.signal_validation_service import SignalValidationService
 
 
 class DailyBatchService:
     _PHASE_WEIGHTS = {
-        DailyBatchPhase.INGEST: 15.0,
-        DailyBatchPhase.RANKINGS: 25.0,
-        DailyBatchPhase.VALIDATION: 15.0,
-        DailyBatchPhase.FACTOR_IC: 22.5,
-        DailyBatchPhase.EXIT_RESEARCH: 22.5,
+        DailyBatchPhase.INGEST: 12.0,
+        DailyBatchPhase.RANKINGS: 20.0,
+        DailyBatchPhase.VALIDATION: 11.0,
+        DailyBatchPhase.REGIME_HISTORY: 5.0,
+        DailyBatchPhase.REGIME_PERFORMANCE: 7.0,
+        DailyBatchPhase.FACTOR_IC: 17.0,
+        DailyBatchPhase.RESEARCH_INTELLIGENCE: 9.0,
+        DailyBatchPhase.EXIT_RESEARCH: 19.0,
     }
 
     def __init__(
@@ -55,6 +61,8 @@ class DailyBatchService:
         validation_service: SignalValidationService,
         factor_service: FactorPredictivePowerService,
         exit_service: ExitResearchService,
+        regime_service: RegimeAnalyticsService,
+        research_intelligence_service: ResearchIntelligenceService,
         ranking_run_repo: RankingRunRepository,
         run_repo: DailyBatchRunRepository | None = None,
         artifact_repo: DailyBatchArtifactRepository | None = None,
@@ -65,6 +73,8 @@ class DailyBatchService:
         self.validation_service = validation_service
         self.factor_service = factor_service
         self.exit_service = exit_service
+        self.regime_service = regime_service
+        self.research_intelligence_service = research_intelligence_service
         self.ranking_run_repo = ranking_run_repo
         self.run_repo = run_repo or DailyBatchRunRepository(db)
         self.artifact_repo = artifact_repo or DailyBatchArtifactRepository(db)
@@ -106,6 +116,7 @@ class DailyBatchService:
             strategies=[
                 StrategySpec(s.strategy_name, s.strategy_version) for s in request.strategies
             ],
+            holdout_start_date=request.holdout_start_date,
         )
         plan = planner.build_plan(
             resolution,
@@ -125,7 +136,12 @@ class DailyBatchService:
             ranking_gaps={k: [d.isoformat() for d in v] for k, v in plan.ranking_gaps.items()},
             validation_gap_count=plan.validation_gap_count,
             factor_ic_needed=plan.factor_ic_needed,
+            regime_history_needed=plan.regime_history_needed,
+            regime_performance_needed=plan.regime_performance_needed,
             exit_research_needed=plan.exit_research_needed,
+            research_intelligence_needed=plan.research_intelligence_needed,
+            factor_ic_window_start=plan.factor_ic_window_start,
+            factor_ic_window_end=plan.factor_ic_window_end,
             already_current=plan.already_current,
         )
 
@@ -193,6 +209,7 @@ class DailyBatchService:
                 result = self.validation_service.backfill(
                     plan.from_date,
                     plan.target_trading_day,
+                    universe_code=request.universe_code,
                     force_recompute=request.force_recompute or request.force_from_date,
                 )
                 phase_results["validation"] = {
@@ -213,73 +230,168 @@ class DailyBatchService:
                         trace.record_validation_report(run.id, report.id, status=report.status)
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.VALIDATION]
 
-            if request.phases.factor_ic and plan.factor_ic_needed:
-                self._set_phase(run, DailyBatchPhase.FACTOR_IC, base_pct)
-                phase_results["factor_ic"] = {}
+            regime_history_start = max(
+                request.holdout_start_date,
+                plan.from_date,
+            )
+            if request.phases.regime_history and plan.regime_history_needed:
+                self._set_phase(run, DailyBatchPhase.REGIME_HISTORY, base_pct)
+                history_result = self.regime_service.backfill_regime_history(
+                    start_date=regime_history_start,
+                    end_date=plan.target_trading_day,
+                    benchmark_symbol=request.benchmark_symbol,
+                )
+                trace.record_regime_history_backfill(
+                    run.id,
+                    run.id,
+                    rows_written=history_result.rows_written,
+                )
+                phase_results["regime_history"] = {
+                    "trading_days_attempted": history_result.trading_days_attempted,
+                    "rows_written": history_result.rows_written,
+                    "rows_skipped": history_result.rows_skipped,
+                    "start_date": regime_history_start.isoformat(),
+                    "end_date": plan.target_trading_day.isoformat(),
+                }
+                self.db.commit()
+                base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.REGIME_HISTORY]
+
+            if request.phases.regime_performance and plan.regime_performance_needed:
+                self._set_phase(run, DailyBatchPhase.REGIME_PERFORMANCE, base_pct)
+                phase_results["regime_performance"] = {}
                 for spec in request.strategies:
-                    self.run_repo.update_progress(
-                        run,
-                        current_load={
-                            "phase": DailyBatchPhase.FACTOR_IC.value,
-                            "strategy": spec.strategy_name,
-                        },
-                    )
-                    self.db.commit()
-                    fic_run = self.factor_service.backfill(
+                    rows = self.regime_service.refresh_strategy_regime_performance(
                         strategy_name=spec.strategy_name,
                         strategy_version=spec.strategy_version,
-                        universe_code=request.universe_code,
-                        start_date=plan.from_date,
-                        end_date=plan.target_trading_day,
-                        holdout_start_date=request.holdout_start_date,
-                        force_recompute=request.force_recompute or request.force_from_date,
+                        horizon=DEFAULT_REGIME_PERFORMANCE_HORIZON,
                     )
-                    trace.record_factor_run(
+                    artifact_id = rows[0].id if rows else run.id
+                    trace.record_regime_performance_refresh(
                         run.id,
-                        fic_run.id,
+                        artifact_id,
                         strategy_name=spec.strategy_name,
-                        status=fic_run.status,
                     )
-                    phase_results["factor_ic"][spec.strategy_name] = {
-                        "run_id": str(fic_run.id),
-                        "status": fic_run.status,
-                        "metrics_written": fic_run.metrics_written,
+                    phase_results["regime_performance"][spec.strategy_name] = {
+                        "rows_written": len(rows),
+                        "horizon": DEFAULT_REGIME_PERFORMANCE_HORIZON,
                     }
-                base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.FACTOR_IC]
+                self.db.commit()
+                base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.REGIME_PERFORMANCE]
+
+            factor_start = plan.factor_ic_window_start or plan.from_date
+            factor_end = plan.factor_ic_window_end or plan.target_trading_day
+
+            if request.phases.factor_ic and plan.factor_ic_needed:
+                if plan.factor_ic_window_start is None or plan.factor_ic_window_end is None:
+                    phase_results["factor_ic"] = {
+                        "skipped": True,
+                        "reason": "no_completed_validation_window",
+                    }
+                else:
+                    self._set_phase(run, DailyBatchPhase.FACTOR_IC, base_pct)
+                    phase_results["factor_ic"] = {}
+                    for spec in request.strategies:
+                        self.run_repo.update_progress(
+                            run,
+                            current_load={
+                                "phase": DailyBatchPhase.FACTOR_IC.value,
+                                "strategy": spec.strategy_name,
+                            },
+                        )
+                        self.db.commit()
+                        fic_run = self.factor_service.backfill(
+                            strategy_name=spec.strategy_name,
+                            strategy_version=spec.strategy_version,
+                            universe_code=request.universe_code,
+                            start_date=factor_start,
+                            end_date=factor_end,
+                            holdout_start_date=request.holdout_start_date,
+                            force_recompute=request.force_recompute or request.force_from_date,
+                        )
+                        trace.record_factor_run(
+                            run.id,
+                            fic_run.id,
+                            strategy_name=spec.strategy_name,
+                            status=fic_run.status,
+                        )
+                        phase_results["factor_ic"][spec.strategy_name] = {
+                            "run_id": str(fic_run.id),
+                            "status": fic_run.status,
+                            "metrics_written": fic_run.metrics_written,
+                            "window_start": factor_start.isoformat(),
+                            "window_end": factor_end.isoformat(),
+                        }
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.FACTOR_IC]
+
+            if request.phases.research_intelligence and plan.research_intelligence_needed:
+                if plan.factor_ic_window_start is None or plan.factor_ic_window_end is None:
+                    phase_results["research_intelligence"] = {
+                        "skipped": True,
+                        "reason": "no_completed_validation_window",
+                    }
+                else:
+                    self._set_phase(run, DailyBatchPhase.RESEARCH_INTELLIGENCE, base_pct)
+                    intel = self.research_intelligence_service.generate_executive_pack(
+                        universe_code=request.universe_code,
+                        start_date=factor_start,
+                        end_date=factor_end,
+                        holdout_start_date=request.holdout_start_date,
+                        persist=True,
+                    )
+                    trace.record_research_intelligence_run(
+                        run.id,
+                        UUID(intel["run_id"]),
+                        status=intel.get("status", "completed"),
+                    )
+                    phase_results["research_intelligence"] = {
+                        "run_id": intel["run_id"],
+                        "status": intel.get("status"),
+                        "window_start": factor_start.isoformat(),
+                        "window_end": factor_end.isoformat(),
+                    }
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RESEARCH_INTELLIGENCE]
 
             if request.phases.exit_research and plan.exit_research_needed:
-                self._set_phase(run, DailyBatchPhase.EXIT_RESEARCH, base_pct)
-                phase_results["exit_research"] = {}
-                for spec in request.strategies:
-                    self.run_repo.update_progress(
-                        run,
-                        current_load={
-                            "phase": DailyBatchPhase.EXIT_RESEARCH.value,
-                            "strategy": spec.strategy_name,
-                        },
-                    )
-                    self.db.commit()
-                    exit_run = self.exit_service.backfill(
-                        strategy_name=spec.strategy_name,
-                        strategy_version=spec.strategy_version,
-                        universe_code=request.universe_code,
-                        start_date=plan.from_date,
-                        end_date=plan.target_trading_day,
-                        holdout_start_date=request.holdout_start_date,
-                        force_recompute=request.force_recompute or request.force_from_date,
-                    )
-                    trace.record_exit_research_run(
-                        run.id,
-                        exit_run.id,
-                        strategy_name=spec.strategy_name,
-                        status=exit_run.status,
-                    )
-                    phase_results["exit_research"][spec.strategy_name] = {
-                        "run_id": str(exit_run.id),
-                        "status": exit_run.status,
-                        "metrics_written": exit_run.metrics_written,
+                if plan.factor_ic_window_start is None or plan.factor_ic_window_end is None:
+                    phase_results["exit_research"] = {
+                        "skipped": True,
+                        "reason": "no_completed_validation_window",
                     }
-                base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.EXIT_RESEARCH]
+                else:
+                    self._set_phase(run, DailyBatchPhase.EXIT_RESEARCH, base_pct)
+                    phase_results["exit_research"] = {}
+                    for spec in request.strategies:
+                        self.run_repo.update_progress(
+                            run,
+                            current_load={
+                                "phase": DailyBatchPhase.EXIT_RESEARCH.value,
+                                "strategy": spec.strategy_name,
+                            },
+                        )
+                        self.db.commit()
+                        exit_run = self.exit_service.backfill(
+                            strategy_name=spec.strategy_name,
+                            strategy_version=spec.strategy_version,
+                            universe_code=request.universe_code,
+                            start_date=factor_start,
+                            end_date=factor_end,
+                            holdout_start_date=request.holdout_start_date,
+                            force_recompute=request.force_recompute or request.force_from_date,
+                        )
+                        trace.record_exit_research_run(
+                            run.id,
+                            exit_run.id,
+                            strategy_name=spec.strategy_name,
+                            status=exit_run.status,
+                        )
+                        phase_results["exit_research"][spec.strategy_name] = {
+                            "run_id": str(exit_run.id),
+                            "status": exit_run.status,
+                            "metrics_written": exit_run.metrics_written,
+                            "window_start": factor_start.isoformat(),
+                            "window_end": factor_end.isoformat(),
+                        }
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.EXIT_RESEARCH]
 
             self.run_repo.set_phase_results(run, phase_results)
             duration = time.perf_counter() - started
@@ -365,7 +477,10 @@ class DailyBatchService:
                 "ranking_run_ids": grouped.get("ranking_run", []),
                 "validation_report_ids": grouped.get("validation_report", []),
                 "factor_performance_run_ids": grouped.get("factor_performance_run", []),
+                "regime_history_backfill_ids": grouped.get("regime_history_backfill", []),
+                "regime_performance_refresh_ids": grouped.get("regime_performance_refresh", []),
                 "exit_research_run_ids": grouped.get("exit_research_run", []),
+                "research_intelligence_run_ids": grouped.get("research_intelligence_run", []),
             },
             current_load=run.current_load,
             artifacts=artifacts,
@@ -477,7 +592,12 @@ class DailyBatchService:
                 ranking_gaps=run.plan_snapshot.get("ranking_gaps", {}),
                 validation_gap_count=run.plan_snapshot.get("validation_gap_count", 0),
                 factor_ic_needed=run.plan_snapshot.get("factor_ic_needed", False),
+                regime_history_needed=run.plan_snapshot.get("regime_history_needed", False),
+                regime_performance_needed=run.plan_snapshot.get("regime_performance_needed", False),
                 exit_research_needed=run.plan_snapshot.get("exit_research_needed", False),
+                research_intelligence_needed=run.plan_snapshot.get(
+                    "research_intelligence_needed", False
+                ),
                 already_current=run.plan_snapshot.get("already_current", False),
             )
         return DailyBatchRunCreateResponse(

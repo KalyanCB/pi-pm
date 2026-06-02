@@ -10,7 +10,9 @@ from app.api.v1 import (
     observability,
     rankings,
     regime_policy,
+    research,
     research_intelligence,
+    stock_setup_research,
     stocks,
     validation,
 )
@@ -30,6 +32,12 @@ api_router.include_router(
     research_intelligence.router,
     prefix="/analytics/research-intelligence",
     tags=["research-intelligence"],
+)
+api_router.include_router(research.router, prefix="/research", tags=["research"])
+api_router.include_router(
+    stock_setup_research.router,
+    prefix="/research/stock-setup",
+    tags=["research-stock-setup"],
 )
 api_router.include_router(
     daily_batch.router,

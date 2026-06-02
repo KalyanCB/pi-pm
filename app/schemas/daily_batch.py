@@ -24,9 +24,11 @@ class DailyBatchPhaseFlags(BaseModel):
     ingest: bool = True
     rankings: bool = True
     validation: bool = True
+    regime_history: bool = True
+    regime_performance: bool = True
     factor_ic: bool = True
+    research_intelligence: bool = True
     exit_research: bool = True
-    research_intelligence: bool = False
 
 
 class DailyBatchRunCreateRequest(BaseModel):
@@ -65,7 +67,12 @@ class DailyBatchPlanSnapshot(BaseModel):
     ranking_gaps: dict[str, list[str]]
     validation_gap_count: int
     factor_ic_needed: bool
+    regime_history_needed: bool = False
+    regime_performance_needed: bool = False
     exit_research_needed: bool
+    research_intelligence_needed: bool = False
+    factor_ic_window_start: date | None = None
+    factor_ic_window_end: date | None = None
     already_current: bool
 
 

@@ -157,6 +157,40 @@ class ExitResearchMetricRepository:
             stmt = stmt.where(ExitResearchPolicyMetric.research_run_id == research_run_id)
         return list(self.db.scalars(stmt.limit(limit)).all())
 
+    def list_policy_metrics_covering_as_of(
+        self,
+        *,
+        strategy_name: str,
+        strategy_version: str,
+        universe_code: str,
+        as_of_date,
+        regime_labels: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[ExitResearchPolicyMetric]:
+        """Policy metrics from the latest exit-research window with as_of_date_end <= as_of_date."""
+        from sqlalchemy import func
+
+        latest_end = self.db.scalar(
+            select(func.max(ExitResearchPolicyMetric.as_of_date_end)).where(
+                ExitResearchPolicyMetric.strategy_name == strategy_name,
+                ExitResearchPolicyMetric.strategy_version == strategy_version,
+                ExitResearchPolicyMetric.universe_code == universe_code,
+                ExitResearchPolicyMetric.as_of_date_end <= as_of_date,
+            )
+        )
+        if latest_end is None:
+            return []
+
+        stmt = select(ExitResearchPolicyMetric).where(
+            ExitResearchPolicyMetric.strategy_name == strategy_name,
+            ExitResearchPolicyMetric.strategy_version == strategy_version,
+            ExitResearchPolicyMetric.universe_code == universe_code,
+            ExitResearchPolicyMetric.as_of_date_end == latest_end,
+        )
+        if regime_labels:
+            stmt = stmt.where(ExitResearchPolicyMetric.regime_label.in_(regime_labels))
+        return list(self.db.scalars(stmt.order_by(ExitResearchPolicyMetric.policy_family).limit(limit)).all())
+
     def list_alpha_decay(
         self,
         *,
