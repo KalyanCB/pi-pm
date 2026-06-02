@@ -42,6 +42,16 @@ from app.models.research_intelligence import (
     ResearchIntelligenceReport,
     ResearchIntelligenceRun,
 )
+from app.models.args import (
+    CommitteeReview,
+    CroReview,
+    GovernanceResearchReport,
+    GovernanceResearchReportEvidence,
+    InvestmentReviewPacket,
+    LlmExecutionRecord,
+    PromptVersion,
+    ResearchRun,
+)
 from app.models.research_report import ResearchReport
 from app.models.stock import Stock
 from app.models.stock_universe import StockUniverse
@@ -85,4 +95,12 @@ __all__ = [
     "ResearchIntelligenceReport",
     "DailyBatchRun",
     "DailyBatchRunArtifact",
+    "ResearchRun",
+    "InvestmentReviewPacket",
+    "CommitteeReview",
+    "CroReview",
+    "GovernanceResearchReport",
+    "GovernanceResearchReportEvidence",
+    "PromptVersion",
+    "LlmExecutionRecord",
 ]

@@ -1,0 +1,38 @@
+{
+  "packet_version": "1.0.0",
+  "symbol": "TEST.NS",
+  "stock_id": "00000000-0000-0000-0000-000000000001",
+  "ranking": {
+    "ranking_run_id": "00000000-0000-0000-0000-000000000010",
+    "strategy_name": "breakout_v1",
+    "strategy_version": "1.0.0",
+    "universe_code": "NIFTY_500",
+    "as_of_date": "2026-06-01",
+    "rank": 1,
+    "composite_score": 0.85,
+    "score_components": {
+      "momentum": {"raw": "0.5", "normalized": "0.8", "weight": "0.3", "weighted": "0.24"}
+    },
+    "inputs_hash": "abc123"
+  },
+  "technical_factors": {
+    "momentum": {"raw": "0.5", "normalized": "0.8", "weight": "0.3", "weighted": "0.24"}
+  },
+  "validation": {
+    "report_id": null,
+    "status": "completed",
+    "horizon_metrics": [],
+    "decile_metrics": [],
+    "regime_label": "BULL_LOW_VOL"
+  },
+  "regime": {"regime_label": "BULL_LOW_VOL"},
+  "quant_evidence": {"factor_ic": {}, "exit_research": {}},
+  "market_snapshot": {"sector": "IT"},
+  "portfolio_context": {"existing_position": false},
+  "research_context": {"notes": []},
+  "packet_built_at": "2026-06-01T12:00:00+00:00",
+  "source_lineage": {
+    "ranking_run_id": "00000000-0000-0000-0000-000000000010",
+    "validation_report_id": null
+  }
+}

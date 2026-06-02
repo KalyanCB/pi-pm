@@ -67,11 +67,17 @@ class LineageEntityType(StrEnum):
     INGESTION_BATCH = "ingestion_batch"
     INGESTION_SYMBOL = "ingestion_symbol"
     RANKING_RUN = "ranking_run"
+    RANKING_RESULT = "ranking_result"
     VALIDATION_REPORT = "validation_report"
     EXPERIMENT_RUN = "experiment_run"
     DAILY_BATCH_RUN = "daily_batch_run"
     FACTOR_PERFORMANCE_RUN = "factor_performance_run"
     EXIT_RESEARCH_RUN = "exit_research_run"
+    RESEARCH_RUN = "research_run"
+    INVESTMENT_REVIEW_PACKET = "investment_review_packet"
+    COMMITTEE_REVIEW = "committee_review"
+    CRO_REVIEW = "cro_review"
+    GOVERNANCE_RESEARCH_REPORT = "governance_research_report"
 
 
 class LineageRelationshipType(StrEnum):
@@ -85,6 +91,15 @@ class LineageRelationshipType(StrEnum):
     DAILY_BATCH_VALIDATION = "daily_batch_validation"
     DAILY_BATCH_FACTOR_IC = "daily_batch_factor_ic"
     DAILY_BATCH_EXIT_RESEARCH = "daily_batch_exit_research"
+    RANKING_PRODUCES_PACKET = "ranking_produces_packet"
+    RESEARCH_RUN_PRODUCES_PACKET = "research_run_produces_packet"
+    PACKET_SOURCES_RANKING_RESULT = "packet_sources_ranking_result"
+    PACKET_SOURCES_VALIDATION_REPORT = "packet_sources_validation_report"
+    PACKET_REVIEWED_BY_COMMITTEE = "packet_reviewed_by_committee"
+    REVIEWS_AGGREGATED_TO_CRO = "reviews_aggregated_to_cro"
+    COMMITTEE_REVIEW_AGGREGATED_TO_CRO = "committee_review_aggregated_to_cro"
+    CRO_ISSUES_GOVERNANCE_REPORT = "cro_issues_governance_report"
+    DAILY_BATCH_RESEARCH = "daily_batch_research"
 
 
 class DailyBatchRunStatus(StrEnum):
@@ -164,6 +179,22 @@ class ExitResearchPhase(StrEnum):
     FINALIZING = "finalizing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class ResearchRunStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
+class CommitteeReviewStatus(StrEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    DEGRADED = "degraded"
+    TIMEOUT = "timeout"
 
 
 class ResearchIntelligenceRunStatus(StrEnum):

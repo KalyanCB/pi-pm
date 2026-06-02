@@ -29,6 +29,50 @@ class Settings(BaseSettings):
 
     validation_high_vol_threshold: float = 0.20
 
+    # ARGS LLM routing — global defaults (per-agent vars override when set)
+    # provider: mock | openai | openai_compatible | custom via register_llm_provider()
+    args_llm_provider: str = "mock"
+    args_llm_default_model: str = "gpt-4o-mini"
+    args_llm_openai_api_key: str = ""
+    args_llm_openai_base_url: str = "https://api.openai.com/v1"
+    args_llm_timeout_seconds: int = 60
+    # TARC
+    args_llm_tarc_provider: str = ""
+    args_llm_tarc_model: str = ""
+    args_llm_tarc_api_key: str = ""
+    args_llm_tarc_base_url: str = ""
+    args_llm_tarc_timeout_seconds: int = 0
+    # FRC
+    args_llm_frc_provider: str = ""
+    args_llm_frc_model: str = ""
+    args_llm_frc_api_key: str = ""
+    args_llm_frc_base_url: str = ""
+    args_llm_frc_timeout_seconds: int = 0
+    # QRC
+    args_llm_qrc_provider: str = ""
+    args_llm_qrc_model: str = ""
+    args_llm_qrc_api_key: str = ""
+    args_llm_qrc_base_url: str = ""
+    args_llm_qrc_timeout_seconds: int = 0
+    # NRCC
+    args_llm_nrcc_provider: str = ""
+    args_llm_nrcc_model: str = ""
+    args_llm_nrcc_api_key: str = ""
+    args_llm_nrcc_base_url: str = ""
+    args_llm_nrcc_timeout_seconds: int = 0
+    # RC
+    args_llm_rc_provider: str = ""
+    args_llm_rc_model: str = ""
+    args_llm_rc_api_key: str = ""
+    args_llm_rc_base_url: str = ""
+    args_llm_rc_timeout_seconds: int = 0
+    # CRO
+    args_llm_cro_provider: str = ""
+    args_llm_cro_model: str = ""
+    args_llm_cro_api_key: str = ""
+    args_llm_cro_base_url: str = ""
+    args_llm_cro_timeout_seconds: int = 0
+
 
 @lru_cache
 def get_settings() -> Settings:

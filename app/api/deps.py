@@ -56,6 +56,20 @@ from app.services.regime_policy_service import RegimePolicyPresetService, Regime
 from app.services.signal_validation_service import SignalValidationService
 from app.services.stock_service import StockService
 from app.services.traceability_service import TraceabilityService
+from app.db.repositories.research_run_repository import ResearchRunRepository
+from app.db.repositories.investment_review_packet_repository import (
+    InvestmentReviewPacketRepository,
+)
+from app.db.repositories.committee_review_repository import CommitteeReviewRepository
+from app.db.repositories.cro_review_repository import CroReviewRepository
+from app.db.repositories.governance_research_report_repository import (
+    GovernanceResearchReportRepository,
+)
+from app.db.repositories.args_prompt_version_repository import ArgsPromptVersionRepository
+from app.args.llm.registry import CommitteeLlmRegistry
+from app.db.repositories.llm_execution_record_repository import LlmExecutionRecordRepository
+from app.services.args_research_run_service import ArgsResearchRunService
+from app.services.args_explainability_service import ArgsExplainabilityService
 from app.services.universe_filter_service import UniverseFilterService
 
 
@@ -470,4 +484,104 @@ def get_full_universe_validation_service(
         ranking_run_repo,
         backtest_service,
         signal_validation_service,
+    )
+
+
+def get_research_run_repository(db: Session = Depends(get_db)) -> ResearchRunRepository:
+    return ResearchRunRepository(db)
+
+
+def get_investment_review_packet_repository(
+    db: Session = Depends(get_db),
+) -> InvestmentReviewPacketRepository:
+    return InvestmentReviewPacketRepository(db)
+
+
+def get_committee_review_repository(db: Session = Depends(get_db)) -> CommitteeReviewRepository:
+    return CommitteeReviewRepository(db)
+
+
+def get_cro_review_repository(db: Session = Depends(get_db)) -> CroReviewRepository:
+    return CroReviewRepository(db)
+
+
+def get_governance_research_report_repository(
+    db: Session = Depends(get_db),
+) -> GovernanceResearchReportRepository:
+    return GovernanceResearchReportRepository(db)
+
+
+def get_args_prompt_version_repository(db: Session = Depends(get_db)) -> ArgsPromptVersionRepository:
+    return ArgsPromptVersionRepository(db)
+
+
+def get_llm_execution_record_repository(
+    db: Session = Depends(get_db),
+) -> LlmExecutionRecordRepository:
+    return LlmExecutionRecordRepository(db)
+
+
+def get_committee_llm_registry(
+    settings: Settings = Depends(get_settings_dep),
+) -> CommitteeLlmRegistry:
+    return CommitteeLlmRegistry.from_settings(settings)
+
+
+def get_args_research_run_service(
+    db: Session = Depends(get_db),
+    research_run_repo: ResearchRunRepository = Depends(get_research_run_repository),
+    packet_repo: InvestmentReviewPacketRepository = Depends(
+        get_investment_review_packet_repository
+    ),
+    committee_review_repo: CommitteeReviewRepository = Depends(get_committee_review_repository),
+    cro_review_repo: CroReviewRepository = Depends(get_cro_review_repository),
+    governance_report_repo: GovernanceResearchReportRepository = Depends(
+        get_governance_research_report_repository
+    ),
+    lineage_repo: RunLineageRepository = Depends(get_run_lineage_repository),
+    prompt_repo: ArgsPromptVersionRepository = Depends(get_args_prompt_version_repository),
+    llm_record_repo: LlmExecutionRecordRepository = Depends(get_llm_execution_record_repository),
+    ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
+    ranking_result_repo: RankingResultRepository = Depends(get_ranking_result_repository),
+    validation_repo: RankingValidationRepository = Depends(get_ranking_validation_repository),
+    stock_repo: StockRepository = Depends(get_stock_repository),
+    llm_registry: CommitteeLlmRegistry = Depends(get_committee_llm_registry),
+) -> ArgsResearchRunService:
+    return ArgsResearchRunService(
+        db,
+        research_run_repo=research_run_repo,
+        packet_repo=packet_repo,
+        committee_review_repo=committee_review_repo,
+        cro_review_repo=cro_review_repo,
+        governance_report_repo=governance_report_repo,
+        lineage_repo=lineage_repo,
+        prompt_repo=prompt_repo,
+        llm_record_repo=llm_record_repo,
+        ranking_run_repo=ranking_run_repo,
+        ranking_result_repo=ranking_result_repo,
+        validation_repo=validation_repo,
+        stock_repo=stock_repo,
+        llm_registry=llm_registry,
+    )
+
+
+def get_args_explainability_service(
+    research_run_repo: ResearchRunRepository = Depends(get_research_run_repository),
+    packet_repo: InvestmentReviewPacketRepository = Depends(
+        get_investment_review_packet_repository
+    ),
+    committee_review_repo: CommitteeReviewRepository = Depends(get_committee_review_repository),
+    cro_review_repo: CroReviewRepository = Depends(get_cro_review_repository),
+    governance_report_repo: GovernanceResearchReportRepository = Depends(
+        get_governance_research_report_repository
+    ),
+    lineage_repo: RunLineageRepository = Depends(get_run_lineage_repository),
+) -> ArgsExplainabilityService:
+    return ArgsExplainabilityService(
+        research_run_repo,
+        packet_repo,
+        committee_review_repo,
+        cro_review_repo,
+        governance_report_repo,
+        lineage_repo,
     )
