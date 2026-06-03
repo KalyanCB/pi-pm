@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+from app.validation.constants import VALIDATION_HORIZONS
+
+ATTRIBUTION_HORIZONS: tuple[int, ...] = VALIDATION_HORIZONS
+
+BUCKET_TOP_5 = "top_5"
+BUCKET_TOP_10 = "top_10"
+BUCKET_TOP_20 = "top_20"
+BUCKET_BENCHMARK = "benchmark"
+
+ATTRIBUTION_BUCKETS: tuple[str, ...] = (
+    BUCKET_TOP_5,
+    BUCKET_TOP_10,
+    BUCKET_TOP_20,
+    BUCKET_BENCHMARK,
+)
+
+RANK_BAND_1_5 = "rank_1_5"
+RANK_BAND_6_10 = "rank_6_10"
+RANK_BAND_11_20 = "rank_11_20"
+
+RANK_BANDS_TOP_20: tuple[str, ...] = (RANK_BAND_1_5, RANK_BAND_6_10, RANK_BAND_11_20)
+
+REGIME_LABEL_ALL = "ALL_REGIMES"
+
+TRADING_DAYS_PER_YEAR = 252
+MIN_RUNS_FOR_SHARPE = 2
+MIN_OBSERVATIONS_FOR_METRICS = 1

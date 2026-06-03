@@ -2,9 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from statistics import median
 
 from app.ranking.math_utils import PriceBar, bars_on_or_before
+from app.stock_setup_evidence.constants import REGIME_LABEL_ALL_REGIMES
+from app.stock_setup_evidence.statistics import (
+    confidence_interval_95_mean,
+    max_or_none,
+    mean_or_none,
+    median_or_none,
+    min_or_none,
+    std_dev_sample,
+    win_rate,
+)
 
 
 @dataclass(frozen=True)
@@ -43,7 +52,9 @@ def forward_return(bars: list[PriceBar], setup_date: date, horizon_days: int) ->
     return (end_px / start_px) - 1.0
 
 
-def max_drawdown_and_runup(bars: list[PriceBar], setup_date: date, horizon_days: int) -> tuple[float | None, float | None]:
+def max_drawdown_and_runup(
+    bars: list[PriceBar], setup_date: date, horizon_days: int
+) -> tuple[float | None, float | None]:
     start_idx = _index_on_or_before(bars, setup_date)
     if start_idx is None:
         return None, None
@@ -55,13 +66,11 @@ def max_drawdown_and_runup(bars: list[PriceBar], setup_date: date, horizon_days:
         return None, None
     window = bars[start_idx : end_idx + 1]
     peak = entry
-    trough = entry
     max_dd = 0.0
     max_run = 0.0
     for bar in window:
         px = float(bar.close)
         peak = max(peak, px)
-        trough = min(trough, px)
         if peak > 0:
             max_dd = max(max_dd, (peak - px) / peak)
         max_run = max(max_run, (px - entry) / entry)
@@ -75,6 +84,7 @@ def build_setup_outcomes(
 ) -> list[SetupOutcome]:
     outcomes: list[SetupOutcome] = []
     for setup_date, sim, _profile in matches:
+        dd, run = max_drawdown_and_runup(bars, setup_date, 20)
         outcomes.append(
             SetupOutcome(
                 setup_date=setup_date,
@@ -82,8 +92,8 @@ def build_setup_outcomes(
                 regime_label=regime_by_date.get(setup_date),
                 return_5d=forward_return(bars, setup_date, 5),
                 return_20d=forward_return(bars, setup_date, 20),
-                max_drawdown_20d=max_drawdown_and_runup(bars, setup_date, 20)[0],
-                max_runup_20d=max_drawdown_and_runup(bars, setup_date, 20)[1],
+                max_drawdown_20d=dd,
+                max_runup_20d=run,
             )
         )
     return outcomes
@@ -92,52 +102,85 @@ def build_setup_outcomes(
 @dataclass(frozen=True)
 class RegimeAggregateMetrics:
     regime_label: str
-    occurrence_count: int
+    sample_size: int
     win_rate_5d: float | None
     win_rate_20d: float | None
-    avg_return_5d: float | None
-    avg_return_20d: float | None
+    average_return_5d: float | None
+    average_return_20d: float | None
     median_return_20d: float | None
+    standard_deviation_20d: float | None
+    max_return_20d: float | None
+    min_return_20d: float | None
+    confidence_interval_95_lower_20d: float | None
+    confidence_interval_95_upper_20d: float | None
     avg_max_drawdown: float | None
     avg_max_runup: float | None
     avg_similarity_score: float | None
 
+    # Legacy aliases for v1 consumers
+    @property
+    def occurrence_count(self) -> int:
+        return self.sample_size
 
-def _win_rate(values: list[float | None]) -> float | None:
-    present = [v for v in values if v is not None]
-    if not present:
-        return None
-    return sum(1 for v in present if v > 0) / len(present)
+    @property
+    def avg_return_5d(self) -> float | None:
+        return self.average_return_5d
 
-
-def _avg(values: list[float | None]) -> float | None:
-    present = [v for v in values if v is not None]
-    if not present:
-        return None
-    return sum(present) / len(present)
+    @property
+    def avg_return_20d(self) -> float | None:
+        return self.average_return_20d
 
 
 def aggregate_outcomes(
     outcomes: list[SetupOutcome],
     regime_label: str,
 ) -> RegimeAggregateMetrics:
-    if regime_label == "ALL_REGIMES":
+    if regime_label == REGIME_LABEL_ALL_REGIMES:
         subset = outcomes
     else:
         subset = [o for o in outcomes if o.regime_label == regime_label]
+
+    returns_5d = [o.return_5d for o in subset]
+    returns_20d = [o.return_20d for o in subset]
+    ci_lower, ci_upper = confidence_interval_95_mean(returns_20d)
+
     return RegimeAggregateMetrics(
         regime_label=regime_label,
-        occurrence_count=len(subset),
-        win_rate_5d=_win_rate([o.return_5d for o in subset]),
-        win_rate_20d=_win_rate([o.return_20d for o in subset]),
-        avg_return_5d=_avg([o.return_5d for o in subset]),
-        avg_return_20d=_avg([o.return_20d for o in subset]),
-        median_return_20d=(
-            median([o.return_20d for o in subset if o.return_20d is not None])
-            if any(o.return_20d is not None for o in subset)
-            else None
-        ),
-        avg_max_drawdown=_avg([o.max_drawdown_20d for o in subset]),
-        avg_max_runup=_avg([o.max_runup_20d for o in subset]),
-        avg_similarity_score=_avg([o.similarity_score for o in subset]),
+        sample_size=len(subset),
+        win_rate_5d=win_rate(returns_5d),
+        win_rate_20d=win_rate(returns_20d),
+        average_return_5d=mean_or_none(returns_5d),
+        average_return_20d=mean_or_none(returns_20d),
+        median_return_20d=median_or_none(returns_20d),
+        standard_deviation_20d=std_dev_sample(returns_20d),
+        max_return_20d=max_or_none(returns_20d),
+        min_return_20d=min_or_none(returns_20d),
+        confidence_interval_95_lower_20d=ci_lower,
+        confidence_interval_95_upper_20d=ci_upper,
+        avg_max_drawdown=mean_or_none([o.max_drawdown_20d for o in subset]),
+        avg_max_runup=mean_or_none([o.max_runup_20d for o in subset]),
+        avg_similarity_score=mean_or_none([o.similarity_score for o in subset]),
     )
+
+
+def metrics_to_dict(agg: RegimeAggregateMetrics) -> dict:
+    return {
+        "regime_label": agg.regime_label,
+        "sample_size": agg.sample_size,
+        "occurrence_count": agg.sample_size,
+        "win_rate_5d": agg.win_rate_5d,
+        "win_rate_20d": agg.win_rate_20d,
+        "average_return_5d": agg.average_return_5d,
+        "average_return_20d": agg.average_return_20d,
+        "avg_return_5d": agg.average_return_5d,
+        "avg_return_20d": agg.average_return_20d,
+        "median_return_20d": agg.median_return_20d,
+        "standard_deviation_20d": agg.standard_deviation_20d,
+        "max_return_20d": agg.max_return_20d,
+        "min_return_20d": agg.min_return_20d,
+        "confidence_interval_95_lower_20d": agg.confidence_interval_95_lower_20d,
+        "confidence_interval_95_upper_20d": agg.confidence_interval_95_upper_20d,
+        "avg_max_drawdown": agg.avg_max_drawdown,
+        "avg_max_runup": agg.avg_max_runup,
+        "avg_similarity_score": agg.avg_similarity_score,
+    }

@@ -95,10 +95,62 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
         return parts[1] in block if len(parts) > 1 else bool(block)
     if root == "fundamental_snapshot":
         block = packet.get("fundamental_snapshot") or {}
+        if len(parts) > 1 and parts[1] == "status":
+            return True
         return parts[1] in block if len(parts) > 1 else bool(block)
-    if root == "historical_performance":
-        block = packet.get("historical_performance") or {}
+    if root == "fundamental":
+        block = packet.get("fundamental_snapshot") or {}
+        if len(parts) > 1 and parts[1] == "status":
+            return True
         return parts[1] in block if len(parts) > 1 else bool(block)
+    if root == "research_context":
+        block = packet.get("research_context") or {}
+        if len(parts) > 1 and parts[1] in ("catalysts", "notes"):
+            return True
+        return parts[1] in block if len(parts) > 1 else bool(block)
+    if root == "historical_validation_context":
+        block = packet.get("historical_validation_context") or {}
+        if len(parts) == 1:
+            return bool(block)
+        field = parts[1]
+        if field in block:
+            return True
+        if field == "report_id" and len(parts) > 2:
+            report_id = parts[2]
+            for item in block.get("recent_completed_validations") or []:
+                if str(item.get("report_id")) == report_id:
+                    return True
+            return report_id in str(block)
+        if field in ("rank_ic", "rank_ic_spearman", "completed_reports_in_window"):
+            return bool(block)
+        return field in block
+    if root == "stock_setup_evidence":
+        block = packet.get("stock_setup_evidence") or {}
+        return parts[1] in block if len(parts) > 1 else bool(block)
+    if root == "risk":
+        if len(parts) < 2:
+            return False
+        field = parts[1]
+        see = packet.get("stock_setup_evidence") or {}
+        market = packet.get("market_snapshot") or {}
+        hist = packet.get("historical_performance") or {}
+        portfolio = packet.get("portfolio_context") or {}
+        if field in see or field in market or field in hist or field in portfolio:
+            return True
+        drawdown_aliases = {
+            "max_drawdown",
+            "median_drawdown",
+            "worst_drawdown",
+            "drawdown",
+        }
+        if field in drawdown_aliases:
+            return bool(see) or bool(hist)
+        liquidity_aliases = {"liquidity", "volatility", "avg_volume", "volume"}
+        if field in liquidity_aliases:
+            return bool(market)
+        if field == "concentration":
+            return bool(packet.get("ranking")) or bool(portfolio)
+        return False
     if root == "portfolio_context":
         block = packet.get("portfolio_context") or {}
         return parts[1] in block if len(parts) > 1 else bool(block)

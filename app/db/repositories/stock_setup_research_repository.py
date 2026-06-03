@@ -48,12 +48,17 @@ class StockSetupResearchRepository:
         stock_id: UUID,
         symbol: str,
         as_of_date,
+        strategy_name: str | None,
+        engine_version: str,
         status: str,
         reference_profile: dict,
         similar_setups: list[dict],
         nearest_n: int,
         min_similarity: float,
         match_count: int,
+        total_matches: int,
+        qualifying_matches: int,
+        setup_evidence_score: float | None,
         parameter_set: dict,
         research_hash: str | None,
         metrics: list[dict],
@@ -69,11 +74,16 @@ class StockSetupResearchRepository:
             )
             row = existing
             row.status = status
+            row.strategy_name = strategy_name
+            row.engine_version = engine_version
             row.reference_profile = reference_profile
             row.similar_setups = similar_setups
             row.nearest_n = nearest_n
             row.min_similarity = min_similarity
             row.match_count = match_count
+            row.total_matches = total_matches
+            row.qualifying_matches = qualifying_matches
+            row.setup_evidence_score = setup_evidence_score
             row.parameter_set = parameter_set
             row.research_hash = research_hash
             row.error_message = error_message
@@ -86,12 +96,17 @@ class StockSetupResearchRepository:
                 stock_id=stock_id,
                 symbol=symbol,
                 as_of_date=as_of_date,
+                strategy_name=strategy_name,
+                engine_version=engine_version,
                 status=status,
                 reference_profile=reference_profile,
                 similar_setups=similar_setups,
                 nearest_n=nearest_n,
                 min_similarity=min_similarity,
                 match_count=match_count,
+                total_matches=total_matches,
+                qualifying_matches=qualifying_matches,
+                setup_evidence_score=setup_evidence_score,
                 parameter_set=parameter_set,
                 research_hash=research_hash,
                 error_message=error_message,
@@ -106,15 +121,20 @@ class StockSetupResearchRepository:
                 StockSetupResearchMetric(
                     stock_setup_research_id=row.id,
                     regime_label=metric["regime_label"],
-                    occurrence_count=metric["occurrence_count"],
+                    occurrence_count=metric.get("sample_size", metric.get("occurrence_count", 0)),
                     win_rate_5d=metric.get("win_rate_5d"),
                     win_rate_20d=metric.get("win_rate_20d"),
-                    avg_return_5d=metric.get("avg_return_5d"),
-                    avg_return_20d=metric.get("avg_return_20d"),
+                    avg_return_5d=metric.get("average_return_5d", metric.get("avg_return_5d")),
+                    avg_return_20d=metric.get("average_return_20d", metric.get("avg_return_20d")),
                     median_return_20d=metric.get("median_return_20d"),
                     avg_max_drawdown=metric.get("avg_max_drawdown"),
                     avg_max_runup=metric.get("avg_max_runup"),
                     avg_similarity_score=metric.get("avg_similarity_score"),
+                    standard_deviation_20d=metric.get("standard_deviation_20d"),
+                    max_return_20d=metric.get("max_return_20d"),
+                    min_return_20d=metric.get("min_return_20d"),
+                    confidence_interval_95_lower_20d=metric.get("confidence_interval_95_lower_20d"),
+                    confidence_interval_95_upper_20d=metric.get("confidence_interval_95_upper_20d"),
                 )
             )
         self.db.flush()

@@ -77,3 +77,8 @@ def test_packet_builder_reproducible_hash(db_session):
     assert "evidence_confidence" in p1.payload
     assert "stock_setup_evidence" in p1.payload
     assert p1.payload["stock_setup_evidence"]["status"] == "unavailable"
+    assert "stock_quality_evidence" in p1.payload
+    sqe = p1.payload["stock_quality_evidence"]
+    assert sqe["schema_version"] == "1.0.0"
+    assert "A_ranking_attribution" in sqe
+    assert "overall_stock_quality_score" in sqe

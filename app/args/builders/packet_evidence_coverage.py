@@ -18,8 +18,12 @@ def score_packet_evidence(payload: dict[str, Any]) -> dict[str, Any]:
     components: dict[str, float] = {}
 
     validation = payload.get("validation") or {}
+    current_status = validation.get("status")
+    pending_current = current_status == "pending" or validation.get("database_status") == "insufficient_data"
     if validation.get("status") == "completed" and validation.get("horizon_metrics"):
         components["validation_current"] = float(weights["validation_current"])
+    elif pending_current:
+        missing.append("validation.horizon_metrics (current run pending — neutral)")
     else:
         missing.append("validation.horizon_metrics (current run)")
 
@@ -78,6 +82,9 @@ def derive_evidence_confidence(payload: dict[str, Any], coverage: dict[str, Any]
     validation = payload.get("validation") or {}
     if validation.get("status") == "completed":
         base += 0.05
+    elif validation.get("status") != "pending":
+        pass
+    # pending current-run validation: neutral (no penalty, no bonus)
 
     historical = payload.get("historical_validation_context") or {}
     if (historical.get("recent_completed_validations") or [])[:1]:

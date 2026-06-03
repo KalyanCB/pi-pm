@@ -11,6 +11,7 @@ from app.args.builders.packet_evidence_coverage import (
     derive_evidence_confidence,
     score_packet_evidence,
 )
+from app.args.validation_status import normalize_validation_status_for_packet
 from app.db.repositories.exit_research_metric_repository import ExitResearchMetricRepository
 from app.db.repositories.factor_performance_metric_repository import (
     FactorPerformanceMetricRepository,
@@ -30,6 +31,10 @@ from app.models.ranking_run import RankingRun
 from app.models.stock import Stock
 from app.workspace_args.constants import PACKET_VERSION
 from app.workspace_args.models import InvestmentReviewPacket
+from app.args.plugins.stock_quality_evidence import (
+    SCHEMA_VERSION as SQE_SCHEMA_VERSION,
+    build_stock_quality_evidence,
+)
 from app.stock_setup_evidence.packet_enricher import attach_stock_setup_evidence
 from app.services.stock_setup_research_service import StockSetupResearchService
 from app.workspace_args.packet_schema import compute_packet_hash
@@ -70,6 +75,10 @@ class InvestmentReviewPacketBuilder:
         stock: Stock,
     ) -> InvestmentReviewPacket:
         validation_report = self.validation_repo.get_by_ranking_run_id(ranking_run.id)
+        raw_validation_status = validation_report.status if validation_report else None
+        packet_validation_status, database_validation_status, pending_reason = (
+            normalize_validation_status_for_packet(raw_validation_status)
+        )
         regime_label = _validation_regime(validation_report, ranking_run)
         horizon_rows, decile_rows = _load_validation_metrics(self.db, validation_report)
         regime_labels = _regime_label_scope(regime_label)
@@ -136,7 +145,9 @@ class InvestmentReviewPacketBuilder:
             "technical_factors": technical_factors,
             "validation": {
                 "report_id": str(validation_report.id) if validation_report else None,
-                "status": validation_report.status if validation_report else None,
+                "status": packet_validation_status,
+                "database_status": database_validation_status,
+                "pending_reason": pending_reason,
                 "horizon_metrics": horizon_rows,
                 "decile_metrics": decile_rows,
                 "regime_label": regime_label,
@@ -184,6 +195,13 @@ class InvestmentReviewPacketBuilder:
         coverage = score_packet_evidence(payload)
         payload["evidence_coverage"] = coverage
         payload["evidence_confidence"] = derive_evidence_confidence(payload, coverage)
+
+        sqe = build_stock_quality_evidence(payload, stock.symbol)
+        payload["stock_quality_evidence"] = sqe
+        lineage = payload.setdefault("source_lineage", {})
+        lineage["stock_quality_evidence_schema_version"] = SQE_SCHEMA_VERSION
+        lineage["stock_quality_evidence_ranking_run_id"] = sqe.get("ranking_run_id")
+
         payload["packet_built_at"] = datetime.now(UTC).isoformat()
         packet_hash = compute_packet_hash(payload)
         return InvestmentReviewPacket(
@@ -398,8 +416,8 @@ def _load_historical_validation_context(
         "completed_reports_in_window": len(reports),
         "recent_completed_validations": recent,
         "note": (
-            "Historical completed validations supply context when the current run "
-            "is insufficient_data or lacks forward-return horizons."
+            "Historical completed validations supply QRC context when the current run "
+            "is pending (forward horizons not yet available)."
         ),
     }
 
