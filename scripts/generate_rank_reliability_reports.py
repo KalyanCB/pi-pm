@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Generate all rank reliability research docs (read-only DB)."""
+"""Generate rank reliability + regime + calibration docs (read-only DB).
+
+For all five root-cause deliverables, prefer:
+  python scripts/generate_ranking_root_cause_reports.py
+"""
 
 from __future__ import annotations
 

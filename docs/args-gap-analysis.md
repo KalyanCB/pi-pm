@@ -1,8 +1,10 @@
 # ARGS Design & Integration Summary (PO Review)
 
+> **Platform handoff:** [`PLATFORM-HANDOFF-2026.md`](./PLATFORM-HANDOFF-2026.md) · **Current flow:** rankings → `scripts/run_args_top20.py` → `/api/v1/research/*` · **QRC flag:** `ARGS_QRC_USE_SQE=false` (default)
+
 **Product:** Pi-PM — ARGS (AI Research & Governance System)  
-**Status:** Phase 1 **shipped** on branch `feature/args-phase1` (commits `04fb536`, `2f16492`)  
-**Last updated:** 2026-06-08  
+**Status:** Phase 1 **shipped**; Phase 2 committee independence on `feature/see-v2`  
+**Last updated:** 2026-06-04  
 **Audience:** Product Owner, engineering leads  
 **Deep references:**
 

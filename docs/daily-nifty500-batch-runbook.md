@@ -1,8 +1,8 @@
 # Daily NIFTY 500 Batch — Runbook
 
-**Branch:** `feature/sprint-8.6-daily-ingestion`  
+**Platform handoff:** [`PLATFORM-HANDOFF-2026.md`](./PLATFORM-HANDOFF-2026.md) · **Branch:** `feature/see-v2`  
 **API prefix:** `/api/v1/ops/daily-batch`  
-**Migration:** `20260607_0015`  
+**Migration:** `20260609_0018` (daily batch schema at `20260607_0015`)  
 **Client:** `scripts/run_daily_nifty500_batch.py`
 
 ## Prerequisites
@@ -110,10 +110,12 @@ python scripts/reingest_symbols_since.py \
 
 | Issue | Mitigation |
 |-------|------------|
+| **Ranking gaps / phase skip** | Rankings run only when `any(ranking_gaps)`. If the batch returns `already_current: true`, all phases short-circuit (no re-rank). Dry-run may list gaps that a normal run won't fill. Use `force_from_date: true` + `force_regenerate_rankings: true` to force creation (see [`dailyruns/04-jun-2026/02-rankings.md`](./dailyruns/04-jun-2026/02-rankings.md)). |
+| **`^NSEI` not through target day** | Trading-day resolver won't rank that date. Include benchmark in ingest; re-ingest with `since_date` if rankings gap persists. |
+| **Validation insufficient tail (~2026-05-27+)** | Recent as-of dates stay `insufficient_data` until forward horizons have enough bars (≥5 trading days for 5d). Ingest later sessions, re-run validation. ARGS uses `pending_neutral` for QRC when current run pending. |
 | ~150 stocks `data_status=ERROR` after batch | Was caused by empty incremental when already at latest bar; fixed in `market_data_service`. Reset `ACTIVE` + optional `since_date` re-ingest. |
 | Rankings only ~320 stocks | 150 were `ERROR`; after fix expect ~450+ ranked. |
-| Validation `insufficient_data` on latest day | Need forward bars (≥5 trading days for 5d horizon). Ingest later sessions, then re-validate. |
-| Factor IC / exit `metrics_written: 0` | No `completed` validation reports in window. |
+| Factor IC / exit `metrics_written: 0` | No `completed` validation reports in window (same tail issue). |
 | `DUMMYVEDL*.NS` in universe | Remove from seed; permanent Yahoo metadata failure. |
 | `allow_partial_ingest: false` | Batch fails if any symbol fails; use `true` for production cron. |
 

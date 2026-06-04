@@ -3,12 +3,19 @@ from __future__ import annotations
 from app.outcome_attribution.models import BucketMetrics
 from app.ranking_research.calibration import CalibrationTables
 from app.ranking_research.constants import EXACT_RANKS, RESEARCH_HORIZONS
+from app.ranking_research.constants import SCORE_BUCKET_SPECS
 from app.ranking_research.models import (
     CalibratedRankingBacktestReport,
+    FactorReliabilitySegment,
     PortfolioBacktestMetrics,
     RankReliabilityReport,
+    RootCauseHeadlines,
+    ScoreCompressionReport,
+    ScoreCompressionSegment,
     StrategyRankReliability,
 )
+from app.ranking_research.root_cause import build_root_cause_headlines
+from app.ranking_research.score_compression import compare_score_buckets
 
 
 def _fmt_pct(value: float | None, *, digits: int = 2) -> str:
@@ -60,16 +67,41 @@ def _per_rank_table(segment: StrategyRankReliability, horizon: int) -> list[str]
     lines = [
         f"#### Per-rank metrics ({horizon}d)",
         "",
-        "| Rank | Hit rate | Avg return | Alpha | Sharpe | Obs | Status |",
-        "|------|----------|------------|-------|--------|-----|--------|",
+        "| Rank | Hit rate | Avg return | Alpha | Sharpe | Max DD | Obs | Status |",
+        "|------|----------|------------|-------|--------|--------|-----|--------|",
     ]
     for rank in EXACT_RANKS:
         m = segment.per_rank[rank][horizon]
         lines.append(
             f"| {rank} | {_fmt_pct(m.hit_rate)} | {_fmt_pct(m.average_return)} | "
-            f"{_fmt_pct(m.alpha)} | {_fmt_num(m.sharpe)} | {m.observation_count} | {m.status} |"
+            f"{_fmt_pct(m.alpha)} | {_fmt_num(m.sharpe)} | {_fmt_pct(m.max_drawdown)} | "
+            f"{m.observation_count} | {m.status} |"
         )
     lines.append("")
+    return lines
+
+
+def _strongest_weakest_ranks(segment: StrategyRankReliability, horizon: int) -> list[str]:
+    ranked: list[tuple[int, float]] = []
+    for rank in EXACT_RANKS:
+        m = segment.per_rank[rank][horizon]
+        if m.alpha is not None and m.status == "ok":
+            ranked.append((rank, m.alpha))
+    if not ranked:
+        return []
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    best = ranked[0]
+    worst = ranked[-1]
+    lines = [
+        f"#### Strongest / weakest ranks ({horizon}d)",
+        "",
+        f"- **Strongest:** rank {best[0]} (α {_fmt_pct(best[1])})",
+        f"- **Weakest:** rank {worst[0]} (α {_fmt_pct(worst[1])})",
+        f"- **Ranks 1–5 avg α:** {_fmt_pct(_band_mean(segment, 1, 5, horizon))}",
+        f"- **Ranks 6–10 avg α:** {_fmt_pct(_band_mean(segment, 6, 10, horizon))}",
+        f"- **Ranks 11–20 avg α:** {_fmt_pct(_band_mean(segment, 11, 20, horizon))}",
+        "",
+    ]
     return lines
 
 
@@ -233,6 +265,7 @@ def build_rank_reliability_markdown(report: RankReliabilityReport) -> str:
             lines.extend(_per_rank_table(segment, horizon))
             if horizon == 20:
                 lines.extend(_ascii_alpha_curve(segment, horizon))
+                lines.extend(_strongest_weakest_ranks(segment, horizon))
         lines.extend(_monotonicity_tests(segment))
         lines.extend(_where_ordering_breaks(segment, 20))
         lines.extend(_score_quintile_section(segment, 20))
@@ -308,6 +341,208 @@ def build_regime_rank_reliability_markdown(report: RankReliabilityReport) -> str
             lines.extend(_where_ordering_breaks(seg, 20))
 
     lines.extend(_methodology_appendix())
+    return "\n".join(lines)
+
+
+def _factor_segment_table(fseg: FactorReliabilitySegment) -> list[str]:
+    lines = [
+        f"#### {fseg.strategy_name} / {fseg.regime_label} ({fseg.horizon}d)",
+        "",
+        "| Factor | Winner norm | Loser norm | Spread | Winners | Losers |",
+        "|--------|-------------|------------|--------|---------|--------|",
+    ]
+    for row in sorted(fseg.rows, key=lambda r: abs(r.spread or 0), reverse=True):
+        lines.append(
+            f"| {row.factor_name} | {_fmt_num(row.winner_mean_normalized)} | "
+            f"{_fmt_num(row.loser_mean_normalized)} | {_fmt_num(row.spread)} | "
+            f"{row.winner_count} | {row.loser_count} |"
+        )
+    lines.append("")
+    return lines
+
+
+def build_factor_reliability_markdown(report: RankReliabilityReport) -> str:
+    lines = [
+        "# Factor Reliability Report",
+        "",
+        "## Executive summary",
+        "",
+        "Top-20 `ranking_results.score_components` vs forward return sign/magnitude. "
+        "Winners = at or above run median return; losers = below. Spread = winner mean "
+        "normalized − loser mean normalized.",
+        "",
+    ]
+    lines.extend(_scope_block(report))
+    lines.append("## Factor spreads by strategy and horizon (ALL_REGIMES)")
+    lines.append("")
+    for strategy in report.config.strategy_names:
+        lines.extend([f"### {strategy}", ""])
+        for horizon in RESEARCH_HORIZONS:
+            fseg = next(
+                (
+                    f
+                    for f in report.factor_segments
+                    if f.strategy_name == strategy
+                    and f.regime_label == "ALL_REGIMES"
+                    and f.horizon == horizon
+                ),
+                None,
+            )
+            if fseg:
+                lines.extend(_factor_segment_table(fseg))
+
+    lines.append("## Regime-split factor spreads (20d)")
+    lines.append("")
+    for fseg in sorted(
+        [f for f in report.factor_segments if f.horizon == 20 and f.regime_label != "ALL_REGIMES"],
+        key=lambda f: (f.strategy_name, f.regime_label),
+    ):
+        lines.extend(_factor_segment_table(fseg))
+
+    lines.extend(
+        [
+            "## Methodology",
+            "",
+            "1. Universe: top-20 picks per completed run.",
+            "2. Per run, median split on forward return at horizon.",
+            "3. Compare `score_components[factor].normalized` for winners vs losers.",
+            "4. Research only — no production factor weight changes.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _score_bucket_table(segment: ScoreCompressionSegment, horizon: int) -> list[str]:
+    lines = [
+        f"#### Score buckets ({horizon}d) — {segment.strategy_name}",
+        "",
+        "| Score bucket | Hit rate | Avg return | Alpha | Sharpe | Max DD | Obs |",
+        "|--------------|----------|------------|-------|--------|--------|-----|",
+    ]
+    for label, _, _ in SCORE_BUCKET_SPECS:
+        m = segment.per_bucket.get(label, {}).get(horizon)
+        if not m:
+            continue
+        lines.append(
+            f"| {label} | {_fmt_pct(m.hit_rate)} | {_fmt_pct(m.average_return)} | "
+            f"{_fmt_pct(m.alpha)} | {_fmt_num(m.sharpe)} | {_fmt_pct(m.max_drawdown)} | "
+            f"{m.observation_count} |"
+        )
+    lines.append("")
+    return lines
+
+
+def build_score_compression_markdown(
+    report: RankReliabilityReport,
+    compression: ScoreCompressionReport,
+) -> str:
+    lines = [
+        "# Score Compression Analysis",
+        "",
+        "## Executive summary",
+        "",
+        "Within-run composite score buckets for top-20 names. Tests whether "
+        "tighter high scores (e.g. ≥0.97) outperform mid scores (e.g. 0.92–0.94).",
+        "",
+    ]
+    lines.extend(_scope_block(report))
+    lines.append("## Score bucket curves (ALL_REGIMES)")
+    lines.append("")
+
+    for segment in compression.segments:
+        if segment.regime_label != "ALL_REGIMES":
+            continue
+        lines.extend([f"### {segment.strategy_name}", ""])
+        for horizon in RESEARCH_HORIZONS:
+            lines.extend(_score_bucket_table(segment, horizon))
+        cmp = compare_score_buckets(segment, 20, "score_ge_0.97", "score_0.92_0.94")
+        if cmp:
+            verdict = "outperforms" if cmp.high_outperforms else "underperforms"
+            lines.append(
+                f"- **0.97 vs 0.92–0.94 (20d):** ≥0.97 bucket {verdict} "
+                f"0.92–0.94 by {_fmt_pct(abs(cmp.alpha_spread))} alpha."
+            )
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Methodology",
+            "",
+            "Buckets: "
+            + ", ".join(f"`{label}` [{low}, {high})" for label, low, high in SCORE_BUCKET_SPECS)
+            + ".",
+            "Metrics pooled across all top-20 observations in scope.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_ranking_calibration_root_cause_markdown(
+    reliability: RankReliabilityReport,
+    compression: ScoreCompressionReport,
+    *,
+    reliability_path: str = "docs/rank-reliability-report.md",
+    factor_path: str = "docs/factor-reliability-report.md",
+    regime_path: str = "docs/regime-rank-reliability-report.md",
+    compression_path: str = "docs/score-compression-analysis.md",
+) -> str:
+    headlines = build_root_cause_headlines(reliability, compression)
+    return _build_root_cause_body(
+        reliability,
+        headlines,
+        reliability_path=reliability_path,
+        factor_path=factor_path,
+        regime_path=regime_path,
+        compression_path=compression_path,
+    )
+
+
+def _build_root_cause_body(
+    reliability: RankReliabilityReport,
+    headlines: RootCauseHeadlines,
+    *,
+    reliability_path: str,
+    factor_path: str,
+    regime_path: str,
+    compression_path: str,
+) -> str:
+    lines = [
+        "# Ranking Calibration Root Cause",
+        "",
+        "## Executive summary (Phase 5 headlines)",
+        "",
+        "### Why Top 20 works",
+        "",
+    ]
+    for item in headlines.why_top20_works:
+        lines.append(f"- {item}")
+    lines.extend(["", "### Why rank ordering fails", ""])
+    for item in headlines.why_rank_fails:
+        lines.append(f"- {item}")
+    lines.extend(["", "### Root causes", ""])
+    for item in headlines.root_causes:
+        lines.append(f"- {item}")
+    lines.extend(["", "### Simplest fix (research-only)", ""])
+    for item in headlines.simplest_fix:
+        lines.append(f"- {item}")
+
+    lines.extend(["", "## Evidence links", ""])
+    lines.extend(
+        [
+            f"- [Rank reliability]({reliability_path})",
+            f"- [Factor reliability]({factor_path})",
+            f"- [Regime rank reliability]({regime_path})",
+            f"- [Score compression]({compression_path})",
+            "",
+            "## Scope",
+            "",
+            f"- Runs: {reliability.ranked_run_count}",
+            f"- Window: {reliability.config.start_date} → {reliability.config.end_date}",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 

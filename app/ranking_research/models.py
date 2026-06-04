@@ -113,6 +113,37 @@ class RankReliabilityReport:
 
 
 @dataclass(frozen=True)
+class ScoreCompressionSegment:
+    strategy_name: str
+    regime_label: str
+    per_bucket: dict[str, dict[int, BucketMetrics]]
+
+
+@dataclass(frozen=True)
+class ScoreCompressionBucket:
+    horizon: int
+    high_bucket: str
+    low_bucket: str
+    high_alpha: float
+    low_alpha: float
+    alpha_spread: float
+    high_outperforms: bool
+
+
+@dataclass(frozen=True)
+class ScoreCompressionReport:
+    segments: tuple[ScoreCompressionSegment, ...]
+
+
+@dataclass(frozen=True)
+class RootCauseHeadlines:
+    why_top20_works: tuple[str, ...]
+    why_rank_fails: tuple[str, ...]
+    root_causes: tuple[str, ...]
+    simplest_fix: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class PortfolioBacktestMetrics:
     label: str
     horizon: int

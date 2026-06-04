@@ -56,10 +56,21 @@ STRATEGY_FACTOR_KEYS: dict[str, tuple[str, ...]] = {
     "breakout_v1": FACTOR_KEYS_BREAKOUT,
 }
 
+# Top-20 composite score buckets (label, inclusive low, exclusive high)
+SCORE_BUCKET_SPECS: tuple[tuple[str, float, float], ...] = (
+    ("score_ge_0.97", 0.97, 1.01),
+    ("score_0.94_0.97", 0.94, 0.97),
+    ("score_0.92_0.94", 0.92, 0.94),
+    ("score_0.90_0.92", 0.90, 0.92),
+    ("score_lt_0.90", 0.0, 0.90),
+)
+
 __all__ = [
     "ATTRIBUTION_HORIZONS",
     "REGIME_LABEL_ALL",
     "RESEARCH_HORIZONS",
     "EXACT_RANKS",
     "REGIME_LABELS",
+    "SCORE_BUCKET_SPECS",
+    "STRATEGY_FACTOR_KEYS",
 ]

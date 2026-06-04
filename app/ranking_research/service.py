@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.outcome_attribution.constants import REGIME_LABEL_ALL
 from app.outcome_attribution.models import RunBenchmark
-from app.ranking_research.constants import REGIME_LABELS
+from app.ranking_research.constants import REGIME_LABELS, RESEARCH_HORIZONS
 from app.ranking_research.factor_reliability import build_factor_reliability_segment
 from app.ranking_research.models import (
     EnrichedStockObservation,
@@ -45,7 +45,7 @@ class RankReliabilityService:
                     regime_segments.append(rseg)
 
             for regime in [REGIME_LABEL_ALL, *REGIME_LABELS]:
-                for horizon in (20,):
+                for horizon in RESEARCH_HORIZONS:
                     fseg = build_factor_reliability_segment(
                         strategy_name=strategy,
                         regime_label=regime,
