@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     args_llm_cro_base_url: str = ""
     args_llm_cro_timeout_seconds: int = 0
 
+    # QRC evidence mode — SQE experiment (default off; legacy brief unchanged when false)
+    args_qrc_use_sqe: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

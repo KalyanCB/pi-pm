@@ -24,6 +24,7 @@ from app.models.args import (
     LlmExecutionRecord,
     ResearchRun,
 )
+from app.args.plugins.stock_quality_evidence import condense_stock_quality_evidence
 from app.models.platform_traceability import RunLineageRecord
 
 
@@ -197,6 +198,26 @@ def export_run(db: Session, run_id: UUID, output: Path) -> None:
                 "stock_id": str(packet.stock_id),
                 "payload": packet.payload,
             }),
+            "```",
+            "",
+        ])
+
+    lines.extend(["", "## 2b) Stock Quality Evidence (condensed)", ""])
+    for index, packet in enumerate(packets, start=1):
+        sqe = (packet.payload or {}).get("stock_quality_evidence")
+        if not sqe:
+            lines.extend([
+                f"### SQE {index}: `{packet.symbol}`",
+                "",
+                "_No stock_quality_evidence on packet._",
+                "",
+            ])
+            continue
+        lines.extend([
+            f"### SQE {index}: `{packet.symbol}`",
+            "",
+            "```json",
+            _dump(condense_stock_quality_evidence(sqe)),
             "```",
             "",
         ])

@@ -1,10 +1,11 @@
 # ARGS Phase 1 — Implementation Status (PO Review)
 
+> **Current ARGS flow (June 2026):** See [`PLATFORM-HANDOFF-2026.md`](./PLATFORM-HANDOFF-2026.md) §7.4, §8–§10 for daily batch → rankings → ARGS CLI, committee Phase 2, SEE v2, SQE, and QRC flags. This doc remains the Phase 1 contract reference.
+
 **Product:** Pi-PM — ARGS (AI Research & Governance System)  
-**Branch:** `feature/args-phase1` (pushed to `origin`)  
-**Migration:** `20260608_0016` (after `20260607_0015`)  
-**Last updated:** 2026-06-08  
-**Commits:** `04fb536` (Phase 1 code), `2f16492` (docs touch-up)  
+**Branch:** merged on `feature/see-v2`  
+**Migration:** `20260608_0016` (ARGS) · head `20260609_0018` (SEE v2)  
+**Last updated:** 2026-06-04  
 **Companion:** `docs/args-gap-analysis.md` (design & integration summary)
 
 ---

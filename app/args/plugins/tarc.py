@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from app.args.committee_packet_views import build_tarc_view
 from app.args.llm.port import LlmPort
 from app.args.plugins.committee_llm_base import execute_committee_llm
 from app.workspace_args.committee_contracts import CommitteeResult
@@ -15,24 +16,21 @@ class TarcCommitteePlugin:
     version = "1.0.0"
 
     def execute(self, packet: InvestmentReviewPacket, llm: LlmPort) -> CommitteeResult:
+        view = build_tarc_view({**packet.payload, "symbol": packet.symbol})
         diagnostics = _build_tarc_diagnostics(packet.payload)
         system = (
             f"{COMMITTEE_TARC} technical research committee. "
-            "Interpret only ranking factors, score components, regime, technical_factors, and historical_performance. "
-            "Return strict JSON with keys: findings, strengths, risks, supporting_evidence, confidence, research_label, "
-            "signal_quality, signal_breadth, regime_alignment, technical_summary. "
-            "findings must be 150-350 words and must explain: why rank is high/low, strongest factors, weakest factors, "
-            "whether signal is balanced vs concentrated, and regime implications. "
-            "strengths must contain at least 3 concrete bullet strings. "
-            "risks must contain at least 3 concrete bullet strings. "
-            "supporting_evidence must contain at least 3 objects each with a packet-grounded ref like "
-            "ranking:rank, ranking:composite_score, technical_factors:<factor>, regime:regime_label, historical_performance:return_5d. "
-            "Use diagnostics to classify signal_breadth as STRONG_BREADTH, MEDIUM_BREADTH, or NARROW_SIGNAL. "
-            "Use diagnostics to classify regime_alignment as HIGH, MODERATE, or UNSUPPORTED. "
-            "Set confidence from 0-1 using rubric: signal_quality 30%, breadth 25%, regime_alignment 25%, risk_profile 20%. "
-            "Never use external data. Never speculate beyond packet fields. "
-            "Never output investment recommendations, BUY/SELL/HOLD, position sizing, or stop-loss guidance. "
-            "Do not leave findings/arrays empty."
+            "Interpret ONLY the scoped user payload: ranking attribution, score_components, "
+            "technical_factors, regime label for technical interpretation, historical_performance. "
+            "NEVER cite validation, factor IC, SEE, SQE, fundamentals, or news. "
+            "Return strict JSON with keys: findings, strengths, risks, supporting_evidence, confidence, "
+            "research_label, contrarian_view, signal_quality, signal_breadth, regime_alignment, technical_summary. "
+            "findings must be 150-350 words and explain: why rank is high/low, strongest/weakest factors, "
+            "signal breadth vs concentration, regime implications for technical setup. "
+            "contrarian_view must challenge QRC-style validation skepticism when rank is strong. "
+            "supporting_evidence: ranking:*, technical_factors:*, historical_performance:* only. "
+            "Include at least one technical_factors:* ref unique to TARC mandate. "
+            "Never output investment recommendations, BUY/SELL/HOLD, position sizing, or stop-loss guidance."
         )
         result = execute_committee_llm(
             packet=packet,
@@ -41,22 +39,18 @@ class TarcCommitteePlugin:
             committee_version=self.version,
             system=system,
             user_payload={
-                "symbol": packet.symbol,
-                "ranking": packet.payload.get("ranking"),
-                "technical_factors": packet.payload.get("technical_factors"),
-                "regime": packet.payload.get("regime"),
-                "historical_performance": packet.payload.get("historical_performance"),
+                **view,
                 "diagnostics": diagnostics,
                 "output_requirements": {
                     "findings_word_range": "150-350",
                     "min_strengths": 3,
                     "min_risks": 3,
                     "min_supporting_evidence": 3,
+                    "required_contrarian_view": True,
                     "evidence_ref_examples": [
                         "ranking:rank",
                         "ranking:composite_score",
                         "technical_factors:trend_quality",
-                        "regime:regime_label",
                         "historical_performance:return_5d",
                     ],
                 },

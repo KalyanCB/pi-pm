@@ -203,7 +203,9 @@ class DailyBatchService:
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RANKINGS]
 
             if request.phases.validation and (
-                plan.validation_gap_count > 0 or request.force_recompute
+                plan.validation_gap_count > 0
+                or request.force_recompute
+                or request.force_from_date
             ):
                 self._set_phase(run, DailyBatchPhase.VALIDATION, base_pct)
                 result = self.validation_service.backfill(
@@ -280,9 +282,12 @@ class DailyBatchService:
 
             factor_start = plan.factor_ic_window_start or plan.from_date
             factor_end = plan.factor_ic_window_end or plan.target_trading_day
+            if request.force_from_date:
+                factor_start = max(request.holdout_start_date, plan.from_date)
+                factor_end = plan.target_trading_day
 
             if request.phases.factor_ic and plan.factor_ic_needed:
-                if plan.factor_ic_window_start is None or plan.factor_ic_window_end is None:
+                if factor_start is None or factor_end is None:
                     phase_results["factor_ic"] = {
                         "skipped": True,
                         "reason": "no_completed_validation_window",
@@ -324,7 +329,7 @@ class DailyBatchService:
                     base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.FACTOR_IC]
 
             if request.phases.research_intelligence and plan.research_intelligence_needed:
-                if plan.factor_ic_window_start is None or plan.factor_ic_window_end is None:
+                if factor_start is None or factor_end is None:
                     phase_results["research_intelligence"] = {
                         "skipped": True,
                         "reason": "no_completed_validation_window",
@@ -352,7 +357,7 @@ class DailyBatchService:
                     base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RESEARCH_INTELLIGENCE]
 
             if request.phases.exit_research and plan.exit_research_needed:
-                if plan.factor_ic_window_start is None or plan.factor_ic_window_end is None:
+                if factor_start is None or factor_end is None:
                     phase_results["exit_research"] = {
                         "skipped": True,
                         "reason": "no_completed_validation_window",
@@ -513,10 +518,14 @@ class DailyBatchService:
         batch_size = request.ingest_batch_size
         for offset in range(0, len(symbols), batch_size):
             batch_symbols = symbols[offset : offset + batch_size]
+            since_date = request.from_date if request.force_from_date else None
+            if request.force_ingest and since_date is None:
+                since_date = request.from_date
             response = self.market_data_service.ingest(
                 batch_symbols,
                 IngestPeriod.FIVE_YEARS,
                 ingestion_mode=IngestionMode.INCREMENTAL,
+                since_date=since_date,
             )
             totals["batches"] += 1
             totals["symbols_succeeded"] += response.symbols_processed

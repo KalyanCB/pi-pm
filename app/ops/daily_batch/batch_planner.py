@@ -145,7 +145,10 @@ class DailyBatchPlanner:
         factor_ic_window_end = evidence_window[1] if evidence_window else None
 
         # Factor IC / research intelligence require completed-validation evidence windows.
-        factor_ic_needed = evidence_window is not None
+        factor_ic_needed = evidence_window is not None or force_from_date
+        if force_from_date:
+            factor_ic_window_start = max(self.holdout_start_date, window_start)
+            factor_ic_window_end = target
         regime_history_needed = (
             validation_gap > 0
             or force_from_date
@@ -158,7 +161,7 @@ class DailyBatchPlanner:
         regime_performance_needed = (
             self._has_horizon_metrics() or validation_gap > 0 or force_from_date
         )
-        research_intelligence_needed = evidence_window is not None
+        research_intelligence_needed = evidence_window is not None or force_from_date
         exit_research_needed = factor_ic_needed
 
         already_current = (

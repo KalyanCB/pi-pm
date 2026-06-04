@@ -12,10 +12,13 @@ def _sample_packet() -> InvestmentReviewPacket:
         "packet_version": "1.0.0",
         "symbol": "AAA.NS",
         "ranking": {"rank": 1, "composite_score": 0.9},
-        "technical_factors": {},
-        "validation": {"status": "completed", "horizon_metrics": []},
-        "quant_evidence": {},
-        "regime": {},
+        "technical_factors": {"momentum": {"normalized": 0.8}},
+        "validation": {
+            "status": "completed",
+            "horizon_metrics": [{"horizon": 5, "sample_size": 50}],
+        },
+        "quant_evidence": {"factor_ic": [{"factor_name": "momentum"}]},
+        "regime": {"regime_label": "BULL_LOW_VOL"},
     }
     rid = uuid4()
     return InvestmentReviewPacket(
