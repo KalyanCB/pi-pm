@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -125,6 +125,10 @@ class CommitteeReview(Base, UUIDPrimaryKeyMixin):
     supporting_evidence: Mapped[list[Any] | None] = mapped_column(JSONB)
     confidence: Mapped[float | None] = mapped_column(Numeric(6, 4))
     extensions: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # M3.1 Investment Committee Evolution — advisory fields (additive)
+    advisory_action: Mapped[str | None] = mapped_column(String(32))
+    high_concern: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    high_concern_reason: Mapped[str | None] = mapped_column(Text)
     prompt_version_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("prompt_versions.id", ondelete="SET NULL")
     )
@@ -155,6 +159,9 @@ class CroReview(Base, UUIDPrimaryKeyMixin):
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
     dissent_summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     confidence: Mapped[float | None] = mapped_column(Numeric(6, 4))
+    # M3.1 Investment Committee Evolution — advisory fields (additive)
+    cro_advisory_action: Mapped[str | None] = mapped_column(String(32))
+    investment_committee_summary: Mapped[str | None] = mapped_column(Text)
     prompt_version_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("prompt_versions.id", ondelete="SET NULL")
     )

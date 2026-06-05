@@ -135,20 +135,37 @@ class RecommendationOutcome(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         unique=True,
     )
+    # Denormalised for analytics queries (avoids join to results→runs)
+    symbol: Mapped[str | None] = mapped_column(String(32))
+    strategy_name: Mapped[str | None] = mapped_column(String(64))
+    conviction_band: Mapped[str | None] = mapped_column(String(16))
+    regime_label: Mapped[str | None] = mapped_column(String(32))
+
     outcome_status: Mapped[str] = mapped_column(String(16), nullable=False, default="OPEN")
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)
     exit_date: Mapped[date | None] = mapped_column(Date)
     entry_price: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False)
     exit_price: Mapped[float | None] = mapped_column(Numeric(18, 8))
-    holding_days: Mapped[int | None] = mapped_column(Integer)
+    days_held: Mapped[int | None] = mapped_column(Integer)
     pnl_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
     max_gain_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
     max_drawdown_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
     benchmark_return_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
     alpha_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    target_hit: Mapped[bool | None] = mapped_column()
+    stop_hit: Mapped[bool | None] = mapped_column()
+    exit_reason: Mapped[str | None] = mapped_column(String(64))
     exit_reason_codes: Mapped[list[str] | None] = mapped_column(JSONB)
+    # committee advisory at time of entry (stored for effectiveness analysis)
+    committee_advisory: Mapped[str | None] = mapped_column(String(32))
     metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
 
     recommendation_result: Mapped[RecommendationResult] = relationship(
         "RecommendationResult", back_populates="outcome"
+    )
+
+    __table_args__ = (
+        Index("ix_rec_outcomes_strategy_status", "strategy_name", "outcome_status"),
+        Index("ix_rec_outcomes_conviction_band", "conviction_band"),
+        Index("ix_rec_outcomes_regime", "regime_label"),
     )

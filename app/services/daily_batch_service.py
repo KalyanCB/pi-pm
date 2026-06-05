@@ -556,16 +556,25 @@ class DailyBatchService:
             "rows_inserted": 0,
             "rows_updated": 0,
         }
+        # On a fresh DB (no existing market data), always do a full pull so
+        # ranking strategies have enough price history (breakout_v1 needs 252d,
+        # momentum_v1 needs 63d). since_date is only applied when data already
+        # exists and we are doing an incremental top-up.
+        has_existing_data = self.market_data_service.has_historical_data()
+        if not has_existing_data:
+            ingestion_mode = IngestionMode.FULL_REFRESH
+            since_date = None
+        else:
+            ingestion_mode = IngestionMode.INCREMENTAL
+            since_date = request.from_date if (request.force_from_date or request.force_ingest) else None
+
         batch_size = request.ingest_batch_size
         for offset in range(0, len(symbols), batch_size):
             batch_symbols = symbols[offset : offset + batch_size]
-            since_date = request.from_date if request.force_from_date else None
-            if request.force_ingest and since_date is None:
-                since_date = request.from_date
             response = self.market_data_service.ingest(
                 batch_symbols,
-                IngestPeriod.FIVE_YEARS,
-                ingestion_mode=IngestionMode.INCREMENTAL,
+                IngestPeriod.ONE_YEAR,
+                ingestion_mode=ingestion_mode,
                 since_date=since_date,
             )
             totals["batches"] += 1

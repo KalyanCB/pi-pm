@@ -12,7 +12,12 @@ from app.args.graph.state import ArgsGraphState
 from app.args.llm.registry import CommitteeLlmRegistry
 from app.args.plugins.base import CommitteePlugin
 from app.args.plugins.registry import CommitteeRegistry
-from app.workspace_args.constants import COMMITTEE_CRO
+from app.workspace_args.constants import (
+    COMMITTEE_CRO,
+    CommitteeAdvisoryAction,
+    aggregate_cro_advisory,
+    label_to_advisory_action,
+)
 from app.workspace_args.committee_contracts import CommitteeReviewOutput
 from app.workspace_args.models import InvestmentReviewPacket
 
@@ -156,6 +161,23 @@ class ArgsResearchWorkflow:
             )
             cro = cro_result.output
             tokens += cro_result.input_tokens + cro_result.output_tokens
+            # M3.1 HIGH_CONCERN escalation (ADR-023, PO Mandatory Modification #1)
+            # HIGH_CONCERN overrides majority — risk is not democratic.
+            committee_actions: dict[str, CommitteeAdvisoryAction] = {
+                r["output"]["committee_code"]: CommitteeAdvisoryAction(
+                    r["output"].get("advisory_action", CommitteeAdvisoryAction.WATCH)
+                )
+                for r in reviews
+                if r["symbol"] == symbol and r.get("output", {}).get("advisory_action")
+            }
+            cro_advisory_action = aggregate_cro_advisory(committee_actions)
+
+            # Identify HIGH_CONCERN originating committees for CRO narrative
+            high_concern_committees = [
+                code for code, action in committee_actions.items()
+                if action == CommitteeAdvisoryAction.HIGH_CONCERN
+            ]
+
             cro_outputs.append(
                 {
                     "symbol": symbol,
@@ -163,6 +185,9 @@ class ArgsResearchWorkflow:
                     "model": cro_result.model,
                     "input_tokens": cro_result.input_tokens,
                     "output_tokens": cro_result.output_tokens,
+                    # M3.1 advisory fields
+                    "cro_advisory_action": cro_advisory_action.value,
+                    "high_concern_committees": high_concern_committees,
                     "aggregation": {
                         "aggregation_snapshot": cro.aggregation_snapshot,
                         "rationale": cro.rationale,
@@ -207,6 +232,7 @@ def _packet_from_dict(data: dict[str, Any]) -> InvestmentReviewPacket:
 
 
 def _review_output_dict(output: CommitteeReviewOutput) -> dict[str, Any]:
+    advisory_action = label_to_advisory_action(output.research_label)
     return {
         "committee_code": output.committee_code,
         "committee_version": output.committee_version,
@@ -217,6 +243,10 @@ def _review_output_dict(output: CommitteeReviewOutput) -> dict[str, Any]:
         "confidence": output.confidence,
         "extensions": output.extensions,
         "research_label": output.research_label,
+        # M3.1 Investment Committee — advisory fields
+        "advisory_action": advisory_action.value,
+        "high_concern": advisory_action == CommitteeAdvisoryAction.HIGH_CONCERN,
+        "high_concern_reason": None,  # populated by plugin if HIGH_CONCERN
     }
 
 

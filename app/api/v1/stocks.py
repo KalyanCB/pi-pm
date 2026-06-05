@@ -1,14 +1,46 @@
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_market_data_service, get_stock_service
+from app.api.deps import get_market_data_service, get_stock_service, get_universe_bootstrap_service
 from app.schemas.market_data import MarketDataRead
 from app.schemas.stock import StockRead
 from app.services.market_data_service import MarketDataService
 from app.services.stock_service import StockService
+from app.services.universe_bootstrap_service import UniverseBootstrapService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.post("/bootstrap", status_code=201)
+def bootstrap_nifty500(
+    service: UniverseBootstrapService = Depends(get_universe_bootstrap_service),
+) -> dict:
+    """Load NIFTY 500 stocks from CSV into the universe.
+
+    Safe to call multiple times — idempotent. Existing stocks are updated,
+    not duplicated. Logs progress every 50 stocks.
+    """
+    logger.info("bootstrap_nifty500_started")
+    result = service.bootstrap_nifty500(fetch_live=False)
+    logger.info(
+        "bootstrap_nifty500_completed constituents=%d stocks_created=%d stocks_existing=%d memberships=%d",
+        result.constituents_loaded,
+        result.stocks_created,
+        result.stocks_existing,
+        result.membership_total,
+    )
+    return {
+        "universe_code": result.universe_code,
+        "constituents_loaded": result.constituents_loaded,
+        "stocks_created": result.stocks_created,
+        "stocks_existing": result.stocks_existing,
+        "memberships_added": result.memberships_added,
+        "membership_total": result.membership_total,
+    }
 
 
 @router.get("", response_model=list[StockRead])

@@ -6,9 +6,12 @@ from app.api.v1 import (
     exit_analytics,
     factor_analytics,
     health,
+    investment_committee,
     market_data,
     observability,
+    portfolio,
     rankings,
+    recommendation_analytics,
     recommendations,
     regime_policy,
     research,
@@ -34,7 +37,12 @@ api_router.include_router(
     prefix="/analytics/research-intelligence",
     tags=["research-intelligence"],
 )
-api_router.include_router(research.router, prefix="/research", tags=["research"])
+api_router.include_router(research.router, prefix="/research", tags=["research-deprecated"])
+api_router.include_router(
+    investment_committee.router,
+    prefix="/investment-committee",
+    tags=["investment-committee"],
+)
 api_router.include_router(
     stock_setup_research.router,
     prefix="/research/stock-setup",
@@ -49,4 +57,14 @@ api_router.include_router(
     recommendations.router,
     prefix="/recommendations",
     tags=["recommendations"],
+)
+api_router.include_router(
+    recommendation_analytics.router,
+    prefix="/analytics/recommendations",
+    tags=["recommendation-analytics"],
+)
+api_router.include_router(
+    portfolio.router,
+    prefix="/portfolio",
+    tags=["portfolio"],
 )

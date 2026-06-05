@@ -70,6 +70,16 @@ class MarketDataService:
             limit=limit,
         )
 
+    def has_historical_data(self, *, universe_code: str | None = None, min_rows: int = 100) -> bool:
+        """Return True if meaningful historical market data exists (not just a fresh-DB bootstrap).
+
+        Used by the daily batch to decide FULL_REFRESH vs INCREMENTAL ingest mode.
+        """
+        from sqlalchemy import func, select
+        from app.models.market_data import MarketData
+        count = self.db.scalar(select(func.count(MarketData.id)).limit(min_rows + 1))
+        return (count or 0) >= min_rows
+
     def ingest(
         self,
         symbols: list[str],
@@ -77,6 +87,7 @@ class MarketDataService:
         *,
         ingestion_mode: IngestionMode = IngestionMode.FULL_REFRESH,
         since_date: date | None = None,
+        end_date: date | None = None,
     ) -> MarketDataIngestResponse:
         started = time.perf_counter()
         batch = self.ingestion_batch_repo.create_running(
@@ -120,7 +131,7 @@ class MarketDataService:
             )
             try:
                 result = self._ingest_single_symbol(
-                    symbol, period, run, ingestion_mode, since_date=since_date
+                    symbol, period, run, ingestion_mode, since_date=since_date, end_date=end_date
                 )
                 runs.append(result)
                 symbols_succeeded += 1
@@ -195,7 +206,7 @@ class MarketDataService:
             runs=runs,
         )
 
-    def _ingest_single_symbol(
+    def _ingest_single_symbol(  # noqa: PLR0913
         self,
         symbol: str,
         period: IngestPeriod,
@@ -203,12 +214,13 @@ class MarketDataService:
         ingestion_mode: IngestionMode,
         *,
         since_date: date | None = None,
+        end_date: date | None = None,
     ) -> MarketDataIngestionRun:
         metadata = self.provider.fetch_metadata(symbol)
         stock = self.stock_repo.upsert_from_metadata(metadata)
         latest = self.market_data_repo.get_latest_market_data(stock.id)
 
-        bars = self._fetch_bars(symbol, period, ingestion_mode, latest, since_date=since_date)
+        bars = self._fetch_bars(symbol, period, ingestion_mode, latest, since_date=since_date, end_date=end_date)
         if not bars:
             if (
                 since_date is None
@@ -252,9 +264,10 @@ class MarketDataService:
         latest: MarketData | None,
         *,
         since_date: date | None = None,
+        end_date: date | None = None,
     ) -> list[YahooOHLCVBar]:
         if since_date is not None:
-            return self.provider.fetch_history_since(symbol, since_date)
+            return self.provider.fetch_history_since(symbol, since_date, end_date=end_date)
         if ingestion_mode == IngestionMode.INCREMENTAL and latest is not None:
             start_date = latest.date + timedelta(days=1)
             return self.provider.fetch_history_since(symbol, start_date)

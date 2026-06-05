@@ -43,7 +43,11 @@ from app.models.args import (
     GovernanceResearchReportEvidence,
     InvestmentReviewPacket,
 )
-from app.workspace_args.constants import COMMITTEE_CRO, DEFAULT_COMMITTEE_CODES
+from app.workspace_args.constants import (
+    COMMITTEE_CRO,
+    COMMITTEE_DISPLAY_NAMES,
+    DEFAULT_COMMITTEE_CODES,
+)
 
 
 class ArgsResearchRunService:
@@ -169,6 +173,8 @@ class ArgsResearchRunService:
         reports_issued = self._persist_cro_and_reports(
             run, ranking_run, persisted_packets, cro_data, review_rows
         )
+        # M3.1 C-3 fix — populate committee_advisory block in persisted packets
+        self._update_packet_advisory_blocks(persisted_packets, review_rows)
         run.checkpoint_ref = f"memory:{run.id}"
         self.research_run_repo.complete(
             run,
@@ -254,6 +260,10 @@ class ArgsResearchRunService:
                 supporting_evidence=output.get("supporting_evidence"),
                 confidence=output.get("confidence"),
                 extensions=output.get("extensions"),
+                # M3.1 C-1 fix — persist advisory fields from workflow output
+                advisory_action=output.get("advisory_action"),
+                high_concern=bool(output.get("high_concern", False)),
+                high_concern_reason=output.get("high_concern_reason"),
                 prompt_version_id=prompt.id,
                 llm_execution_id=llm_rec.id,
                 created_at=datetime.now(UTC),
@@ -306,6 +316,9 @@ class ArgsResearchRunService:
                 rationale=agg["rationale"],
                 dissent_summary=agg.get("dissent_summary"),
                 confidence=governance_confidence,
+                # M3.1 C-2 fix — persist CRO advisory action and summary
+                cro_advisory_action=row.get("cro_advisory_action"),
+                investment_committee_summary=agg.get("summary"),
                 prompt_version_id=cro_prompt.id,
                 llm_execution_id=llm_rec.id,
                 created_at=datetime.now(UTC),
@@ -359,6 +372,50 @@ class ArgsResearchRunService:
             )
             count += 1
         return count
+
+    def _update_packet_advisory_blocks(
+        self,
+        packets: list[InvestmentReviewPacket],
+        reviews_by_symbol: dict[str, list[CommitteeReview]],
+    ) -> None:
+        """M3.1 C-3 fix — populate committee_advisory block in each persisted packet.
+
+        Called after _persist_reviews() and _persist_cro_and_reports() so that
+        advisory_action and cro_advisory_action are already written to the DB.
+        Updates packet.payload in-place and flushes.
+        """
+        for packet in packets:
+            symbol_reviews = reviews_by_symbol.get(packet.symbol, [])
+            if not symbol_reviews:
+                continue
+
+            # Fetch the persisted CRO review for this packet
+            cro = self.cro_review_repo.get_for_packet(packet.id)
+
+            committee_actions = {
+                r.committee_code: r.advisory_action
+                for r in symbol_reviews
+                if r.advisory_action is not None
+            }
+            high_concern_committees = [
+                r.committee_code for r in symbol_reviews
+                if r.high_concern
+            ]
+
+            advisory_block = {
+                "cro_advisory_action": cro.cro_advisory_action if cro else None,
+                "high_concern": bool(high_concern_committees),
+                "high_concern_committees": high_concern_committees,
+                "committee_actions": committee_actions,
+                "review_id": str(cro.id) if cro else None,
+                "display_names": COMMITTEE_DISPLAY_NAMES,
+                "note": "Advisory only. Does not affect recommendation.action or conviction_score.",
+            }
+
+            payload = dict(packet.payload or {})
+            payload["committee_advisory"] = advisory_block
+            packet.payload = payload
+            self.db.flush()
 
     def _link_packet_lineage(
         self,
