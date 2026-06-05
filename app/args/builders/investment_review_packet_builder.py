@@ -39,6 +39,7 @@ from app.stock_setup_evidence.packet_enricher import attach_stock_setup_evidence
 from app.services.stock_setup_research_service import StockSetupResearchService
 from app.workspace_args.packet_schema import compute_packet_hash
 from app.db.repositories.recommendation_repository import RecommendationRepository
+from app.services.portfolio_service import PortfolioService
 
 _HISTORICAL_VALIDATION_LOOKBACK_DAYS = 120
 _MAX_HISTORICAL_VALIDATION_REPORTS = 12
@@ -171,7 +172,7 @@ class InvestmentReviewPacketBuilder:
             "market_snapshot": market_snapshot,
             "fundamental_snapshot": {},
             "news_snapshot": {"status": "unavailable", "items": []},
-            "portfolio_context": {"existing_position": False},
+            "portfolio_context": self._build_portfolio_context(result.stock_id),
             "research_context": research_context,
             "source_lineage": {
                 "ranking_run_id": str(ranking_run.id),
@@ -224,6 +225,25 @@ class InvestmentReviewPacketBuilder:
                     "ranking_run_id": str(ranking_run.id),
                 }
 
+        # M3.1 — committee_advisory block (display only, R-ARGS-04 preserved)
+        # Populated after committees run; at packet build time it is a placeholder.
+        # The workflow populates this block when persisting committee reviews.
+        payload["committee_advisory"] = {
+            "cro_advisory_action": None,
+            "high_concern": False,
+            "high_concern_committees": [],
+            "committee_actions": {},
+            "display_names": {
+                "TARC":  "Technical Analysis Committee",
+                "FRC":   "Fundamentals & Risk Committee",
+                "QRC":   "Quantitative Research Committee",
+                "NRCC":  "News & Events Committee",
+                "RC":    "Risk & Compliance Committee",
+                "CRO":   "Investment Committee Chair",
+            },
+            "note": "Advisory only. Does not affect recommendation.action or conviction_score.",
+        }
+
         payload["packet_built_at"] = datetime.now(UTC).isoformat()
         packet_hash = compute_packet_hash(payload)
         return InvestmentReviewPacket(
@@ -235,6 +255,37 @@ class InvestmentReviewPacketBuilder:
             packet_hash=packet_hash,
             packet_version=PACKET_VERSION,
         )
+
+    def _build_portfolio_context(self, stock_id) -> dict:
+        """Return real portfolio context for ARGS packet (AC-PE-03)."""
+        try:
+            from sqlalchemy import select
+            from app.models.portfolio_position import PortfolioPosition
+            pos = self.db.scalar(
+                select(PortfolioPosition).where(
+                    PortfolioPosition.stock_id == stock_id,
+                    PortfolioPosition.is_current.is_(True),
+                    PortfolioPosition.position_status == "OPEN",
+                )
+            )
+            if pos is None:
+                return {"existing_position": False}
+            svc = PortfolioService(self.db)
+            summary = svc.get_summary()
+            return {
+                "existing_position": True,
+                "quantity": float(pos.quantity),
+                "avg_cost": float(pos.avg_cost),
+                "market_value": float(pos.market_value or 0),
+                "weight_pct": float(pos.weight_pct or 0),
+                "unrealized_pnl": float(pos.unrealized_pnl or 0),
+                "conviction_band": pos.conviction_band,
+                "entry_date": pos.entry_date.isoformat() if pos.entry_date else None,
+                "cash_pct": summary.cash_pct,
+                "slots_available": summary.slots_available,
+            }
+        except Exception:
+            return {"existing_position": False}
 
 
 def _regime_label_scope(regime_label: str | None) -> list[str] | None:
