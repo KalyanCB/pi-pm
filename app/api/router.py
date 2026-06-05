@@ -9,6 +9,7 @@ from app.api.v1 import (
     market_data,
     observability,
     rankings,
+    recommendation_analytics,
     recommendations,
     regime_policy,
     research,
@@ -49,4 +50,9 @@ api_router.include_router(
     recommendations.router,
     prefix="/recommendations",
     tags=["recommendations"],
+)
+api_router.include_router(
+    recommendation_analytics.router,
+    prefix="/analytics/recommendations",
+    tags=["recommendation-analytics"],
 )

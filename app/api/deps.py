@@ -58,8 +58,11 @@ from app.services.regime_analytics_service import RegimeAnalyticsService
 from app.services.regime_policy_service import RegimePolicyPresetService, RegimePolicyService
 from app.services.signal_validation_service import SignalValidationService
 from app.services.stock_service import StockService
+from app.services.universe_bootstrap_service import UniverseBootstrapService
 from app.db.repositories.recommendation_repository import RecommendationRepository
+from app.db.repositories.recommendation_outcome_repository import RecommendationOutcomeRepository
 from app.services.recommendation_service import RecommendationService
+from app.services.recommendation_analytics_service import RecommendationAnalyticsService
 from app.services.traceability_service import TraceabilityService
 from app.db.repositories.research_run_repository import ResearchRunRepository
 from app.db.repositories.investment_review_packet_repository import (
@@ -137,6 +140,11 @@ def get_yahoo_provider(settings: Settings = Depends(get_settings_dep)) -> YahooF
 
 def get_stock_service(stock_repo: StockRepository = Depends(get_stock_repository)) -> StockService:
     return StockService(stock_repo)
+
+
+def get_universe_bootstrap_service(db: Session = Depends(get_db)) -> UniverseBootstrapService:
+    from app.db.repositories.universe_repository import UniverseRepository
+    return UniverseBootstrapService(db, StockRepository(db), UniverseRepository(db))
 
 
 def get_market_data_service(
@@ -610,6 +618,12 @@ def get_recommendation_service(
     db: Session = Depends(get_db),
 ) -> RecommendationService:
     return RecommendationService(db)
+
+
+def get_recommendation_analytics_service(
+    db: Session = Depends(get_db),
+) -> RecommendationAnalyticsService:
+    return RecommendationAnalyticsService(db)
 
 
 def get_args_explainability_service(
