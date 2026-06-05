@@ -38,18 +38,20 @@ from app.services.market_data_service import MarketDataService
 from app.services.regime_analytics_service import RegimeAnalyticsService
 from app.services.research_intelligence_service import ResearchIntelligenceService
 from app.services.signal_validation_service import SignalValidationService
+from app.services.recommendation_service import RecommendationService
 
 
 class DailyBatchService:
     _PHASE_WEIGHTS = {
         DailyBatchPhase.INGEST: 12.0,
         DailyBatchPhase.RANKINGS: 20.0,
-        DailyBatchPhase.VALIDATION: 11.0,
+        DailyBatchPhase.VALIDATION: 10.0,
+        DailyBatchPhase.RECOMMENDATIONS: 6.0,
         DailyBatchPhase.REGIME_HISTORY: 5.0,
         DailyBatchPhase.REGIME_PERFORMANCE: 7.0,
         DailyBatchPhase.FACTOR_IC: 17.0,
         DailyBatchPhase.RESEARCH_INTELLIGENCE: 9.0,
-        DailyBatchPhase.EXIT_RESEARCH: 19.0,
+        DailyBatchPhase.EXIT_RESEARCH: 14.0,
     }
 
     def __init__(
@@ -66,6 +68,7 @@ class DailyBatchService:
         ranking_run_repo: RankingRunRepository,
         run_repo: DailyBatchRunRepository | None = None,
         artifact_repo: DailyBatchArtifactRepository | None = None,
+        recommendation_service: RecommendationService | None = None,
     ) -> None:
         self.db = db
         self.market_data_service = market_data_service
@@ -78,6 +81,7 @@ class DailyBatchService:
         self.ranking_run_repo = ranking_run_repo
         self.run_repo = run_repo or DailyBatchRunRepository(db)
         self.artifact_repo = artifact_repo or DailyBatchArtifactRepository(db)
+        self.recommendation_service = recommendation_service or RecommendationService(db)
 
     def create_and_execute(self, request: DailyBatchRunCreateRequest) -> DailyBatchRunCreateResponse:
         if request.idempotency_key and not request.force_from_date:
@@ -231,6 +235,43 @@ class DailyBatchService:
                     for report in reports:
                         trace.record_validation_report(run.id, report.id, status=report.status)
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.VALIDATION]
+
+            if request.phases.recommendations:
+                self._set_phase(run, DailyBatchPhase.RECOMMENDATIONS, base_pct)
+                phase_results["recommendations"] = {}
+                for spec in request.strategies:
+                    ranking_runs = self.ranking_run_repo.list_completed_in_range(
+                        universe_code=request.universe_code,
+                        strategy_name=spec.strategy_name,
+                        strategy_version=spec.strategy_version,
+                        start_date=plan.from_date,
+                        end_date=plan.target_trading_day,
+                    )
+                    for rr in ranking_runs:
+                        try:
+                            rec_run = self.recommendation_service.run_for_ranking_run(rr.id)
+                            trace.record_recommendation_run(
+                                run.id,
+                                rec_run.id,
+                                strategy_name=spec.strategy_name,
+                                status=rec_run.status,
+                            )
+                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
+                                {
+                                    "ranking_run_id": str(rr.id),
+                                    "recommendation_run_id": str(rec_run.id),
+                                    "status": rec_run.status,
+                                }
+                            )
+                        except Exception as exc:
+                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
+                                {
+                                    "ranking_run_id": str(rr.id),
+                                    "status": "failed",
+                                    "error": str(exc),
+                                }
+                            )
+                base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RECOMMENDATIONS]
 
             regime_history_start = max(
                 request.holdout_start_date,

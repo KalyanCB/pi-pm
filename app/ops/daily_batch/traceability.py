@@ -124,6 +124,28 @@ class DailyBatchTraceabilityRecorder:
             status=status,
         )
 
+    def record_recommendation_run(
+        self,
+        daily_batch_id: UUID,
+        run_id: UUID,
+        *,
+        strategy_name: str,
+        status: str,
+    ) -> None:
+        self._link(
+            daily_batch_id,
+            LineageEntityType.RECOMMENDATION_RUN,
+            run_id,
+            LineageRelationshipType.DAILY_BATCH_RECOMMENDATION,
+        )
+        self.artifact_repo.add(
+            daily_batch_run_id=daily_batch_id,
+            artifact_type=DailyBatchArtifactType.RECOMMENDATION_RUN.value,
+            artifact_id=run_id,
+            strategy_name=strategy_name,
+            status=status,
+        )
+
     def record_exit_research_run(self, daily_batch_id: UUID, run_id: UUID, *, strategy_name: str, status: str) -> None:
         self._link(
             daily_batch_id,

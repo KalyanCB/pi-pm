@@ -9,6 +9,7 @@ from app.api.v1 import (
     market_data,
     observability,
     rankings,
+    recommendations,
     regime_policy,
     research,
     research_intelligence,
@@ -43,4 +44,9 @@ api_router.include_router(
     daily_batch.router,
     prefix="/ops/daily-batch",
     tags=["ops-daily-batch"],
+)
+api_router.include_router(
+    recommendations.router,
+    prefix="/recommendations",
+    tags=["recommendations"],
 )

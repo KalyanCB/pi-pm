@@ -24,6 +24,7 @@ class DailyBatchPhaseFlags(BaseModel):
     ingest: bool = True
     rankings: bool = True
     validation: bool = True
+    recommendations: bool = True
     regime_history: bool = True
     regime_performance: bool = True
     factor_ic: bool = True

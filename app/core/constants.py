@@ -80,6 +80,7 @@ class LineageEntityType(StrEnum):
     CRO_REVIEW = "cro_review"
     GOVERNANCE_RESEARCH_REPORT = "governance_research_report"
     STOCK_SETUP_RESEARCH = "stock_setup_research"
+    RECOMMENDATION_RUN = "recommendation_run"
 
 
 class LineageRelationshipType(StrEnum):
@@ -106,6 +107,7 @@ class LineageRelationshipType(StrEnum):
     DAILY_BATCH_RESEARCH = "daily_batch_research"
     RANK_RESULT_STOCK_SETUP = "rank_result_stock_setup"
     PACKET_SRC_STOCK_SETUP = "packet_src_stock_setup"
+    DAILY_BATCH_RECOMMENDATION = "daily_batch_recommendation"
 
 
 class DailyBatchRunStatus(StrEnum):
@@ -122,6 +124,7 @@ class DailyBatchPhase(StrEnum):
     INGEST = "ingest"
     RANKINGS = "rankings"
     VALIDATION = "validation"
+    RECOMMENDATIONS = "recommendations"
     REGIME_HISTORY = "regime_history"
     REGIME_PERFORMANCE = "regime_performance"
     FACTOR_IC = "factor_ic"
@@ -136,6 +139,7 @@ class DailyBatchArtifactType(StrEnum):
     INGESTION_BATCH = "ingestion_batch"
     RANKING_RUN = "ranking_run"
     VALIDATION_REPORT = "validation_report"
+    RECOMMENDATION_RUN = "recommendation_run"
     FACTOR_PERFORMANCE_RUN = "factor_performance_run"
     REGIME_HISTORY_BACKFILL = "regime_history_backfill"
     REGIME_PERFORMANCE_REFRESH = "regime_performance_refresh"
@@ -239,6 +243,76 @@ class SymbolKind(StrEnum):
     ETF = "ETF"
     UNKNOWN = "UNKNOWN"
 
+
+class RecommendationAction(StrEnum):
+    BUY = "BUY"
+    WATCH = "WATCH"
+    HOLD = "HOLD"
+    EXIT_APPROVED = "EXIT_APPROVED"
+    REJECT = "REJECT"
+
+
+class RecommendationLifecycleState(StrEnum):
+    CANDIDATE = "CANDIDATE"
+    APPROVED = "APPROVED"
+    ACTIVE = "ACTIVE"
+    EXIT_APPROVED = "EXIT_APPROVED"
+    CLOSED = "CLOSED"
+
+
+class ConvictionBand(StrEnum):
+    BLOCKED = "BLOCKED"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    EXCEPTIONAL = "EXCEPTIONAL"
+
+
+class RecommendationRunStatus(StrEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ApprovalDecision(StrEnum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    DEFERRED = "DEFERRED"
+
+
+class ApprovalType(StrEnum):
+    ENTRY = "ENTRY"
+    EXIT = "EXIT"
+
+
+class OutcomeStatus(StrEnum):
+    OPEN = "OPEN"
+    WIN = "WIN"
+    LOSS = "LOSS"
+    BREAKEVEN = "BREAKEVEN"
+
+
+# Recommendation reason codes
+REC_REASON_RANK_OUTSIDE_POOL = "RANK_OUTSIDE_POOL"
+REC_REASON_VALIDATION_PENDING = "VALIDATION_PENDING"
+REC_REASON_VALIDATION_WEAK = "VALIDATION_WEAK"
+REC_REASON_REGIME_BLOCK = "REGIME_BLOCK"
+REC_REASON_CONVICTION_LOW = "CONVICTION_LOW"
+REC_REASON_PORTFOLIO_FULL = "PORTFOLIO_FULL"
+REC_REASON_EXIT_RISK = "EXIT_RISK"
+REC_REASON_INSUFFICIENT_LIQUIDITY = "INSUFFICIENT_LIQUIDITY"
+REC_REASON_STALE_CANDIDATE = "STALE_CANDIDATE"
+REC_REASON_RANK_POOL_TOP20 = "RANK_POOL_TOP20"
+
+# Conviction config
+CONVICTION_ENGINE_VERSION = "rec_v1.0.0"
+CONVICTION_CONFIG_VERSION = "conv_v1.1.0"
+CONVICTION_TOP_POOL_SIZE = 20
+CONVICTION_EXCEPTIONAL_DAILY_CAP = 3
+CONVICTION_BLOCKED_MAX_SCORE = 29
+CONVICTION_LOW_MAX_SCORE = 49
+CONVICTION_MEDIUM_MAX_SCORE = 69
+CONVICTION_HIGH_MAX_SCORE = 84
 
 EQUITY_SYMBOL_PATTERN = r"^[A-Z0-9][A-Z0-9&-]*(\.[A-Z]{1,4})?$"
 INDEX_SYMBOL_PATTERN = r"^\^[A-Z0-9]+$"
