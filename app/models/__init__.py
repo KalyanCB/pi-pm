@@ -18,7 +18,13 @@ from app.models.platform_traceability import (
     ValidationHorizonMetric,
 )
 from app.models.paper_trade import PaperTrade
-from app.models.portfolio_position import PortfolioPosition
+from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
+from app.models.portfolio_analytics import (
+    CashLedger,
+    ExitRecommendation,
+    PortfolioNavHistory,
+    PortfolioReconciliationReport,
+)
 from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
@@ -76,7 +82,12 @@ __all__ = [
     "RankingPerformanceSnapshot",
     "RankingValidationReport",
     "ResearchReport",
+    "PortfolioConfig",
     "PortfolioPosition",
+    "PortfolioNavHistory",
+    "CashLedger",
+    "PortfolioReconciliationReport",
+    "ExitRecommendation",
     "PaperTrade",
     "FullUniverseValidationCampaign",
     "FullUniverseValidationRun",
