@@ -37,4 +37,3 @@ def list_stock_setup_research(
         "count": len(rows),
         "rows": [service.to_payload(row) for row in rows],
     }
-

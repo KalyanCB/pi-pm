@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from app.args.committee_evidence_enforcement import (
     build_evidence_repair_prompt,
@@ -123,11 +124,7 @@ def _call_llm_with_quality_retry(
     committee_code: str,
     enforce_evidence_scope: bool,
 ):
-    base_system = (
-        f"{system} "
-        "Respond with a valid JSON object only. "
-        "Do not output markdown fences."
-    )
+    base_system = f"{system} Respond with a valid JSON object only. Do not output markdown fences."
     completion = llm.complete(system=base_system, user=user)
     try:
         parsed = json.loads(completion.content)
@@ -197,9 +194,7 @@ def _to_validated_output(
     enforce_evidence_scope: bool,
 ) -> CommitteeReviewOutput:
     evidence = _normalize_evidence(parsed.get("supporting_evidence"))
-    evidence = _ensure_minimum_evidence(
-        packet_payload, evidence, committee_code=committee_code
-    )
+    evidence = _ensure_minimum_evidence(packet_payload, evidence, committee_code=committee_code)
     if enforce_evidence_scope:
         ok, reason = validate_committee_evidence_scope(committee_code, evidence)
         if not ok:
@@ -238,7 +233,9 @@ def _to_validated_output(
                 packet_payload=packet_payload,
                 committee_code=committee_code,
             ),
-            strengths=[str(x).strip() for x in list(parsed.get("strengths") or []) if str(x).strip()],
+            strengths=[
+                str(x).strip() for x in list(parsed.get("strengths") or []) if str(x).strip()
+            ],
             risks=[str(x).strip() for x in list(parsed.get("risks") or []) if str(x).strip()],
             supporting_evidence=evidence,
             confidence=_coerce_confidence(parsed.get("confidence", 0.5)),

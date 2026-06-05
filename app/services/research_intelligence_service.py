@@ -4,7 +4,9 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.db.repositories.factor_performance_metric_repository import FactorPerformanceMetricRepository
+from app.db.repositories.factor_performance_metric_repository import (
+    FactorPerformanceMetricRepository,
+)
 from app.db.repositories.research_intelligence_repository import (
     ResearchIntelligenceReportRepository,
     ResearchIntelligenceRunRepository,
@@ -79,8 +81,8 @@ class ResearchIntelligenceService:
             )
             reports["ic_by_regime"] = regime_block["ic_by_regime"]
             reports["spread_by_regime"] = regime_block["spread_by_regime"]
-            reports["factor_contribution_analysis"] = self.builder.build_factor_contribution_analysis(
-                universe_code=universe_code
+            reports["factor_contribution_analysis"] = (
+                self.builder.build_factor_contribution_analysis(universe_code=universe_code)
             )
             reports["current_top_20_candidates"] = self.builder.build_top_20_candidates(
                 universe_code=universe_code

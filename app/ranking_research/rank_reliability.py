@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import date
 
 from app.outcome_attribution.constants import REGIME_LABEL_ALL
-from app.outcome_attribution.models import BucketMetrics, RunBenchmark
+from app.outcome_attribution.models import BucketMetrics
 from app.outcome_attribution.statistics import compute_bucket_metrics, mean_or_none
 from app.ranking_research.constants import (
     CLIFF_ALPHA_JUMP_THRESHOLD,
@@ -229,9 +229,7 @@ def build_score_quintile_metrics(
         subset = [
             o
             for o in observations
-            if o.strategy_name == strategy_name
-            and o.regime_label == regime_label
-            and o.rank <= 20
+            if o.strategy_name == strategy_name and o.regime_label == regime_label and o.rank <= 20
         ]
     if not subset:
         return ()
@@ -362,9 +360,7 @@ def build_strategy_rank_reliability(
         {r: per_rank[r][20].observation_count for r in EXACT_RANKS},
     )
 
-    decile_mono = {
-        h: build_rank_decile_monotonicity(per_rank, h) for h in RESEARCH_HORIZONS
-    }
+    decile_mono = {h: build_rank_decile_monotonicity(per_rank, h) for h in RESEARCH_HORIZONS}
     score_quintiles = {
         h: build_score_quintile_metrics(
             strategy_name=strategy_name,

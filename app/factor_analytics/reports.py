@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from app.factor_analytics.constants import (
-    DATASET_SPLIT_HOLDOUT,
     DRIFT_OVERFIT_HOLDOUT_IC,
     DRIFT_OVERFIT_TRAIN_IC,
 )
-from app.factor_analytics.models import FactorMetricResult, TrainHoldoutDriftEntry
+from app.factor_analytics.models import TrainHoldoutDriftEntry
 from app.models.factor_analytics import FactorPerformanceMetric
 
 
@@ -30,7 +29,9 @@ def metric_to_dict(metric: FactorPerformanceMetric) -> dict:
         "regime_coverage_pct": (
             float(metric.regime_coverage_pct) if metric.regime_coverage_pct is not None else None
         ),
-        "stability_score": float(metric.stability_score) if metric.stability_score is not None else None,
+        "stability_score": float(metric.stability_score)
+        if metric.stability_score is not None
+        else None,
         "stability_label": metric.stability_label,
         "coverage_label": metric.coverage_label,
         "bootstrap_ci_lower": (
@@ -146,7 +147,9 @@ def build_weight_alignment(
             {
                 "factor_name": metric.factor_name,
                 "current_weight": weight,
-                "ic_spearman": float(metric.ic_spearman) if metric.ic_spearman is not None else None,
+                "ic_spearman": float(metric.ic_spearman)
+                if metric.ic_spearman is not None
+                else None,
                 "ic_x_weight": round(ic * weight, 8),
                 "recommendation": _weight_recommendation(ic, weight, metric),
             }
@@ -180,7 +183,9 @@ def build_train_holdout_drift(
     for train in train_metrics:
         holdout = holdout_by_factor.get(train.factor_name)
         train_ic = float(train.ic_spearman) if train.ic_spearman is not None else None
-        holdout_ic = float(holdout.ic_spearman) if holdout and holdout.ic_spearman is not None else None
+        holdout_ic = (
+            float(holdout.ic_spearman) if holdout and holdout.ic_spearman is not None else None
+        )
         drift = None
         if train_ic is not None and holdout_ic is not None:
             drift = round(train_ic - holdout_ic, 8)
@@ -208,7 +213,11 @@ def build_train_holdout_drift(
         key=lambda item: item.train_ic_spearman if item.train_ic_spearman is not None else -999,
         reverse=True,
     )
-    return [e for e in entries if e.train_ic_spearman is not None and e.train_ic_spearman >= min_train_ic]
+    return [
+        e
+        for e in entries
+        if e.train_ic_spearman is not None and e.train_ic_spearman >= min_train_ic
+    ]
 
 
 def _drift_verdict(

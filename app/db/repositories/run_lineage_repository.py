@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.constants import IngestionRunStatus
-from app.models.market_data_ingestion_run import MarketDataIngestionRun
 from app.models.platform_traceability import RunLineageRecord
 
 

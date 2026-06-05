@@ -10,7 +10,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.args import CommitteeReview, CroReview, InvestmentReviewPacket, ResearchRun
+from app.models.args import CommitteeReview, CroReview, ResearchRun
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
@@ -75,9 +75,7 @@ class CommitteeReviewSnapshot:
             strengths=[str(s) for s in (data.get("strengths") or [])],
             risks=[str(r) for r in (data.get("risks") or [])],
             supporting_evidence=list(data.get("supporting_evidence") or []),
-            confidence=(
-                float(data["confidence"]) if data.get("confidence") is not None else None
-            ),
+            confidence=(float(data["confidence"]) if data.get("confidence") is not None else None),
         )
 
 
@@ -152,9 +150,7 @@ def compute_committee_uniqueness_score(
     peers = [
         CommitteeReviewSnapshot.from_dict(p) if isinstance(p, dict) else p
         for p in peer_reviews
-        if (
-            CommitteeReviewSnapshot.from_dict(p) if isinstance(p, dict) else p
-        ).committee_code
+        if (CommitteeReviewSnapshot.from_dict(p) if isinstance(p, dict) else p).committee_code
         != review.committee_code
     ]
 
@@ -180,9 +176,7 @@ def compute_committee_uniqueness_score(
     token_uniqueness = len(unique_tokens) / len(review_tokens) if review_tokens else 0.0
     evidence_uniqueness = len(unique_refs) / len(review_refs) if review_refs else 0.0
     overlap_penalty = 1.0 - overlap_with_other_committees
-    composite = (
-        0.45 * overlap_penalty + 0.35 * token_uniqueness + 0.20 * evidence_uniqueness
-    )
+    composite = 0.45 * overlap_penalty + 0.35 * token_uniqueness + 0.20 * evidence_uniqueness
     composite = max(0.0, min(1.0, composite))
 
     return {
@@ -250,9 +244,7 @@ def compute_packet_metrics(
 
     mean_finding_jaccard = mean(finding_jaccards) if finding_jaccards else 0.0
     mean_evidence_overlap = mean(evidence_overlaps) if evidence_overlaps else 0.0
-    mean_strength_risk_jaccard = (
-        mean(strength_risk_jaccards) if strength_risk_jaccards else 0.0
-    )
+    mean_strength_risk_jaccard = mean(strength_risk_jaccards) if strength_risk_jaccards else 0.0
 
     # Thematic opposition: one committee's strengths barely overlap another's risks.
     has_contradiction = any(
@@ -266,9 +258,7 @@ def compute_packet_metrics(
     # Agreement echo: shared citations + similar language + cloned fallback bullets.
     agreement_echo = min(
         1.0,
-        0.45 * mean_evidence_overlap
-        + 0.30 * mean_finding_jaccard
-        + 0.25 * (1.0 - mean_uniqueness),
+        0.45 * mean_evidence_overlap + 0.30 * mean_finding_jaccard + 0.25 * (1.0 - mean_uniqueness),
     )
     disagreement_score = round(1.0 - agreement_echo, 4)
 
@@ -326,9 +316,7 @@ def summarize_run_metrics(
     if not packet_metrics:
         return {"packet_count": 0, "headline_disagreement_rate": 0.0}
 
-    disagreement_flags = [
-        m["disagreement_score"] >= disagreement_threshold for m in packet_metrics
-    ]
+    disagreement_flags = [m["disagreement_score"] >= disagreement_threshold for m in packet_metrics]
     all_refs: list[set[str]] = []
     ref_counts: dict[str, int] = defaultdict(int)
     for reviews in by_packet.values():
@@ -349,39 +337,29 @@ def summarize_run_metrics(
     return {
         "packet_count": len(packet_metrics),
         "review_count": total_reviews,
-        "mean_finding_jaccard": round(
-            mean(m["mean_finding_jaccard"] for m in packet_metrics), 4
-        ),
-        "mean_evidence_overlap": round(
-            mean(m["mean_evidence_overlap"] for m in packet_metrics), 4
-        ),
+        "mean_finding_jaccard": round(mean(m["mean_finding_jaccard"] for m in packet_metrics), 4),
+        "mean_evidence_overlap": round(mean(m["mean_evidence_overlap"] for m in packet_metrics), 4),
         "mean_confidence_std": round(mean(m["confidence_std"] for m in packet_metrics), 4),
         "mean_composite_uniqueness": round(
             mean(m["mean_composite_uniqueness"] for m in packet_metrics), 4
         ),
         # Fraction of packets above disagreement threshold (default 0.55).
-        "headline_disagreement_rate": round(
-            sum(disagreement_flags) / len(disagreement_flags), 4
-        ),
+        "headline_disagreement_rate": round(sum(disagreement_flags) / len(disagreement_flags), 4),
         # Stricter bar for adversarial independence (evidence + narrative + non-clone).
         "strict_independence_packet_rate": round(
             sum(
                 1
                 for m in packet_metrics
-                if m["disagreement_score"] >= 0.65
-                and m["mean_evidence_overlap"] < 0.5
+                if m["disagreement_score"] >= 0.65 and m["mean_evidence_overlap"] < 0.5
             )
             / len(packet_metrics),
             4,
         ),
         "strict_independence_rate": round(
-            sum(m["disagreement_score"] >= 0.65 for m in packet_metrics)
-            / len(packet_metrics),
+            sum(m["disagreement_score"] >= 0.65 for m in packet_metrics) / len(packet_metrics),
             4,
         ),
-        "mean_disagreement_score": round(
-            mean(m["disagreement_score"] for m in packet_metrics), 4
-        ),
+        "mean_disagreement_score": round(mean(m["disagreement_score"] for m in packet_metrics), 4),
         "mean_agreement_echo_score": round(
             mean(m["agreement_echo_score"] for m in packet_metrics), 4
         ),
@@ -394,9 +372,7 @@ def summarize_run_metrics(
         "degraded_review_fraction": round(degraded_markers / total_reviews, 4)
         if total_reviews
         else 0.0,
-        "top_shared_evidence_refs": sorted(
-            ref_counts.items(), key=lambda x: (-x[1], x[0])
-        )[:10],
+        "top_shared_evidence_refs": sorted(ref_counts.items(), key=lambda x: (-x[1], x[0]))[:10],
         "per_packet": packet_metrics,
     }
 

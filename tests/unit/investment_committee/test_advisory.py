@@ -6,7 +6,7 @@ Key invariants:
 - CRO aggregation uses escalation, not pure democracy
 - CommitteeResearchLabel preserved (backward compat)
 """
-import pytest
+
 from app.workspace_args.constants import (
     CommitteeAdvisoryAction,
     CommitteeResearchLabel,
@@ -14,20 +14,29 @@ from app.workspace_args.constants import (
     label_to_advisory_action,
 )
 
-
 # ── Label → Advisory mapping ──────────────────────────────────────────────────
 
+
 def test_supportive_maps_to_approve():
-    assert label_to_advisory_action(CommitteeResearchLabel.SUPPORTIVE) == CommitteeAdvisoryAction.APPROVE
+    assert (
+        label_to_advisory_action(CommitteeResearchLabel.SUPPORTIVE)
+        == CommitteeAdvisoryAction.APPROVE
+    )
+
 
 def test_neutral_maps_to_watch():
     assert label_to_advisory_action(CommitteeResearchLabel.NEUTRAL) == CommitteeAdvisoryAction.WATCH
 
+
 def test_cautious_maps_to_reject():
-    assert label_to_advisory_action(CommitteeResearchLabel.CAUTIOUS) == CommitteeAdvisoryAction.REJECT
+    assert (
+        label_to_advisory_action(CommitteeResearchLabel.CAUTIOUS) == CommitteeAdvisoryAction.REJECT
+    )
+
 
 def test_unknown_label_maps_to_watch():
     assert label_to_advisory_action("unknown_label") == CommitteeAdvisoryAction.WATCH
+
 
 def test_mapping_is_deterministic():
     assert label_to_advisory_action("supportive") == label_to_advisory_action("supportive")
@@ -35,14 +44,15 @@ def test_mapping_is_deterministic():
 
 # ── HIGH_CONCERN escalation (PO Mandatory Modification #1) ───────────────────
 
+
 def test_high_concern_overrides_4_approvals():
     """RC raises HIGH_CONCERN — must override 4 APPROVE votes. Not democratic."""
     actions = {
         "TARC": CommitteeAdvisoryAction.APPROVE,
-        "FRC":  CommitteeAdvisoryAction.APPROVE,
-        "QRC":  CommitteeAdvisoryAction.APPROVE,
+        "FRC": CommitteeAdvisoryAction.APPROVE,
+        "QRC": CommitteeAdvisoryAction.APPROVE,
         "NRCC": CommitteeAdvisoryAction.APPROVE,
-        "RC":   CommitteeAdvisoryAction.HIGH_CONCERN,
+        "RC": CommitteeAdvisoryAction.HIGH_CONCERN,
     }
     result = aggregate_cro_advisory(actions)
     assert result == CommitteeAdvisoryAction.HIGH_CONCERN
@@ -51,10 +61,10 @@ def test_high_concern_overrides_4_approvals():
 def test_high_concern_overrides_mixed():
     actions = {
         "TARC": CommitteeAdvisoryAction.APPROVE,
-        "FRC":  CommitteeAdvisoryAction.WATCH,
-        "QRC":  CommitteeAdvisoryAction.HIGH_CONCERN,
+        "FRC": CommitteeAdvisoryAction.WATCH,
+        "QRC": CommitteeAdvisoryAction.HIGH_CONCERN,
         "NRCC": CommitteeAdvisoryAction.APPROVE,
-        "RC":   CommitteeAdvisoryAction.REJECT,
+        "RC": CommitteeAdvisoryAction.REJECT,
     }
     result = aggregate_cro_advisory(actions)
     assert result == CommitteeAdvisoryAction.HIGH_CONCERN
@@ -63,21 +73,22 @@ def test_high_concern_overrides_mixed():
 def test_multiple_high_concern_still_high_concern():
     actions = {
         "TARC": CommitteeAdvisoryAction.HIGH_CONCERN,
-        "FRC":  CommitteeAdvisoryAction.HIGH_CONCERN,
-        "QRC":  CommitteeAdvisoryAction.APPROVE,
+        "FRC": CommitteeAdvisoryAction.HIGH_CONCERN,
+        "QRC": CommitteeAdvisoryAction.APPROVE,
     }
     assert aggregate_cro_advisory(actions) == CommitteeAdvisoryAction.HIGH_CONCERN
 
 
 # ── Majority voting (no HIGH_CONCERN) ─────────────────────────────────────────
 
+
 def test_majority_approve():
     actions = {
         "TARC": CommitteeAdvisoryAction.APPROVE,
-        "FRC":  CommitteeAdvisoryAction.APPROVE,
-        "QRC":  CommitteeAdvisoryAction.APPROVE,
+        "FRC": CommitteeAdvisoryAction.APPROVE,
+        "QRC": CommitteeAdvisoryAction.APPROVE,
         "NRCC": CommitteeAdvisoryAction.WATCH,
-        "RC":   CommitteeAdvisoryAction.REJECT,
+        "RC": CommitteeAdvisoryAction.REJECT,
     }
     assert aggregate_cro_advisory(actions) == CommitteeAdvisoryAction.APPROVE
 
@@ -85,10 +96,10 @@ def test_majority_approve():
 def test_majority_reject():
     actions = {
         "TARC": CommitteeAdvisoryAction.REJECT,
-        "FRC":  CommitteeAdvisoryAction.REJECT,
-        "QRC":  CommitteeAdvisoryAction.REJECT,
+        "FRC": CommitteeAdvisoryAction.REJECT,
+        "QRC": CommitteeAdvisoryAction.REJECT,
         "NRCC": CommitteeAdvisoryAction.APPROVE,
-        "RC":   CommitteeAdvisoryAction.WATCH,
+        "RC": CommitteeAdvisoryAction.WATCH,
     }
     assert aggregate_cro_advisory(actions) == CommitteeAdvisoryAction.REJECT
 
@@ -97,10 +108,10 @@ def test_tiebreak_reject_beats_approve():
     """On tie, REJECT takes priority over APPROVE (conservative)."""
     actions = {
         "TARC": CommitteeAdvisoryAction.APPROVE,
-        "FRC":  CommitteeAdvisoryAction.APPROVE,
-        "QRC":  CommitteeAdvisoryAction.REJECT,
+        "FRC": CommitteeAdvisoryAction.APPROVE,
+        "QRC": CommitteeAdvisoryAction.REJECT,
         "NRCC": CommitteeAdvisoryAction.REJECT,
-        "RC":   CommitteeAdvisoryAction.WATCH,
+        "RC": CommitteeAdvisoryAction.WATCH,
     }
     result = aggregate_cro_advisory(actions)
     assert result == CommitteeAdvisoryAction.REJECT
@@ -111,10 +122,14 @@ def test_empty_committees_returns_watch():
 
 
 def test_single_committee_returns_its_action():
-    assert aggregate_cro_advisory({"RC": CommitteeAdvisoryAction.APPROVE}) == CommitteeAdvisoryAction.APPROVE
+    assert (
+        aggregate_cro_advisory({"RC": CommitteeAdvisoryAction.APPROVE})
+        == CommitteeAdvisoryAction.APPROVE
+    )
 
 
 # ── Backward compatibility ─────────────────────────────────────────────────────
+
 
 def test_research_label_enum_unchanged():
     """CommitteeResearchLabel values must not change — backward compat."""
@@ -133,10 +148,12 @@ def test_advisory_action_values():
 
 # ── R-ARGS-04: advisory must not affect recommendation ────────────────────────
 
+
 def test_advisory_action_is_string_not_recommendation_action():
     """Advisory actions are strings — they cannot be accidentally used as
     RecommendationAction since that's a different enum."""
     from app.core.constants import RecommendationAction
+
     advisory_values = {a.value for a in CommitteeAdvisoryAction}
     rec_values = {a.value for a in RecommendationAction}
     # They may share some string values (WATCH, REJECT) but the types are separate

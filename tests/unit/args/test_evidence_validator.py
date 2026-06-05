@@ -1,7 +1,10 @@
 import pytest
 
 from app.workspace_args.committee_contracts import CommitteeReviewOutput
-from app.workspace_args.evidence_validator import validate_committee_output, validate_supporting_evidence
+from app.workspace_args.evidence_validator import (
+    validate_committee_output,
+    validate_supporting_evidence,
+)
 
 PACKET = {
     "ranking": {"rank": 1, "composite_score": 0.9},
@@ -11,9 +14,7 @@ PACKET = {
 
 
 def test_valid_evidence_ref():
-    evidence = validate_supporting_evidence(
-        PACKET, [{"ref": "validation:status"}], findings="ok"
-    )
+    evidence = validate_supporting_evidence(PACKET, [{"ref": "validation:status"}], findings="ok")
     assert evidence[0]["ref"] == "validation:status"
 
 

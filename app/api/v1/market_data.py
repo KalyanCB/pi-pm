@@ -2,11 +2,11 @@ import calendar
 import logging
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, model_validator
 
 from app.api.deps import get_market_data_service
-from app.core.constants import IngestPeriod, IngestionMode
+from app.core.constants import IngestionMode, IngestPeriod
 from app.db.repositories.universe_repository import UniverseRepository
 from app.schemas.common import MarketDataIngestRequest
 from app.schemas.market_data import MarketDataIngestResponse
@@ -36,8 +36,12 @@ def ingest_market_data(
 
 class UniverseIngestRequest(BaseModel):
     universe_code: str = "NIFTY_500"
-    months_back: int | None = Field(default=None, ge=1, le=120, description="Months of history. Ignored if from_date is set.")
-    from_date: date | None = Field(default=None, description="Explicit start date. Overrides months_back.")
+    months_back: int | None = Field(
+        default=None, ge=1, le=120, description="Months of history. Ignored if from_date is set."
+    )
+    from_date: date | None = Field(
+        default=None, description="Explicit start date. Overrides months_back."
+    )
     to_date: date | None = Field(default=None, description="Explicit end date. Defaults to today.")
     batch_size: int = Field(default=25, ge=1, le=50)
     allow_partial: bool = True
@@ -99,7 +103,9 @@ def ingest_universe(
         from_date = date(year, month, day)
 
     if from_date >= to_date:
-        raise HTTPException(status_code=422, detail=f"from_date {from_date} must be before to_date {to_date}")
+        raise HTTPException(
+            status_code=422, detail=f"from_date {from_date} must be before to_date {to_date}"
+        )
 
     # Always include benchmark alongside universe stocks
     symbols = [payload.benchmark_symbol] + [s.symbol for s in stocks]
@@ -107,24 +113,33 @@ def ingest_universe(
 
     logger.info(
         "universe_ingest_started universe=%s benchmark=%s total_symbols=%d from_date=%s to_date=%s batch_size=%d",
-        payload.universe_code, payload.benchmark_symbol, total, from_date, to_date, payload.batch_size,
+        payload.universe_code,
+        payload.benchmark_symbol,
+        total,
+        from_date,
+        to_date,
+        payload.batch_size,
     )
 
     totals = dict(symbols_succeeded=0, symbols_failed=0, rows_inserted=0, rows_updated=0, batches=0)
     total_batches = (total + payload.batch_size - 1) // payload.batch_size
 
     for offset in range(0, total, payload.batch_size):
-        batch = symbols[offset: offset + payload.batch_size]
+        batch = symbols[offset : offset + payload.batch_size]
         batch_num = offset // payload.batch_size + 1
 
         logger.info(
             "universe_ingest_batch batch=%d/%d from=%s to=%s symbols=%s",
-            batch_num, total_batches, from_date, to_date, batch[:3],
+            batch_num,
+            total_batches,
+            from_date,
+            to_date,
+            batch[:3],
         )
 
         result = service.ingest(
             batch,
-            IngestPeriod.ONE_YEAR,          # period ignored when since_date is set
+            IngestPeriod.ONE_YEAR,  # period ignored when since_date is set
             ingestion_mode=IngestionMode.FULL_REFRESH,
             since_date=from_date,
             end_date=to_date,
@@ -138,17 +153,26 @@ def ingest_universe(
 
         logger.info(
             "universe_ingest_batch_done batch=%d/%d ok=%d failed=%d inserted=%d updated=%d cumulative=%d",
-            batch_num, total_batches,
-            result.symbols_processed, result.symbols_failed,
-            result.rows_inserted, result.rows_updated, totals["rows_inserted"],
+            batch_num,
+            total_batches,
+            result.symbols_processed,
+            result.symbols_failed,
+            result.rows_inserted,
+            result.rows_updated,
+            totals["rows_inserted"],
         )
 
         if result.symbols_failed and not payload.allow_partial:
-            raise HTTPException(status_code=422, detail=f"Batch {batch_num} had {result.symbols_failed} failures.")
+            raise HTTPException(
+                status_code=422, detail=f"Batch {batch_num} had {result.symbols_failed} failures."
+            )
 
     logger.info(
         "universe_ingest_completed universe=%s succeeded=%d failed=%d rows_inserted=%d",
-        payload.universe_code, totals["symbols_succeeded"], totals["symbols_failed"], totals["rows_inserted"],
+        payload.universe_code,
+        totals["symbols_succeeded"],
+        totals["symbols_failed"],
+        totals["rows_inserted"],
     )
 
     return UniverseIngestResponse(

@@ -42,8 +42,12 @@ def test_service_rank_gradient_breakout():
         _obs(run_id=run_b, as_of=date(2024, 6, 4), strategy="breakout_v1", rank=18, ret20=-0.01),
     ]
     benchmarks = [
-        RunBenchmark(run_id=run_a, as_of_date=date(2024, 6, 3), benchmark_symbol="^NSEI", returns={20: 0.01}),
-        RunBenchmark(run_id=run_b, as_of_date=date(2024, 6, 4), benchmark_symbol="^NSEI", returns={20: 0.01}),
+        RunBenchmark(
+            run_id=run_a, as_of_date=date(2024, 6, 3), benchmark_symbol="^NSEI", returns={20: 0.01}
+        ),
+        RunBenchmark(
+            run_id=run_b, as_of_date=date(2024, 6, 4), benchmark_symbol="^NSEI", returns={20: 0.01}
+        ),
     ]
     config = OutcomeAttributionConfig(
         universe_code="NIFTY_500",

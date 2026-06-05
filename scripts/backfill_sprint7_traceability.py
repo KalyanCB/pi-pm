@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from sqlalchemy import exists, func, select
 
 from app.core.config import get_settings
-from app.core.constants import LineageEntityType, LineageRelationshipType, RankingRunStatus
+from app.core.constants import RankingRunStatus
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.ranking_factor_contribution_repository import (
     RankingFactorContributionRepository,
@@ -135,7 +135,9 @@ def _validation_reports_for_lineage(db, limit: int | None) -> list[RankingValida
     return list(db.scalars(stmt).all())
 
 
-def backfill_ranking(db, service: TraceabilityService, *, limit: int | None, dry_run: bool) -> BackfillStats:
+def backfill_ranking(
+    db, service: TraceabilityService, *, limit: int | None, dry_run: bool
+) -> BackfillStats:
     stats = BackfillStats()
     runs = _ranking_runs_needing_backfill(db, limit)
     stats.ranking_runs_processed = len(runs)
@@ -149,7 +151,9 @@ def backfill_ranking(db, service: TraceabilityService, *, limit: int | None, dry
     return stats
 
 
-def backfill_validation(db, service: TraceabilityService, *, limit: int | None, dry_run: bool) -> BackfillStats:
+def backfill_validation(
+    db, service: TraceabilityService, *, limit: int | None, dry_run: bool
+) -> BackfillStats:
     stats = BackfillStats()
     reports = _validation_reports_needing_backfill(db, limit)
     stats.validation_reports_processed = len(reports)
@@ -187,7 +191,9 @@ def backfill_regime(db, *, limit: int | None, dry_run: bool) -> BackfillStats:
     return stats
 
 
-def backfill_lineage(db, service: TraceabilityService, *, limit: int | None, dry_run: bool) -> BackfillStats:
+def backfill_lineage(
+    db, service: TraceabilityService, *, limit: int | None, dry_run: bool
+) -> BackfillStats:
     stats = BackfillStats()
     reports = _validation_reports_for_lineage(db, limit)
     stats.validation_reports_processed = len(reports)
@@ -209,12 +215,12 @@ def print_summary(db) -> None:
     queries = {
         "ranking_factor_contributions": select(func.count()).select_from(RankingFactorContribution),
         "validation_horizon_metrics": select(func.count()).select_from(ValidationHorizonMetric),
-        "ranking_runs_with_weight_hash": select(func.count()).select_from(RankingRun).where(
-            RankingRun.weight_config_hash.is_not(None)
-        ),
-        "ranking_runs_with_ranked_count": select(func.count()).select_from(RankingRun).where(
-            RankingRun.ranked_stock_count.is_not(None)
-        ),
+        "ranking_runs_with_weight_hash": select(func.count())
+        .select_from(RankingRun)
+        .where(RankingRun.weight_config_hash.is_not(None)),
+        "ranking_runs_with_ranked_count": select(func.count())
+        .select_from(RankingRun)
+        .where(RankingRun.ranked_stock_count.is_not(None)),
     }
     for label, stmt in queries.items():
         print(f"{label}: {int(db.scalar(stmt) or 0)}")
@@ -232,7 +238,9 @@ def main() -> int:
     args = parser.parse_args()
 
     if not any([args.ranking, args.validation, args.regime, args.lineage, args.all]):
-        parser.error("Specify at least one of --ranking, --validation, --regime, --lineage, or --all")
+        parser.error(
+            "Specify at least one of --ranking, --validation, --regime, --lineage, or --all"
+        )
 
     get_settings()
     session_factory = get_session_factory()

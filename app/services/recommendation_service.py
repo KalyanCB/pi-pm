@@ -1,4 +1,5 @@
 """Recommendation Service — orchestrates engine run, persistence, and packet enrichment."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -23,8 +24,8 @@ from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.recommendation_repository import RecommendationRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
-from app.models.recommendation import RecommendationResult, RecommendationRun
 from app.models.ranking_run import RankingRun
+from app.models.recommendation import RecommendationResult, RecommendationRun
 from app.recommendation import engine as rec_engine
 from app.recommendation.engine import (
     EngineConfig,
@@ -32,7 +33,6 @@ from app.recommendation.engine import (
     RankingResultRow,
     ValidationSummary,
 )
-
 
 _DEFAULT_CONFIG_BLOB: dict[str, Any] = {
     "engine_version": CONVICTION_ENGINE_VERSION,
@@ -105,7 +105,8 @@ class RecommendationService:
             universe_code=ranking_run.universe_code,
             as_of_date=ranking_run.as_of_date,
             config_version=config.config_version,
-            config_snapshot=_DEFAULT_CONFIG_BLOB | {
+            config_snapshot=_DEFAULT_CONFIG_BLOB
+            | {
                 "regime_posture": config.regime_posture,
                 "factor_ic_median": config.factor_ic_median,
             },
@@ -308,7 +309,8 @@ class RecommendationService:
             if decay_points:
                 # If cumulative mean return is negative at or before the threshold day → decay
                 early_points = [
-                    p for p in decay_points
+                    p
+                    for p in decay_points
                     if p.trading_day <= _ALPHA_DECAY_NEGATIVE_DAY_THRESHOLD
                     and p.cumulative_mean_return is not None
                     and float(p.cumulative_mean_return) < 0
@@ -332,7 +334,7 @@ class RecommendationService:
             shared_signal = ExitSignal(
                 rank_deteriorated=False,  # evaluated per-stock in engine via rank threshold
                 alpha_decayed=alpha_decayed,
-                holding_days=0,           # populated from portfolio_positions in M2
+                holding_days=0,  # populated from portfolio_positions in M2
                 regime_turned_defensive=regime_turned_defensive,
             )
             return {"__shared__": shared_signal}  # type: ignore[return-value]

@@ -1,5 +1,4 @@
-from datetime import UTC, date, datetime
-from decimal import Decimal
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.models.ranking_validation_report import RankingValidationReport

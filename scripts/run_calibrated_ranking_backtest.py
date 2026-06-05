@@ -72,9 +72,7 @@ def main() -> None:
             encoding="utf-8",
         )
 
-        reliability_report = RankReliabilityService().compute(
-            config, observations, benchmarks
-        )
+        reliability_report = RankReliabilityService().compute(config, observations, benchmarks)
         if not args.skip_reliability:
             args.reliability_output.write_text(
                 build_rank_reliability_markdown(reliability_report),

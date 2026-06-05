@@ -5,7 +5,6 @@ from statistics import mean
 from app.outcome_attribution.constants import REGIME_LABEL_ALL
 from app.ranking_research.constants import (
     MIN_OBS_FOR_FACTOR_ANALYSIS,
-    RESEARCH_HORIZONS,
     STRATEGY_FACTOR_KEYS,
 )
 from app.ranking_research.models import (
@@ -43,9 +42,7 @@ def build_factor_reliability_segment(
         subset = [
             o
             for o in observations
-            if o.strategy_name == strategy_name
-            and o.regime_label == regime_label
-            and o.rank <= 20
+            if o.strategy_name == strategy_name and o.regime_label == regime_label and o.rank <= 20
         ]
     if not subset:
         return None
@@ -85,7 +82,10 @@ def build_factor_reliability_segment(
         l_mean = mean(loser_norms) if loser_norms else None
         spread = (w_mean - l_mean) if w_mean is not None and l_mean is not None else None
         reliability = None
-        if spread is not None and len(winner_norms) + len(loser_norms) >= MIN_OBS_FOR_FACTOR_ANALYSIS:
+        if (
+            spread is not None
+            and len(winner_norms) + len(loser_norms) >= MIN_OBS_FOR_FACTOR_ANALYSIS
+        ):
             reliability = spread
 
         rows.append(

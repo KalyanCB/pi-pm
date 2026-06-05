@@ -19,8 +19,14 @@ def _full_payload() -> dict:
             "composite_score": 0.88,
             "score_components": {"volume_surge": {"normalized": 0.9}},
         },
-        "technical_factors": {"trend_quality": {"normalized": 0.8}, "volume_surge": {"normalized": 0.85}},
-        "validation": {"status": "pending", "horizon_metrics": [{"horizon": 5, "sample_size": 100}]},
+        "technical_factors": {
+            "trend_quality": {"normalized": 0.8},
+            "volume_surge": {"normalized": 0.85},
+        },
+        "validation": {
+            "status": "pending",
+            "horizon_metrics": [{"horizon": 5, "sample_size": 100}],
+        },
         "historical_validation_context": {"completed_reports_in_window": 2},
         "quant_evidence": {"factor_ic": [{"factor_name": "momentum", "ic_spearman": 0.1}]},
         "regime": {"regime_label": "BEAR_LOW_VOL", "strategy_regime_performance": []},

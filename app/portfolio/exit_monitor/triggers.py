@@ -3,10 +3,10 @@
 Each trigger takes position context and returns (fired: bool, details: dict).
 All deterministic. No LLM.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 
 
 @dataclass(frozen=True)
@@ -103,7 +103,9 @@ def check_stop_loss(
     if unrealized_pnl_pct is None:
         return TriggerResult(False, "EXIT_STOP_LOSS", {})
     fired = unrealized_pnl_pct <= stop_loss_pct
-    urgency = "CRITICAL" if unrealized_pnl_pct <= stop_loss_pct * 1.5 else ("HIGH" if fired else "NORMAL")
+    urgency = (
+        "CRITICAL" if unrealized_pnl_pct <= stop_loss_pct * 1.5 else ("HIGH" if fired else "NORMAL")
+    )
     return TriggerResult(
         fired=fired,
         trigger_code="EXIT_STOP_LOSS",

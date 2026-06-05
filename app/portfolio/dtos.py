@@ -2,11 +2,10 @@
 
 Consumed directly by mobile layer (M4). No transformation needed.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
-from typing import Any
 
 
 @dataclass
@@ -121,6 +120,7 @@ class ContributorDTO:
 @dataclass
 class PortfolioDashboardDTO:
     """Future mobile dashboard model (WS11)."""
+
     nav: float | None
     today_change_pct: float | None
     alpha_pct: float | None

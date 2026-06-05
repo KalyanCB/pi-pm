@@ -130,6 +130,11 @@ class DailyBatchPhase(StrEnum):
     FACTOR_IC = "factor_ic"
     RESEARCH_INTELLIGENCE = "research_intelligence"
     EXIT_RESEARCH = "exit_research"
+    PORTFOLIO_RECOMPUTE = "portfolio_recompute"
+    EXIT_MONITOR = "exit_monitor"
+    PAPER_TRADING = "paper_trading"
+    PORTFOLIO_NAV = "portfolio_nav"
+    PORTFOLIO_RECONCILE = "portfolio_reconcile"
     FINALIZING = "finalizing"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -145,6 +150,10 @@ class DailyBatchArtifactType(StrEnum):
     REGIME_PERFORMANCE_REFRESH = "regime_performance_refresh"
     EXIT_RESEARCH_RUN = "exit_research_run"
     RESEARCH_INTELLIGENCE_RUN = "research_intelligence_run"
+    PORTFOLIO_NAV_SNAPSHOT = "portfolio_nav_snapshot"
+    PORTFOLIO_RECONCILIATION = "portfolio_reconciliation"
+    PAPER_TRADE = "paper_trade"
+    EXIT_RECOMMENDATION = "exit_recommendation"
 
 
 class PolicyAction(StrEnum):
@@ -328,15 +337,15 @@ RANKING_STRATEGY_MOMENTUM_V1_VERSION = "1.0.0"
 RANKING_STRATEGY_BREAKOUT_V1 = "breakout_v1"
 RANKING_STRATEGY_BREAKOUT_V1_VERSION = "1.0.0"
 
-BENCHMARK_DEPENDENT_FACTORS = frozenset(
-    {"relative_strength", "relative_strength_acceleration"}
-)
+BENCHMARK_DEPENDENT_FACTORS = frozenset({"relative_strength", "relative_strength_acceleration"})
 
 DEFAULT_MIN_HISTORY_DAYS = 63
 DEFAULT_MIN_AVG_DAILY_TRADED_VALUE = 10_000_000
 DEFAULT_MIN_STOCK_PRICE = 50
 
 DEFAULT_BENCHMARK_SYMBOL = "^NSEI"
+# NIFTY 500 total-return index (Yahoo) — portfolio performance comparison
+PORTFOLIO_TR_BENCHMARK_SYMBOL = "^CRSLDX"
 
 UNIVERSE_NIFTY_500 = "NIFTY_500"
 UNIVERSE_NIFTY_1000 = "NIFTY_1000"

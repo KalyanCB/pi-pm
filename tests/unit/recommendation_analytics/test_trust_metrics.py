@@ -1,6 +1,8 @@
 """Tests for trust metrics: calibration, stability, reliability."""
-import pytest
+
 from datetime import date
+
+import pytest
 
 from app.recommendation_analytics.calculator import OutcomeRow
 from app.recommendation_analytics.dtos import OutcomeWindowDTO
@@ -15,10 +17,18 @@ from app.recommendation_analytics.trust_metrics import (
 
 def _row(**kwargs) -> OutcomeRow:
     defaults = dict(
-        outcome_status="WIN", alpha_pct=5.0, pnl_pct=5.0, benchmark_return_pct=2.0,
-        target_hit=True, stop_hit=False, days_held=14,
-        conviction_band="HIGH", regime_label="BULL_LOW_VOL",
-        strategy_name="momentum_v1", committee_advisory="supportive", symbol="RELIANCE",
+        outcome_status="WIN",
+        alpha_pct=5.0,
+        pnl_pct=5.0,
+        benchmark_return_pct=2.0,
+        target_hit=True,
+        stop_hit=False,
+        days_held=14,
+        conviction_band="HIGH",
+        regime_label="BULL_LOW_VOL",
+        strategy_name="momentum_v1",
+        committee_advisory="supportive",
+        symbol="RELIANCE",
     )
     defaults.update(kwargs)
     return OutcomeRow(**defaults)
@@ -29,6 +39,7 @@ def _window() -> OutcomeWindowDTO:
 
 
 # ── Calibration ────────────────────────────────────────────────────────────────
+
 
 def test_calibration_correctly_ordered():
     rows = [
@@ -65,9 +76,13 @@ def test_calibration_none_when_single_band():
 
 # ── Stability ──────────────────────────────────────────────────────────────────
 
+
 def test_stability_no_churn():
     history = [
-        _ActionHistory("RELIANCE", [(date(2026, 6, 1), "BUY"), (date(2026, 6, 2), "BUY"), (date(2026, 6, 3), "BUY")]),
+        _ActionHistory(
+            "RELIANCE",
+            [(date(2026, 6, 1), "BUY"), (date(2026, 6, 2), "BUY"), (date(2026, 6, 3), "BUY")],
+        ),
     ]
     s = compute_stability(history)
     assert s.daily_action_changes == 0
@@ -77,12 +92,15 @@ def test_stability_no_churn():
 
 def test_stability_full_churn():
     history = [
-        _ActionHistory("RELIANCE", [
-            (date(2026, 6, 1), "BUY"),
-            (date(2026, 6, 2), "WATCH"),
-            (date(2026, 6, 3), "BUY"),
-            (date(2026, 6, 4), "WATCH"),
-        ]),
+        _ActionHistory(
+            "RELIANCE",
+            [
+                (date(2026, 6, 1), "BUY"),
+                (date(2026, 6, 2), "WATCH"),
+                (date(2026, 6, 3), "BUY"),
+                (date(2026, 6, 4), "WATCH"),
+            ],
+        ),
     ]
     s = compute_stability(history)
     assert s.daily_action_changes == 3
@@ -92,11 +110,14 @@ def test_stability_full_churn():
 
 def test_stability_reversal_detected():
     history = [
-        _ActionHistory("RELIANCE", [
-            (date(2026, 6, 1), "BUY"),
-            (date(2026, 6, 2), "WATCH"),
-            (date(2026, 6, 3), "BUY"),
-        ]),
+        _ActionHistory(
+            "RELIANCE",
+            [
+                (date(2026, 6, 1), "BUY"),
+                (date(2026, 6, 2), "WATCH"),
+                (date(2026, 6, 3), "BUY"),
+            ],
+        ),
     ]
     s = compute_stability(history)
     assert s.reversal_count == 1
@@ -109,6 +130,7 @@ def test_stability_empty_history():
 
 
 # ── Reliability ────────────────────────────────────────────────────────────────
+
 
 def test_reliability_full():
     r = compute_reliability(100, 100, 0)
@@ -126,6 +148,7 @@ def test_reliability_zero_total():
 
 
 # ── Composite trust score ──────────────────────────────────────────────────────
+
 
 def test_trust_score_computed():
     rows = [
@@ -150,8 +173,14 @@ def test_trust_score_computed():
 def test_trust_score_deterministic():
     rows = [_row(conviction_band="HIGH", outcome_status="WIN")] * 5
     history = [_ActionHistory("X", [(date(2026, 6, i), "BUY") for i in range(1, 4)])]
-    kwargs = dict(window=_window(), outcome_rows=rows, action_history=history,
-                  total_recommendations=10, completed_validation_count=10, insufficient_data_count=0)
+    kwargs = dict(
+        window=_window(),
+        outcome_rows=rows,
+        action_history=history,
+        total_recommendations=10,
+        completed_validation_count=10,
+        insufficient_data_count=0,
+    )
     t1 = compute_trust_metrics(**kwargs)
     t2 = compute_trust_metrics(**kwargs)
     assert t1.overall_trust_score == t2.overall_trust_score

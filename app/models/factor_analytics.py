@@ -4,7 +4,18 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -89,7 +100,9 @@ class FactorPerformanceMetric(Base, UUIDPrimaryKeyMixin):
     bootstrap_ci_lower: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
     bootstrap_ci_upper: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
     p_value: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
-    is_statistically_significant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_statistically_significant: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     confidence: Mapped[str] = mapped_column(String(16), nullable=False, default="low")
     bootstrap_sample_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bootstrap_method: Mapped[str | None] = mapped_column(String(64), nullable=True)

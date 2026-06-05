@@ -119,10 +119,7 @@ def test_benchmark_present_uses_configured_weights():
     assert weights["trend_quality"] == "0.20000000"
     assert weights["relative_strength"] == "0.15000000"
     assert len(output.ranked_stocks) == 1
-    components = {
-        fs.factor_name
-        for fs in output.ranked_stocks[0].factor_scores
-    }
+    components = {fs.factor_name for fs in output.ranked_stocks[0].factor_scores}
     assert "relative_strength" in components
 
 

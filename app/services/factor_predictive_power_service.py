@@ -16,10 +16,10 @@ from app.db.repositories.factor_performance_run_repository import FactorPerforma
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.factor_analytics.constants import (
-    DATASET_SPLITS,
     DATASET_SPLIT_ALL,
     DATASET_SPLIT_HOLDOUT,
     DATASET_SPLIT_TRAIN,
+    DATASET_SPLITS,
     DEFAULT_HOLDOUT_START_DATE,
     FACTOR_ANALYTICS_HORIZONS,
     REGIME_LABEL_ALL,
@@ -146,9 +146,9 @@ class FactorPredictivePowerService:
                 for daily in daily_rows:
                     if daily.ic_spearman is None:
                         continue
-                    daily_ic_lookup[(daily.factor_name, daily.regime_label, daily.dataset_split)].append(
-                        daily.ic_spearman
-                    )
+                    daily_ic_lookup[
+                        (daily.factor_name, daily.regime_label, daily.dataset_split)
+                    ].append(daily.ic_spearman)
 
                 factor_names = sorted({obs.factor_name for obs in observations})
                 regime_targets = list(REGIME_LABELS) + [REGIME_LABEL_ALL]
@@ -301,7 +301,9 @@ class FactorPredictivePowerService:
             start_date or date(2000, 1, 1),
             end_date or date.today(),
         )
-        weights = resolve_factor_weights(strategy_name, strategy_version, runs, self.strategy_registry)
+        weights = resolve_factor_weights(
+            strategy_name, strategy_version, runs, self.strategy_registry
+        )
         payload = build_leaderboard(
             holdout_metrics,
             weights=weights,
@@ -341,16 +343,28 @@ class FactorPredictivePowerService:
         by_regime: dict[str, dict] = {}
         by_horizon: dict[int, dict] = {}
         for metric in metrics:
-            by_regime.setdefault(metric.regime_label, {})[metric.dataset_split] = metric_to_dict(metric)
+            by_regime.setdefault(metric.regime_label, {})[metric.dataset_split] = metric_to_dict(
+                metric
+            )
             by_horizon.setdefault(metric.horizon, {})[metric.dataset_split] = metric_to_dict(metric)
 
         train_row = next((m for m in metrics if m.dataset_split == DATASET_SPLIT_TRAIN), None)
         holdout_row = next((m for m in metrics if m.dataset_split == DATASET_SPLIT_HOLDOUT), None)
-        train_ic = float(train_row.ic_spearman) if train_row and train_row.ic_spearman is not None else None
-        holdout_ic = (
-            float(holdout_row.ic_spearman) if holdout_row and holdout_row.ic_spearman is not None else None
+        train_ic = (
+            float(train_row.ic_spearman)
+            if train_row and train_row.ic_spearman is not None
+            else None
         )
-        drift = round(train_ic - holdout_ic, 8) if train_ic is not None and holdout_ic is not None else None
+        holdout_ic = (
+            float(holdout_row.ic_spearman)
+            if holdout_row and holdout_row.ic_spearman is not None
+            else None
+        )
+        drift = (
+            round(train_ic - holdout_ic, 8)
+            if train_ic is not None and holdout_ic is not None
+            else None
+        )
 
         return {
             "factor_name": factor_name,
@@ -359,7 +373,9 @@ class FactorPredictivePowerService:
             "ic_drift": drift,
             "by_regime": by_regime,
             "by_horizon": by_horizon,
-            "regime_matrix": build_regime_matrix(metrics, horizon=20, dataset_split=DATASET_SPLIT_HOLDOUT),
+            "regime_matrix": build_regime_matrix(
+                metrics, horizon=20, dataset_split=DATASET_SPLIT_HOLDOUT
+            ),
             "horizon_stability": build_horizon_stability(
                 metrics, regime_label="BULL_LOW_VOL", dataset_split=DATASET_SPLIT_HOLDOUT
             ),
@@ -441,7 +457,9 @@ class FactorPredictivePowerService:
             limit=100,
         )
         runs = self.ranking_run_repo.list_completed_in_range(date(2000, 1, 1), date.today())
-        weights = resolve_factor_weights(strategy_name, strategy_version, runs, self.strategy_registry)
+        weights = resolve_factor_weights(
+            strategy_name, strategy_version, runs, self.strategy_registry
+        )
         return build_weight_alignment(metrics, weights=weights)
 
     def list_runs(self, *, status: str | None = None, limit: int = 50) -> list[dict]:

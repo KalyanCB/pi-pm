@@ -14,7 +14,10 @@ from app.db.repositories.ranking_validation_repository import RankingValidationR
 from app.db.repositories.stock_repository import StockRepository
 from app.models.ranking_run import RankingRun
 from app.services.signal_validation_service import SignalValidationService
-from app.validation.constants import VALIDATION_STATUS_COMPLETED, VALIDATION_STATUS_INSUFFICIENT_DATA
+from app.validation.constants import (
+    VALIDATION_STATUS_COMPLETED,
+    VALIDATION_STATUS_INSUFFICIENT_DATA,
+)
 
 
 @pytest.fixture

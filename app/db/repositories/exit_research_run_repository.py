@@ -96,7 +96,9 @@ class ExitResearchRunRepository:
         self.db.flush()
         return run
 
-    def complete(self, run: ExitResearchRun, *, signals_processed: int, metrics_written: int) -> ExitResearchRun:
+    def complete(
+        self, run: ExitResearchRun, *, signals_processed: int, metrics_written: int
+    ) -> ExitResearchRun:
         run.status = ExitResearchRunStatus.COMPLETED.value
         run.current_phase = ExitResearchPhase.COMPLETED.value
         run.signals_processed = signals_processed

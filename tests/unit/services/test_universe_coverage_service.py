@@ -1,5 +1,4 @@
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
 
 import pytest
 
@@ -25,9 +24,7 @@ def coverage_universe(db_session, universe_repo):
     )
     db_session.add(stock)
     db_session.flush()
-    db_session.add(
-        UniverseMembership(universe_id=universe.id, stock_id=stock.id)
-    )
+    db_session.add(UniverseMembership(universe_id=universe.id, stock_id=stock.id))
     db_session.flush()
     return universe
 

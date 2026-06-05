@@ -3,10 +3,10 @@
 Break down by: strategy, conviction band, regime, sector, holding duration, committee advisory.
 Pure functions. Deterministic. No LLM.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 
 @dataclass
@@ -53,15 +53,17 @@ def _bucket(
         alphas = [r["alpha_pct"] for r in closed if r.get("alpha_pct") is not None]
         pnls = [r["pnl_pct"] for r in closed if r.get("pnl_pct") is not None]
 
-        result.append(AttributionBucket(
-            label=label,
-            count=len(group_rows),
-            total_return_pct=round(sum(pnls), 4) if pnls else None,
-            avg_return_pct=round(sum(pnls) / len(pnls), 4) if pnls else None,
-            avg_alpha_pct=round(sum(alphas) / len(alphas), 4) if alphas else None,
-            win_rate=round(len(wins) / len(closed) * 100, 2) if closed else None,
-            contribution_pct=round(sum(alphas), 4) if alphas else None,
-        ))
+        result.append(
+            AttributionBucket(
+                label=label,
+                count=len(group_rows),
+                total_return_pct=round(sum(pnls), 4) if pnls else None,
+                avg_return_pct=round(sum(pnls) / len(pnls), 4) if pnls else None,
+                avg_alpha_pct=round(sum(alphas) / len(alphas), 4) if alphas else None,
+                win_rate=round(len(wins) / len(closed) * 100, 2) if closed else None,
+                contribution_pct=round(sum(alphas), 4) if alphas else None,
+            )
+        )
     return result
 
 
@@ -84,25 +86,26 @@ def compute_attribution(outcomes: list[dict]) -> AttributionReport:
       committee_advisory, pnl_pct, alpha_pct, outcome_status
     """
     # Add duration bucket to each row
-    augmented = [
-        {**row, "_duration": _duration_bucket(row.get("days_held"))}
-        for row in outcomes
-    ]
+    augmented = [{**row, "_duration": _duration_bucket(row.get("days_held"))} for row in outcomes]
 
     all_alphas = [r["alpha_pct"] for r in outcomes if r.get("alpha_pct") is not None]
     total_alpha = round(sum(all_alphas), 4) if all_alphas else None
 
     return AttributionReport(
-        by_strategy=_bucket(augmented, "strategy_name",
-            ["momentum_v1", "breakout_v1"]),
-        by_conviction_band=_bucket(augmented, "conviction_band",
-            ["EXCEPTIONAL", "HIGH", "MEDIUM", "LOW"]),
+        by_strategy=_bucket(augmented, "strategy_name", ["momentum_v1", "breakout_v1"]),
+        by_conviction_band=_bucket(
+            augmented, "conviction_band", ["EXCEPTIONAL", "HIGH", "MEDIUM", "LOW"]
+        ),
         by_regime=_bucket(augmented, "regime_label"),
         by_sector=_bucket(augmented, "sector"),
-        by_holding_duration=_bucket(augmented, "_duration",
-            ["1–5 days", "6–10 days", "11–20 days", "21+ days"]),
-        by_committee_advisory=_bucket(augmented, "committee_advisory",
-            ["supportive", "neutral", "cautious", "HIGH_CONCERN", "Unknown"]),
+        by_holding_duration=_bucket(
+            augmented, "_duration", ["1–5 days", "6–10 days", "11–20 days", "21+ days"]
+        ),
+        by_committee_advisory=_bucket(
+            augmented,
+            "committee_advisory",
+            ["supportive", "neutral", "cautious", "HIGH_CONCERN", "Unknown"],
+        ),
         total_alpha_pct=total_alpha,
         note="Attribution is post-hoc observation only. Committee advisory measured for signal value — not used in recommendation generation.",
     )

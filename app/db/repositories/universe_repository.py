@@ -20,7 +20,9 @@ class UniverseRepository:
     def list_active(self) -> list[StockUniverse]:
         return list(
             self.db.scalars(
-                select(StockUniverse).where(StockUniverse.is_active.is_(True)).order_by(StockUniverse.code)
+                select(StockUniverse)
+                .where(StockUniverse.is_active.is_(True))
+                .order_by(StockUniverse.code)
             ).all()
         )
 

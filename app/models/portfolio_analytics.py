@@ -1,4 +1,5 @@
 """Portfolio analytics models — NAV history, cash ledger, reconciliation, exit recommendations."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -6,7 +7,14 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, ForeignKey, Index, Numeric, SmallInteger, String, Text, UniqueConstraint
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -16,6 +24,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 class PortfolioNavHistory(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Daily NAV snapshot — append-only time series."""
+
     __tablename__ = "portfolio_nav_history"
 
     as_of_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
@@ -23,7 +32,9 @@ class PortfolioNavHistory(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     cash_balance: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
     market_value: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)
     unrealized_pnl: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
-    realized_pnl_cumulative: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    realized_pnl_cumulative: Mapped[float] = mapped_column(
+        Numeric(18, 2), nullable=False, default=0
+    )
     open_positions: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
     cash_pct: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False, default=0)
     day_return_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
@@ -31,13 +42,12 @@ class PortfolioNavHistory(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     alpha_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
     regime_label: Mapped[str | None] = mapped_column(String(32))
 
-    __table_args__ = (
-        Index("ix_portfolio_nav_history_date", "as_of_date"),
-    )
+    __table_args__ = (Index("ix_portfolio_nav_history_date", "as_of_date"),)
 
 
 class CashLedger(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Append-only cash movement log — never update, only insert."""
+
     __tablename__ = "portfolio_cash_ledger"
 
     entry_type: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -59,6 +69,7 @@ class CashLedger(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 class PortfolioReconciliationReport(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Daily reconciliation result — gates analytics."""
+
     __tablename__ = "portfolio_reconciliation_reports"
 
     as_of_date: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
@@ -93,6 +104,7 @@ class ExitRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     Exit Monitor writes these. Never auto-executes.
     Human confirms via POST /portfolio/trades/exit.
     """
+
     __tablename__ = "portfolio_exit_recommendations"
 
     portfolio_position_id: Mapped[UUID] = mapped_column(
@@ -134,4 +146,5 @@ class ExitRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
 # Forward reference fix
 from app.models.portfolio_position import PortfolioPosition  # noqa: E402
+
 ExitRecommendation.__annotations__["position"] = PortfolioPosition

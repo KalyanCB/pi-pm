@@ -1,10 +1,10 @@
 from decimal import Decimal
 
 from app.core.constants import (
-    PolicyAction,
-    PolicyType,
     REGIME_BEAR_LOW_VOL,
     REGIME_BULL_LOW_VOL,
+    PolicyAction,
+    PolicyType,
 )
 from app.regime_policy.engine import PolicyConfigSpec, RegimePolicyEngine, breakout_v1_preset_specs
 from app.regime_policy.models import PolicyEvaluationContext
@@ -29,7 +29,9 @@ def _spec(policy_type: str, **kwargs) -> PolicyConfigSpec:
 
 def test_e1_baseline_allows_all_regimes():
     engine = RegimePolicyEngine()
-    config = _spec(PolicyType.BASELINE_E1.value, allowed_regimes=[], default_action=PolicyAction.ALLOW.value)
+    config = _spec(
+        PolicyType.BASELINE_E1.value, allowed_regimes=[], default_action=PolicyAction.ALLOW.value
+    )
     for regime in [REGIME_BULL_LOW_VOL, REGIME_BEAR_LOW_VOL, "UNKNOWN"]:
         decision = engine.evaluate_run(config, PolicyEvaluationContext(regime_label=regime))
         assert decision.action == PolicyAction.ALLOW.value

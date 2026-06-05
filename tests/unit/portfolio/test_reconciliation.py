@@ -1,19 +1,26 @@
 """Reconciliation engine tests — AC-PE-05, AC-PE-12."""
+
 from datetime import date
 
 import pytest
 
-from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
 from app.models.portfolio_analytics import CashLedger
+from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
 from app.portfolio.reconciliation.service import ReconciliationService
 
 
 def _seed_config(db, equity=1_000_000.0):
     cfg = PortfolioConfig(
-        is_active=True, total_equity=equity, deploy_pct=0.85,
-        cash_floor_pct=0.15, reserve_pct=0.02, regime_slots={},
-        single_name_cap_pct=0.18, sector_cap_pct=0.30,
-        slippage_bps=5.0, fee_per_leg=20.0,
+        is_active=True,
+        total_equity=equity,
+        deploy_pct=0.85,
+        cash_floor_pct=0.15,
+        reserve_pct=0.02,
+        regime_slots={},
+        single_name_cap_pct=0.18,
+        sector_cap_pct=0.30,
+        slippage_bps=5.0,
+        fee_per_leg=20.0,
     )
     db.add(cfg)
     db.flush()
@@ -21,10 +28,14 @@ def _seed_config(db, equity=1_000_000.0):
 
 
 def _cash(db, amount, balance_after, as_of, entry_type="INITIAL_CAPITAL"):
-    db.add(CashLedger(
-        entry_type=entry_type, amount=amount, balance_after=balance_after,
-        as_of_date=as_of,
-    ))
+    db.add(
+        CashLedger(
+            entry_type=entry_type,
+            amount=amount,
+            balance_after=balance_after,
+            as_of_date=as_of,
+        )
+    )
     db.flush()
 
 
@@ -48,14 +59,21 @@ def test_reconciliation_with_position(db_session):
     _cash(db_session, -200_000.0, 800_000.0, date(2026, 6, 2), entry_type="TRADE_BUY")
 
     from app.models.stock import Stock
+
     stock = Stock(symbol="TESTCO", name="Test Co")
     db_session.add(stock)
     db_session.flush()
 
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
+
     pos = PortfolioPosition(
-        stock_id=stock.id, quantity=100, avg_cost=2000, market_value=200_000,
-        as_of=datetime.now(UTC), is_current=True, position_status="OPEN",
+        stock_id=stock.id,
+        quantity=100,
+        avg_cost=2000,
+        market_value=200_000,
+        as_of=datetime.now(UTC),
+        is_current=True,
+        position_status="OPEN",
     )
     db_session.add(pos)
     db_session.flush()

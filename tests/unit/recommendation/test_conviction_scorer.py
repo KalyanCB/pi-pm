@@ -1,4 +1,5 @@
 """Golden-fixture tests for conviction scorer (AC-CS-01 through AC-CS-07)."""
+
 import pytest
 
 from app.core.constants import CONVICTION_CONFIG_VERSION, ConvictionBand
@@ -92,7 +93,15 @@ def test_rank_inversion_guard_lifted_when_promoted():
 def test_components_five_keys_no_committee():
     result = score(_inputs())
     keys = set(result.components.keys())
-    expected = {"rank_quality", "validation", "ic_factor", "regime", "exit_health", "weights", "config_version"}
+    expected = {
+        "rank_quality",
+        "validation",
+        "ic_factor",
+        "regime",
+        "exit_health",
+        "weights",
+        "config_version",
+    }
     assert keys == expected
     # AC-CS-07: no committee keys
     for key in keys:
@@ -101,7 +110,9 @@ def test_components_five_keys_no_committee():
 
 # AC-CS-05 (lint): no OpenAI/LLM import — checked via static inspection
 def test_no_llm_imports_in_module():
-    import importlib, ast, pathlib
+    import ast
+    import pathlib
+
     src = pathlib.Path(__file__).parents[3] / "app" / "recommendation" / "conviction_scorer.py"
     tree = ast.parse(src.read_text())
     for node in ast.walk(tree):
@@ -123,16 +134,22 @@ def test_committee_text_does_not_affect_score():
 
 
 # Band boundary tests
-@pytest.mark.parametrize("regime,expected_band_min", [
-    ("defensive", ConvictionBand.BLOCKED),
-    ("neutral", ConvictionBand.LOW),
-    ("risk_on", ConvictionBand.MEDIUM),
-])
+@pytest.mark.parametrize(
+    "regime,expected_band_min",
+    [
+        ("defensive", ConvictionBand.BLOCKED),
+        ("neutral", ConvictionBand.LOW),
+        ("risk_on", ConvictionBand.MEDIUM),
+    ],
+)
 def test_regime_influence_on_band(regime, expected_band_min):
     result = score(_inputs(regime_posture=regime))
     bands_ordered = [
-        ConvictionBand.BLOCKED, ConvictionBand.LOW,
-        ConvictionBand.MEDIUM, ConvictionBand.HIGH, ConvictionBand.EXCEPTIONAL,
+        ConvictionBand.BLOCKED,
+        ConvictionBand.LOW,
+        ConvictionBand.MEDIUM,
+        ConvictionBand.HIGH,
+        ConvictionBand.EXCEPTIONAL,
     ]
     assert bands_ordered.index(result.band) >= bands_ordered.index(expected_band_min)
 

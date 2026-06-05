@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from statistics import median
 
 from app.validation.constants import MIN_IC_SAMPLE_SIZE
@@ -127,7 +127,9 @@ def compute_deciles(items: list[_ScoredReturn]) -> tuple[DecileBucket, ...]:
     return tuple(result)
 
 
-def compute_hit_rates(items: list[_ScoredReturn], deciles: tuple[DecileBucket, ...]) -> HitRateMetrics:
+def compute_hit_rates(
+    items: list[_ScoredReturn], deciles: tuple[DecileBucket, ...]
+) -> HitRateMetrics:
     if not items or not deciles:
         return HitRateMetrics(None, None, None)
 
@@ -230,7 +232,9 @@ def compute_full_horizon_metrics(
 
     return FullHorizonMetrics(
         horizon=horizon,
-        status=_HORIZON_STATUS_OK if ic is not None or rank_ic is not None else _HORIZON_STATUS_INSUFFICIENT,
+        status=_HORIZON_STATUS_OK
+        if ic is not None or rank_ic is not None
+        else _HORIZON_STATUS_INSUFFICIENT,
         ic_pearson=ic,
         rank_ic_spearman=rank_ic,
         hit_rate=hit_rates.top_vs_median_hit_rate,

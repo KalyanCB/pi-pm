@@ -3,7 +3,6 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-
 RECOVERY_TABLES = (
     "regime_history",
     "strategy_regime_performance",

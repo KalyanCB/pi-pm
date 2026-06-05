@@ -38,8 +38,7 @@ def test_select_qualifying_setups_no_fixed_cap():
 
 def test_build_setup_outcomes_and_aggregate_with_ci():
     bars = [
-        PriceBar(date=date(2026, 1, d), close=Decimal(100 + d), volume=100)
-        for d in range(1, 26)
+        PriceBar(date=date(2026, 1, d), close=Decimal(100 + d), volume=100) for d in range(1, 26)
     ]
     matches = [
         (date(2026, 1, 1), 0.92, {}),

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 from sqlalchemy import Date, DateTime, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -27,7 +26,9 @@ class RankingRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     universe_code: Mapped[str] = mapped_column(String(32), nullable=False)
     benchmark_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     filter_config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    normalization_method: Mapped[str] = mapped_column(String(16), nullable=False, default="percentile")
+    normalization_method: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="percentile"
+    )
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=RankingRunStatus.PENDING.value
     )

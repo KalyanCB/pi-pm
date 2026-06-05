@@ -16,8 +16,6 @@ def attach_stock_setup_evidence(
     if see_service is None:
         payload["stock_setup_evidence"] = {"status": "unavailable"}
         return payload
-    evidence = see_service.get_packet_evidence(
-        ranking_run_id=ranking_run_id, stock_id=stock_id
-    )
+    evidence = see_service.get_packet_evidence(ranking_run_id=ranking_run_id, stock_id=stock_id)
     payload["stock_setup_evidence"] = evidence
     return payload

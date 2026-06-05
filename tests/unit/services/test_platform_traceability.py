@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.core.constants import IngestPeriod, IngestionMode
+from app.core.constants import IngestionMode, IngestPeriod
 from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ranking_factor_contribution_repository import (
     RankingFactorContributionRepository,
@@ -45,14 +45,17 @@ def test_ingestion_batch_tracking(market_data_service, db_session, metadata_reli
             adj_close=Decimal("102"),
         )
     ]
-    with patch.object(
-        market_data_service.provider,
-        "fetch_metadata",
-        return_value=metadata_reliance,
-    ), patch.object(
-        market_data_service.provider,
-        "fetch_history",
-        return_value=bars,
+    with (
+        patch.object(
+            market_data_service.provider,
+            "fetch_metadata",
+            return_value=metadata_reliance,
+        ),
+        patch.object(
+            market_data_service.provider,
+            "fetch_history",
+            return_value=bars,
+        ),
     ):
         result = market_data_service.ingest(
             ["RELIANCE.NS"],

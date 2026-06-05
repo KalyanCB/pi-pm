@@ -2,6 +2,7 @@
 
 Pure functions. Deterministic. No LLM.
 """
+
 from __future__ import annotations
 
 import math
@@ -22,9 +23,9 @@ class BenchmarkComparison:
     portfolio_return_pct: float | None
     benchmark_return_pct: float | None
     alpha_pct: float | None
-    tracking_error_pct: float | None     # annualised std of return diffs
-    information_ratio: float | None       # alpha / tracking_error
-    outperformance_pct: float | None      # portfolio - benchmark
+    tracking_error_pct: float | None  # annualised std of return diffs
+    information_ratio: float | None  # alpha / tracking_error
+    outperformance_pct: float | None  # portfolio - benchmark
     periods: int
 
 
@@ -54,9 +55,13 @@ def compute_benchmark_comparison(
     if len(common) < 2:
         return BenchmarkComparison(
             benchmark_symbol=benchmark_symbol,
-            portfolio_return_pct=None, benchmark_return_pct=None,
-            alpha_pct=None, tracking_error_pct=None,
-            information_ratio=None, outperformance_pct=None, periods=len(common),
+            portfolio_return_pct=None,
+            benchmark_return_pct=None,
+            alpha_pct=None,
+            tracking_error_pct=None,
+            information_ratio=None,
+            outperformance_pct=None,
+            periods=len(common),
         )
 
     p_aligned = [SeriesPoint(d, p_map[d]) for d in common]

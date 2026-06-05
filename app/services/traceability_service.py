@@ -185,7 +185,9 @@ class TraceabilityService:
             "factors": [
                 {
                     "factor_name": row.factor_name,
-                    "raw": float(row.raw_factor_value) if row.raw_factor_value is not None else None,
+                    "raw": float(row.raw_factor_value)
+                    if row.raw_factor_value is not None
+                    else None,
                     "normalized": (
                         float(row.normalized_factor_value)
                         if row.normalized_factor_value is not None

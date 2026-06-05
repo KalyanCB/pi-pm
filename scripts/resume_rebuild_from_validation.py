@@ -6,8 +6,8 @@ from __future__ import annotations
 import sys
 from datetime import date
 
-from scripts.run_full_rebuild_from_date import _build_daily_batch, parse_args
 from app.schemas.daily_batch import DailyBatchPhaseFlags, DailyBatchRunCreateRequest
+from scripts.run_full_rebuild_from_date import _build_daily_batch
 
 
 def main() -> int:

@@ -20,6 +20,16 @@ class DailyBatchStrategySpec(BaseModel):
     strategy_version: str
 
 
+class DailyBatchPortfolioPhaseFlags(BaseModel):
+    """Paper-trading pilot ops — orchestration only; no engine logic changes."""
+
+    recompute: bool = True
+    exit_monitor: bool = True
+    paper_trading: bool = True
+    nav_snapshot: bool = True
+    reconcile: bool = True
+
+
 class DailyBatchPhaseFlags(BaseModel):
     ingest: bool = True
     rankings: bool = True
@@ -30,6 +40,7 @@ class DailyBatchPhaseFlags(BaseModel):
     factor_ic: bool = True
     research_intelligence: bool = True
     exit_research: bool = True
+    portfolio: bool = False
 
 
 class DailyBatchRunCreateRequest(BaseModel):
@@ -57,6 +68,16 @@ class DailyBatchRunCreateRequest(BaseModel):
     force_ingest: bool = False
     dry_run: bool = False
     phases: DailyBatchPhaseFlags = Field(default_factory=DailyBatchPhaseFlags)
+    portfolio_phases: DailyBatchPortfolioPhaseFlags = Field(
+        default_factory=DailyBatchPortfolioPhaseFlags
+    )
+    """When phases.portfolio=true, run mark-to-market → exit monitor → paper fills → NAV → recon."""
+    pilot_auto_approve: bool = False
+    """Paper pilot: auto-approve BUY recommendations before simulated fill (HITL bypass)."""
+    pilot_auto_execute: bool = False
+    """Paper pilot: simulate paper entries/exits for approved/exit-approved recommendations."""
+    ingest_portfolio_benchmarks: bool = True
+    """Also ingest ^CRSLDX (NIFTY 500 TR) when portfolio phases enabled."""
     holdout_start_date: date = DEFAULT_HOLDOUT_START_DATE
     ingest_batch_size: int = Field(default=25, ge=1, le=100)
     allow_partial_ingest: bool = False

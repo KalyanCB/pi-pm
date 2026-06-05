@@ -343,9 +343,7 @@ class RegimePolicyReplayService:
 
         if not use_precomputed and scored_by_run is None:
             run_ids = [
-                report.ranking_run.id
-                for report in reports
-                if report.ranking_run is not None
+                report.ranking_run.id for report in reports if report.ranking_run is not None
             ]
             scored_by_run = batch_load_scored_returns_by_run(self.db, run_ids, horizon)
         elif scored_by_run is None:

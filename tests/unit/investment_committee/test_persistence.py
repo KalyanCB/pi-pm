@@ -6,10 +6,10 @@ backward compatibility is maintained.
 
 These tests use mocked DB / service dependencies to avoid requiring a live DB.
 """
+
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -17,12 +17,12 @@ import pytest
 from app.workspace_args.constants import (
     CommitteeAdvisoryAction,
     CommitteeResearchLabel,
-    label_to_advisory_action,
     aggregate_cro_advisory,
+    label_to_advisory_action,
 )
 
-
 # ── AC-IC-01: advisory_action persisted on CommitteeReview ───────────────────
+
 
 class TestCommitteeReviewPersistence:
     """Verify advisory_action is written to CommitteeReview (C-1 fix)."""
@@ -61,17 +61,21 @@ class TestCommitteeReviewPersistence:
         assert output["high_concern"] is True
         assert output["high_concern_reason"] is not None
 
-    @pytest.mark.parametrize("label,expected", [
-        (CommitteeResearchLabel.SUPPORTIVE, "APPROVE"),
-        (CommitteeResearchLabel.NEUTRAL, "WATCH"),
-        (CommitteeResearchLabel.CAUTIOUS, "REJECT"),
-    ])
+    @pytest.mark.parametrize(
+        "label,expected",
+        [
+            (CommitteeResearchLabel.SUPPORTIVE, "APPROVE"),
+            (CommitteeResearchLabel.NEUTRAL, "WATCH"),
+            (CommitteeResearchLabel.CAUTIOUS, "REJECT"),
+        ],
+    )
     def test_all_label_mappings_stored(self, label, expected):
         action = label_to_advisory_action(label)
         assert action.value == expected
 
 
 # ── AC-IC-02: CRO advisory action persisted (C-2 fix) ─────────────────────────
+
 
 class TestCroReviewPersistence:
     """Verify cro_advisory_action and investment_committee_summary are written."""
@@ -80,10 +84,10 @@ class TestCroReviewPersistence:
         """CRO advisory is computed by aggregate_cro_advisory and must be stored."""
         committee_actions = {
             "TARC": CommitteeAdvisoryAction.APPROVE,
-            "FRC":  CommitteeAdvisoryAction.APPROVE,
-            "QRC":  CommitteeAdvisoryAction.APPROVE,
+            "FRC": CommitteeAdvisoryAction.APPROVE,
+            "QRC": CommitteeAdvisoryAction.APPROVE,
             "NRCC": CommitteeAdvisoryAction.WATCH,
-            "RC":   CommitteeAdvisoryAction.APPROVE,
+            "RC": CommitteeAdvisoryAction.APPROVE,
         }
         cro_action = aggregate_cro_advisory(committee_actions)
         # This value must be stored as cro_advisory_action on CroReview
@@ -99,10 +103,10 @@ class TestCroReviewPersistence:
         """HIGH_CONCERN escalation result must be stored as cro_advisory_action."""
         committee_actions = {
             "TARC": CommitteeAdvisoryAction.APPROVE,
-            "FRC":  CommitteeAdvisoryAction.APPROVE,
-            "QRC":  CommitteeAdvisoryAction.APPROVE,
+            "FRC": CommitteeAdvisoryAction.APPROVE,
+            "QRC": CommitteeAdvisoryAction.APPROVE,
             "NRCC": CommitteeAdvisoryAction.APPROVE,
-            "RC":   CommitteeAdvisoryAction.HIGH_CONCERN,
+            "RC": CommitteeAdvisoryAction.HIGH_CONCERN,
         }
         cro_action = aggregate_cro_advisory(committee_actions)
         assert cro_action == CommitteeAdvisoryAction.HIGH_CONCERN
@@ -113,16 +117,17 @@ class TestCroReviewPersistence:
 
 # ── AC-IC-03: HIGH_CONCERN end-to-end flow ────────────────────────────────────
 
+
 class TestHighConcernEndToEnd:
     """Verify HIGH_CONCERN survives committee → CRO → DB → packet → API."""
 
     def test_single_high_concern_overrides_four_approve(self):
         actions = {
             "TARC": CommitteeAdvisoryAction.APPROVE,
-            "FRC":  CommitteeAdvisoryAction.APPROVE,
-            "QRC":  CommitteeAdvisoryAction.APPROVE,
+            "FRC": CommitteeAdvisoryAction.APPROVE,
+            "QRC": CommitteeAdvisoryAction.APPROVE,
             "NRCC": CommitteeAdvisoryAction.APPROVE,
-            "RC":   CommitteeAdvisoryAction.HIGH_CONCERN,
+            "RC": CommitteeAdvisoryAction.HIGH_CONCERN,
         }
         result = aggregate_cro_advisory(actions)
         assert result == CommitteeAdvisoryAction.HIGH_CONCERN
@@ -131,7 +136,7 @@ class TestHighConcernEndToEnd:
         """high_concern_committees list correctly identifies the source."""
         reviews = [
             MagicMock(committee_code="TARC", advisory_action="APPROVE", high_concern=False),
-            MagicMock(committee_code="RC",   advisory_action="HIGH_CONCERN", high_concern=True),
+            MagicMock(committee_code="RC", advisory_action="HIGH_CONCERN", high_concern=True),
         ]
         high_concern_committees = [r.committee_code for r in reviews if r.high_concern]
         assert high_concern_committees == ["RC"]
@@ -141,13 +146,15 @@ class TestHighConcernEndToEnd:
         # Simulate what _update_packet_advisory_blocks now builds
         symbol_reviews = [
             MagicMock(committee_code="TARC", advisory_action="APPROVE", high_concern=False),
-            MagicMock(committee_code="RC",   advisory_action="HIGH_CONCERN", high_concern=True),
+            MagicMock(committee_code="RC", advisory_action="HIGH_CONCERN", high_concern=True),
         ]
         cro = MagicMock()
         cro.cro_advisory_action = "HIGH_CONCERN"
         cro.id = uuid4()
 
-        committee_actions = {r.committee_code: r.advisory_action for r in symbol_reviews if r.advisory_action}
+        committee_actions = {
+            r.committee_code: r.advisory_action for r in symbol_reviews if r.advisory_action
+        }
         high_concern_committees = [r.committee_code for r in symbol_reviews if r.high_concern]
 
         advisory_block = {
@@ -166,6 +173,7 @@ class TestHighConcernEndToEnd:
 
 
 # ── AC-IC-04: packet advisory block structure ─────────────────────────────────
+
 
 class TestPacketAdvisoryBlock:
     """Verify committee_advisory block has correct structure after C-3 fix."""
@@ -213,27 +221,31 @@ class TestPacketAdvisoryBlock:
             "high_concern_committees": [],
             "committee_actions": {
                 "TARC": "APPROVE",
-                "FRC":  "APPROVE",
-                "QRC":  "WATCH",
+                "FRC": "APPROVE",
+                "QRC": "WATCH",
                 "NRCC": "APPROVE",
-                "RC":   "APPROVE",
+                "RC": "APPROVE",
             },
             "review_id": "550e8400-e29b-41d4-a716-446655440000",
             "display_names": {
                 "TARC": "Technical Analysis Committee",
-                "FRC":  "Fundamentals & Risk Committee",
-                "QRC":  "Quantitative Research Committee",
+                "FRC": "Fundamentals & Risk Committee",
+                "QRC": "Quantitative Research Committee",
                 "NRCC": "News & Events Committee",
-                "RC":   "Risk & Compliance Committee",
-                "CRO":  "Investment Committee Chair",
+                "RC": "Risk & Compliance Committee",
+                "CRO": "Investment Committee Chair",
             },
             "note": "Advisory only. Does not affect recommendation.action or conviction_score.",
         }
         assert len(block["committee_actions"]) == 5
-        assert all(v in [a.value for a in CommitteeAdvisoryAction] for v in block["committee_actions"].values())
+        assert all(
+            v in [a.value for a in CommitteeAdvisoryAction]
+            for v in block["committee_actions"].values()
+        )
 
 
 # ── AC-IC-05: Investment Committee endpoints operational ──────────────────────
+
 
 class TestInvestmentCommitteeAPI:
     """Verify endpoints use correct service methods (H-1 fix)."""
@@ -241,6 +253,7 @@ class TestInvestmentCommitteeAPI:
     def test_correct_service_methods_used(self):
         """investment_committee.py must call methods that exist on the service."""
         from app.services.args_research_run_service import ArgsResearchRunService
+
         svc_methods = [m for m in dir(ArgsResearchRunService) if not m.startswith("_")]
 
         # Methods called in investment_committee.py after H-1 fix
@@ -251,15 +264,18 @@ class TestInvestmentCommitteeAPI:
     def test_start_run_not_called(self):
         """start_run() was the old wrong name — must not exist."""
         from app.services.args_research_run_service import ArgsResearchRunService
+
         assert not hasattr(ArgsResearchRunService, "start_run")
 
     def test_get_packets_not_called(self):
         """get_packets() was the old wrong name — must not exist."""
         from app.services.args_research_run_service import ArgsResearchRunService
+
         assert not hasattr(ArgsResearchRunService, "get_packets")
 
 
 # ── AC-IC-06: Backward compatibility ─────────────────────────────────────────
+
 
 class TestBackwardCompatibility:
     """Verify old /research/* routes remain functional."""
@@ -272,12 +288,14 @@ class TestBackwardCompatibility:
     def test_research_router_registered(self):
         """Old /research prefix must still be in the router."""
         from app.api.router import api_router
+
         prefixes = [r.path for r in api_router.routes]
         assert any("/research" in p for p in prefixes)
 
     def test_investment_committee_router_registered(self):
         """New /investment-committee prefix must be in the router."""
         from app.api.router import api_router
+
         prefixes = [r.path for r in api_router.routes]
         assert any("/investment-committee" in p for p in prefixes)
 
@@ -286,5 +304,6 @@ class TestBackwardCompatibility:
         They must not collide to prevent accidental substitution."""
         advisory_values = {a.value for a in CommitteeAdvisoryAction}
         research_values = {r.value for r in CommitteeResearchLabel}
-        assert not advisory_values.intersection(research_values), \
+        assert not advisory_values.intersection(research_values), (
             "Enum value collision between advisory and research labels"
+        )

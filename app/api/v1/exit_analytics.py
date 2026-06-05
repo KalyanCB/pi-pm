@@ -1,12 +1,9 @@
-from datetime import date
-
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_exit_research_service
 from app.schemas.exit_research import ExitResearchBackfillRequest, ExitResearchBackfillResponse
 from app.services.exit_research_service import ExitResearchService
 from app.workspace_exit_research.constants import (
-    POLICY_FAMILY_FIXED_HOLD,
     POLICY_FAMILY_RANK_DETERIORATION,
     POLICY_FAMILY_REGIME_EXIT,
     POLICY_FAMILY_TREND_FAILURE,

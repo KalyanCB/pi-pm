@@ -39,11 +39,10 @@ def _obs(
     )
 
 
-def _positive_correlation_observations(count: int = MIN_FACTOR_SAMPLE_SIZE) -> list[FactorObservation]:
-    return [
-        _obs(factor_value=i, forward_return=i * 0.01)
-        for i in range(count)
-    ]
+def _positive_correlation_observations(
+    count: int = MIN_FACTOR_SAMPLE_SIZE,
+) -> list[FactorObservation]:
+    return [_obs(factor_value=i, forward_return=i * 0.01) for i in range(count)]
 
 
 def test_compute_daily_ic_positive_correlation():
@@ -130,9 +129,7 @@ def test_build_daily_metrics_groups_by_run_and_regime():
         )
         for i in range(MIN_FACTOR_SAMPLE_SIZE)
     ]
-    rows = engine.build_daily_metrics(
-        observations, horizon=20, holdout_start_date=date(2025, 1, 1)
-    )
+    rows = engine.build_daily_metrics(observations, horizon=20, holdout_start_date=date(2025, 1, 1))
     assert len(rows) == 1
     assert rows[0].dataset_split == DATASET_SPLIT_TRAIN
     assert rows[0].ic_spearman is not None

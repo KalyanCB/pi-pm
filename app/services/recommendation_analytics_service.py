@@ -3,47 +3,37 @@
 All analytics are observation-only. No output feeds back into the
 recommendation engine, conviction formula, or ARGS committees (AC-RP-09).
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
-from typing import Any
-from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.repositories.recommendation_outcome_repository import RecommendationOutcomeRepository
 from app.db.repositories.recommendation_repository import RecommendationRepository
-from app.models.recommendation import RecommendationOutcome, RecommendationResult, RecommendationRun
+from app.models.recommendation import RecommendationRun
 from app.models.stock import Stock
 from app.recommendation_analytics.calculator import (
     OutcomeRow,
+    check_conviction_calibration,
     compute_committee_breakdown,
     compute_conviction_breakdown,
     compute_quality_metrics,
     compute_regime_breakdown,
-    check_conviction_calibration,
 )
 from app.recommendation_analytics.dtos import (
     CommitteePerformanceDTO,
-    ConvictionBandMetricsDTO,
-    ConvictionCalibrationDTO,
     ConvictionPerformanceDTO,
     OutcomeWindowDTO,
-    QualityMetricsDTO,
-    RegimeMetricsDTO,
-    RegimePerformanceDTO,
     RecommendationSummaryDTO,
-    StabilityDTO,
+    RegimePerformanceDTO,
     SymbolAnalyticsDTO,
     TrustMetricsDTO,
 )
 from app.recommendation_analytics.trust_metrics import (
     _ActionHistory,
-    compute_calibration,
-    compute_reliability,
-    compute_stability,
     compute_trust_metrics,
 )
 
@@ -69,7 +59,9 @@ class RecommendationAnalyticsService:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> RecommendationSummaryDTO:
-        rows = self._load_outcome_rows(strategy_name=strategy_name, from_date=from_date, to_date=to_date)
+        rows = self._load_outcome_rows(
+            strategy_name=strategy_name, from_date=from_date, to_date=to_date
+        )
         window = self._make_window(rows, strategy_name, from_date, to_date)
         quality = compute_quality_metrics(rows)
 
@@ -81,10 +73,20 @@ class RecommendationAnalyticsService:
             outcome_statuses=["OPEN"],
         )
         top_buys = sorted(
-            [{"symbol": r.symbol, "outcome_status": r.outcome_status, "conviction_band": r.conviction_band}
-             for r in open_rows if r.symbol],
-            key=lambda x: ["EXCEPTIONAL", "HIGH", "MEDIUM", "LOW", "BLOCKED"].index(x["conviction_band"])
-            if x["conviction_band"] in ["EXCEPTIONAL", "HIGH", "MEDIUM", "LOW", "BLOCKED"] else 99,
+            [
+                {
+                    "symbol": r.symbol,
+                    "outcome_status": r.outcome_status,
+                    "conviction_band": r.conviction_band,
+                }
+                for r in open_rows
+                if r.symbol
+            ],
+            key=lambda x: (
+                ["EXCEPTIONAL", "HIGH", "MEDIUM", "LOW", "BLOCKED"].index(x["conviction_band"])
+                if x["conviction_band"] in ["EXCEPTIONAL", "HIGH", "MEDIUM", "LOW", "BLOCKED"]
+                else 99
+            ),
         )[:10]
 
         # Exit candidates from latest recommendation run
@@ -107,7 +109,9 @@ class RecommendationAnalyticsService:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> ConvictionPerformanceDTO:
-        rows = self._load_outcome_rows(strategy_name=strategy_name, from_date=from_date, to_date=to_date)
+        rows = self._load_outcome_rows(
+            strategy_name=strategy_name, from_date=from_date, to_date=to_date
+        )
         window = self._make_window(rows, strategy_name, from_date, to_date)
         bands = compute_conviction_breakdown(rows)
         is_cal, rho = check_conviction_calibration(bands)
@@ -119,7 +123,9 @@ class RecommendationAnalyticsService:
         else:
             note = f"Conviction bands are NOT calibrated (ρ={rho}). PO review recommended."
 
-        return ConvictionPerformanceDTO(window=window, bands=bands, calibration_rank_correct=is_cal, calibration_note=note)
+        return ConvictionPerformanceDTO(
+            window=window, bands=bands, calibration_rank_correct=is_cal, calibration_note=note
+        )
 
     # ── Regime ────────────────────────────────────────────────────────────────
 
@@ -130,7 +136,9 @@ class RecommendationAnalyticsService:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> RegimePerformanceDTO:
-        rows = self._load_outcome_rows(strategy_name=strategy_name, from_date=from_date, to_date=to_date)
+        rows = self._load_outcome_rows(
+            strategy_name=strategy_name, from_date=from_date, to_date=to_date
+        )
         window = self._make_window(rows, strategy_name, from_date, to_date)
         regimes = compute_regime_breakdown(rows)
         return RegimePerformanceDTO(window=window, regimes=regimes)
@@ -144,7 +152,9 @@ class RecommendationAnalyticsService:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> CommitteePerformanceDTO:
-        rows = self._load_outcome_rows(strategy_name=strategy_name, from_date=from_date, to_date=to_date)
+        rows = self._load_outcome_rows(
+            strategy_name=strategy_name, from_date=from_date, to_date=to_date
+        )
         window = self._make_window(rows, strategy_name, from_date, to_date)
         advisories = compute_committee_breakdown(rows)
         return CommitteePerformanceDTO(
@@ -162,7 +172,9 @@ class RecommendationAnalyticsService:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> TrustMetricsDTO:
-        rows = self._load_outcome_rows(strategy_name=strategy_name, from_date=from_date, to_date=to_date)
+        rows = self._load_outcome_rows(
+            strategy_name=strategy_name, from_date=from_date, to_date=to_date
+        )
         window = self._make_window(rows, strategy_name, from_date, to_date)
 
         # Stability: action history from result records (not just outcomes)
@@ -176,8 +188,7 @@ class RecommendationAnalyticsService:
         for row in raw_history:
             by_symbol[row["symbol"]].append((row["date"], row["action"]))
         action_history = [
-            _ActionHistory(symbol=sym, dates_actions=sorted(seq))
-            for sym, seq in by_symbol.items()
+            _ActionHistory(symbol=sym, dates_actions=sorted(seq)) for sym, seq in by_symbol.items()
         ]
 
         # Reliability: validation completeness
@@ -199,7 +210,9 @@ class RecommendationAnalyticsService:
 
     # ── Symbol analytics ──────────────────────────────────────────────────────
 
-    def get_symbol_analytics(self, symbol: str, strategy_name: str | None = None) -> SymbolAnalyticsDTO:
+    def get_symbol_analytics(
+        self, symbol: str, strategy_name: str | None = None
+    ) -> SymbolAnalyticsDTO:
         outcomes = self.outcome_repo.list_by_symbol(symbol)
         results = self.outcome_repo.list_results_for_symbol(symbol, strategy_name)
 
@@ -262,7 +275,9 @@ class RecommendationAnalyticsService:
                 outcome_status=r.outcome_status,
                 alpha_pct=float(r.alpha_pct) if r.alpha_pct is not None else None,
                 pnl_pct=float(r.pnl_pct) if r.pnl_pct is not None else None,
-                benchmark_return_pct=float(r.benchmark_return_pct) if r.benchmark_return_pct is not None else None,
+                benchmark_return_pct=float(r.benchmark_return_pct)
+                if r.benchmark_return_pct is not None
+                else None,
                 target_hit=r.target_hit,
                 stop_hit=r.stop_hit,
                 days_held=r.days_held,
@@ -300,9 +315,11 @@ class RecommendationAnalyticsService:
         out = []
         for r in results[:10]:
             stock = self.db.get(Stock, r.stock_id)
-            out.append({
-                "symbol": stock.symbol if stock else str(r.stock_id),
-                "conviction_band": r.conviction_band,
-                "reason_codes": r.reason_codes,
-            })
+            out.append(
+                {
+                    "symbol": stock.symbol if stock else str(r.stock_id),
+                    "conviction_band": r.conviction_band,
+                    "reason_codes": r.reason_codes,
+                }
+            )
         return out

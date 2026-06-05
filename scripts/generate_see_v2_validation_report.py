@@ -26,7 +26,9 @@ def _fmt_pct(value: float | None) -> str:
     return f"{100 * value:.1f}%"
 
 
-def _run_section(svc: StockSetupResearchService, repo: StockSetupResearchRepository, run_id: str, label: str) -> str:
+def _run_section(
+    svc: StockSetupResearchService, repo: StockSetupResearchRepository, run_id: str, label: str
+) -> str:
     from uuid import UUID
 
     rid = UUID(run_id)
@@ -80,7 +82,9 @@ def _run_section(svc: StockSetupResearchService, repo: StockSetupResearchReposit
     return "\n".join(lines)
 
 
-def _highlight_symbols(svc: StockSetupResearchService, repo: StockSetupResearchRepository, run_id: str) -> str:
+def _highlight_symbols(
+    svc: StockSetupResearchService, repo: StockSetupResearchRepository, run_id: str
+) -> str:
     from uuid import UUID
 
     rid = UUID(run_id)

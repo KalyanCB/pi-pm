@@ -41,7 +41,9 @@ def _seed(db_session):
         stock_id=stock.id,
         rank=1,
         score=0.91,
-        score_components={"momentum": {"raw": 1.0, "normalized": 0.8, "weight": 0.3, "weighted": 0.24}},
+        score_components={
+            "momentum": {"raw": 1.0, "normalized": 0.8, "weight": 0.3, "weighted": 0.24}
+        },
         created_at=datetime.now(UTC),
     )
     db_session.add(result)
@@ -61,9 +63,7 @@ def test_packet_builder_reproducible_hash(db_session):
     from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 
     run, result, stock = _seed(db_session)
-    builder = InvestmentReviewPacketBuilder(
-        db_session, RankingValidationRepository(db_session)
-    )
+    builder = InvestmentReviewPacketBuilder(db_session, RankingValidationRepository(db_session))
     p1 = builder.build(ranking_run=run, result=result, stock=stock)
     p2 = builder.build(ranking_run=run, result=result, stock=stock)
     assert p1.packet_hash == p2.packet_hash

@@ -94,16 +94,16 @@ class RecommendationResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     stock: Mapped[Stock] = relationship("Stock")
     approvals: Mapped[list[RecommendationApproval]] = relationship(
-        "RecommendationApproval", back_populates="recommendation_result", cascade="all, delete-orphan"
+        "RecommendationApproval",
+        back_populates="recommendation_result",
+        cascade="all, delete-orphan",
     )
     outcome: Mapped[RecommendationOutcome | None] = relationship(
         "RecommendationOutcome", back_populates="recommendation_result", uselist=False
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "recommendation_run_id", "stock_id", name="uq_rec_results_run_stock"
-        ),
+        UniqueConstraint("recommendation_run_id", "stock_id", name="uq_rec_results_run_stock"),
         Index("ix_rec_results_run_action", "recommendation_run_id", "action"),
         Index("ix_rec_results_stock_lifecycle", "stock_id", "lifecycle_state"),
     )

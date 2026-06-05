@@ -35,7 +35,6 @@ from app.db.repositories.ranking_validation_repository import RankingValidationR
 from app.db.repositories.research_run_repository import ResearchRunRepository
 from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
-from app.services.stock_setup_research_service import StockSetupResearchService
 from app.models.args import (
     CommitteeReview,
     CroReview,
@@ -43,6 +42,7 @@ from app.models.args import (
     GovernanceResearchReportEvidence,
     InvestmentReviewPacket,
 )
+from app.services.stock_setup_research_service import StockSetupResearchService
 from app.workspace_args.constants import (
     COMMITTEE_CRO,
     COMMITTEE_DISPLAY_NAMES,
@@ -135,9 +135,7 @@ class ArgsResearchRunService:
             stock = self.stock_repo.get_by_id(result.stock_id)
             if stock is None:
                 continue
-            packet = self.packet_builder.build(
-                ranking_run=ranking_run, result=result, stock=stock
-            )
+            packet = self.packet_builder.build(ranking_run=ranking_run, result=result, stock=stock)
             in_memory_packets.append(packet)
             if not dry_run:
                 row = InvestmentReviewPacket(
@@ -397,10 +395,7 @@ class ArgsResearchRunService:
                 for r in symbol_reviews
                 if r.advisory_action is not None
             }
-            high_concern_committees = [
-                r.committee_code for r in symbol_reviews
-                if r.high_concern
-            ]
+            high_concern_committees = [r.committee_code for r in symbol_reviews if r.high_concern]
 
             advisory_block = {
                 "cro_advisory_action": cro.cro_advisory_action if cro else None,
@@ -455,8 +450,8 @@ class ArgsResearchRunService:
                 parent_entity_id=validation_report_id,
                 relationship_type=LineageRelationshipType.PACKET_SOURCES_VALIDATION_REPORT.value,
             )
-        stock_setup_id = (packet_row.payload or {}).get("source_lineage", {}).get(
-            "stock_setup_research_id"
+        stock_setup_id = (
+            (packet_row.payload or {}).get("source_lineage", {}).get("stock_setup_research_id")
         )
         if stock_setup_id:
             try:

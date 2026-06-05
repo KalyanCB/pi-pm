@@ -9,6 +9,7 @@ def _seed_breakout_validation(client, db_session, as_of: date) -> str:
         seed_forward_bars(db_session, stock, as_of, days=80)
         # breakout_v1 requires 252+ trading days of history
         from datetime import UTC, datetime, timedelta
+
         from app.models.market_data import MarketData
 
         for i in range(40):
@@ -96,7 +97,10 @@ def test_backtest_run_endpoint(client, db_session):
     client.post("/api/v1/regime-policy/configs/presets/load", json={"dry_run": False})
     configs = client.get("/api/v1/regime-policy/configs").json()
     by_type = {c["policy_type"]: c for c in configs}
-    policy_ids = [by_type[t]["id"] for t in ("BASELINE_E1", "HARD_GATE_E2", "SOFT_GATE_E3", "THRESHOLD_GATE_E4")]
+    policy_ids = [
+        by_type[t]["id"]
+        for t in ("BASELINE_E1", "HARD_GATE_E2", "SOFT_GATE_E3", "THRESHOLD_GATE_E4")
+    ]
 
     as_of_dates = (date(2024, 6, 3), date(2024, 9, 10), date(2025, 3, 5))
     stocks = seed_validation_universe(db_session, as_of_dates[0])
@@ -146,4 +150,7 @@ def test_backtest_run_endpoint(client, db_session):
     assert len(runs.json()) == 4
     for run in runs.json():
         assert run["holdout_metrics"]
-        assert run["research_findings"] is not None or run["policy_config_id"] == by_type["BASELINE_E1"]["id"]
+        assert (
+            run["research_findings"] is not None
+            or run["policy_config_id"] == by_type["BASELINE_E1"]["id"]
+        )

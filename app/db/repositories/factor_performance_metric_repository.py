@@ -14,7 +14,9 @@ class FactorPerformanceMetricRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def upsert_daily(self, row: DailyFactorIC, *, strategy_name: str, strategy_version: str, universe_code: str) -> None:
+    def upsert_daily(
+        self, row: DailyFactorIC, *, strategy_name: str, strategy_version: str, universe_code: str
+    ) -> None:
         existing = self.db.scalar(
             select(FactorDailyMetric).where(
                 FactorDailyMetric.factor_name == row.factor_name,

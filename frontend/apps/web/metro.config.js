@@ -1,0 +1,4 @@
+const path = require('path');
+const { createMetroConfig } = require('../../metro.config.base');
+
+module.exports = createMetroConfig(__dirname);

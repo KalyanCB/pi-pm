@@ -4,7 +4,17 @@ from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,7 +36,9 @@ class ExitResearchRun(Base, UUIDPrimaryKeyMixin):
     total_entries: Mapped[int | None] = mapped_column(Integer, nullable=True)
     processed_entries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     percent_complete: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
-    last_progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_progress_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     elapsed_seconds: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     current_phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
     persistence_items_total: Mapped[int | None] = mapped_column(Integer, nullable=True)

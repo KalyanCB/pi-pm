@@ -3,6 +3,7 @@
 NAV history is the time series that powers performance analytics.
 Cash ledger is the append-only money movement log for reconciliation.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -43,9 +44,7 @@ class PortfolioNavService:
         description: str | None = None,
     ) -> CashLedger:
         """Append a cash movement. amount: +in / -out."""
-        prev_balance = float(
-            self.db.scalar(select(func.sum(CashLedger.amount))) or 0.0
-        )
+        prev_balance = float(self.db.scalar(select(func.sum(CashLedger.amount))) or 0.0)
         new_balance = prev_balance + amount
         entry = CashLedger(
             entry_type=entry_type,
@@ -90,12 +89,15 @@ class PortfolioNavService:
         market_value = sum(float(p.market_value or 0) for p in positions)
         unrealized = sum(float(p.unrealized_pnl or 0) for p in positions)
 
-        realized_cum = float(self.db.scalar(
-            select(func.sum(PortfolioPosition.realized_pnl)).where(
-                PortfolioPosition.position_status == "CLOSED",
-                PortfolioPosition.exit_date <= as_of,
+        realized_cum = float(
+            self.db.scalar(
+                select(func.sum(PortfolioPosition.realized_pnl)).where(
+                    PortfolioPosition.position_status == "CLOSED",
+                    PortfolioPosition.exit_date <= as_of,
+                )
             )
-        ) or 0.0)
+            or 0.0
+        )
 
         # Cash from ledger; fall back to equity - mv when ledger empty
         cash = self.cash_balance()
@@ -119,7 +121,11 @@ class PortfolioNavService:
             day_return = (nav - float(prev.total_equity)) / float(prev.total_equity) * 100
 
         benchmark_return = self._benchmark_day_return(as_of)
-        alpha = (day_return - benchmark_return) if (day_return is not None and benchmark_return is not None) else None
+        alpha = (
+            (day_return - benchmark_return)
+            if (day_return is not None and benchmark_return is not None)
+            else None
+        )
 
         existing = self.db.scalar(
             select(PortfolioNavHistory).where(PortfolioNavHistory.as_of_date == as_of)
@@ -133,7 +139,9 @@ class PortfolioNavService:
         row.open_positions = len(positions)
         row.cash_pct = round(cash_pct, 4)
         row.day_return_pct = round(day_return, 4) if day_return is not None else None
-        row.benchmark_return_pct = round(benchmark_return, 4) if benchmark_return is not None else None
+        row.benchmark_return_pct = (
+            round(benchmark_return, 4) if benchmark_return is not None else None
+        )
         row.alpha_pct = round(alpha, 4) if alpha is not None else None
         row.regime_label = regime_label
         if existing is None:
@@ -152,12 +160,14 @@ class PortfolioNavService:
         )
 
     def _open_positions(self) -> list[PortfolioPosition]:
-        return list(self.db.scalars(
-            select(PortfolioPosition).where(
-                PortfolioPosition.is_current.is_(True),
-                PortfolioPosition.position_status == "OPEN",
-            )
-        ).all())
+        return list(
+            self.db.scalars(
+                select(PortfolioPosition).where(
+                    PortfolioPosition.is_current.is_(True),
+                    PortfolioPosition.position_status == "OPEN",
+                )
+            ).all()
+        )
 
     def _regime_label(self, as_of: date) -> str | None:
         try:
@@ -171,6 +181,7 @@ class PortfolioNavService:
     def _benchmark_day_return(self, as_of: date) -> float | None:
         try:
             from app.models.stock import Stock
+
             stock = self.db.scalar(select(Stock).where(Stock.symbol == DEFAULT_BENCHMARK_SYMBOL))
             if stock is None:
                 return None

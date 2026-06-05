@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from app.args.agents.cro_agent import aggregate_committee_reviews
 from app.args.llm.port import MockLlmPort
 from app.workspace_args.committee_contracts import CommitteeReviewOutput

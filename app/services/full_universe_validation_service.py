@@ -20,7 +20,6 @@ from app.db.repositories.full_universe_validation_repository import (
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.models.full_universe_validation import (
     FullUniverseValidationCampaign,
-    FullUniverseValidationDecile,
     FullUniverseValidationMetric,
 )
 from app.schemas.backtest import GenerateRankingsRequest
@@ -201,10 +200,7 @@ class FullUniverseValidationService:
 
         selected = metrics_by_horizon[horizon]
         best_horizon, worst_horizon = pick_best_worst_horizons(
-            {
-                row.horizon: _metric_row_to_full(row)
-                for row in metrics
-            }
+            {row.horizon: _metric_row_to_full(row) for row in metrics}
         )
 
         return {

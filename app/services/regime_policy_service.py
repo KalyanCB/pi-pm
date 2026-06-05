@@ -8,13 +8,12 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
-    LineageEntityType,
-    LineageRelationshipType,
     RANKING_STRATEGY_BREAKOUT_V1,
     RANKING_STRATEGY_BREAKOUT_V1_VERSION,
+    LineageEntityType,
+    LineageRelationshipType,
 )
 from app.core.structured_logging import log_event
-from app.db.repositories.experiment_run_repository import ExperimentRunRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.regime_backtest_run_repository import RegimeBacktestRunRepository
@@ -25,7 +24,7 @@ from app.db.repositories.validation_metrics_repository import ValidationMetricsR
 from app.models.regime_policy import RegimeBacktestRun, RegimePolicyConfig
 from app.regime_policy.engine import PolicyConfigSpec, RegimePolicyEngine, breakout_v1_preset_specs
 from app.regime_policy.metrics import build_research_findings, compare_spread_significance
-from app.regime_policy.models import PolicyEvaluationContext, ReplayWindowSpec
+from app.regime_policy.models import PolicyEvaluationContext
 from app.regime_policy.replay import RegimePolicyReplayService, build_single_holdout_window
 from app.regime_policy.scored_returns_loader import (
     batch_load_scored_returns_by_run,
@@ -310,9 +309,7 @@ class RegimePolicyService:
                 horizon,
             )
         )
-        run_ids = [
-            report.ranking_run.id for report in reports if report.ranking_run is not None
-        ]
+        run_ids = [report.ranking_run.id for report in reports if report.ranking_run is not None]
         scored_by_run = batch_load_scored_returns_by_run(self.db, run_ids, horizon)
         runs_with_data, total_scored_rows = count_scored_returns_by_run(scored_by_run)
         log_event(
@@ -448,18 +445,15 @@ class RegimePolicyService:
                     scored_by_run=scored_by_run,
                     horizon_spreads_by_report=horizon_spreads_by_report,
                 )
-                holdout_dates = [
-                    d for d in sorted(policy_spreads)
-                    if d >= holdout_start_date
+                holdout_dates = [d for d in sorted(policy_spreads) if d >= holdout_start_date]
+                baseline_holdout = [
+                    baseline_spreads[d] for d in holdout_dates if d in baseline_spreads
                 ]
-                baseline_holdout = [baseline_spreads[d] for d in holdout_dates if d in baseline_spreads]
                 policy_holdout = [policy_spreads[d] for d in holdout_dates if d in policy_spreads]
                 spread_sig = compare_spread_significance(policy_holdout, baseline_holdout)
 
                 holdout = replay.holdout_metrics
-                findings_metrics = (
-                    holdout if holdout.ranked_days > 0 else replay.train_metrics
-                )
+                findings_metrics = holdout if holdout.ranked_days > 0 else replay.train_metrics
                 if holdout.spread_significance is None and spread_sig.value is not None:
                     holdout = holdout.__class__(
                         ic_spearman=holdout.ic_spearman,
@@ -476,7 +470,8 @@ class RegimePolicyService:
                     "policy_spread": holdout.spread,
                     "spread_improvement": (
                         (holdout.spread - baseline_holdout_metrics.spread)
-                        if holdout.spread is not None and baseline_holdout_metrics.spread is not None
+                        if holdout.spread is not None
+                        and baseline_holdout_metrics.spread is not None
                         else None
                     ),
                     "spread_significance": spread_sig.to_dict(),

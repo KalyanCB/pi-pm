@@ -118,9 +118,7 @@ def _assess_historical_strategy(payload: dict[str, Any]) -> dict[str, Any]:
             4,
         )
         label = (
-            "strong"
-            if quality_score >= 0.75
-            else ("moderate" if quality_score >= 0.55 else "weak")
+            "strong" if quality_score >= 0.75 else ("moderate" if quality_score >= 0.55 else "weak")
         )
 
     return {
@@ -237,15 +235,9 @@ def _assess_factors(payload: dict[str, Any]) -> dict[str, Any]:
     ics = [abs(r["ic"]) for r in numeric]
     avg_ic_mag = sum(ics) / len(ics)
     ic_score = _score_from_magnitude(avg_ic_mag, strong=0.05, moderate=0.025)
-    stability_score = (
-        _clamp(avg_stability, 0.0, 1.0) if avg_stability is not None else 0.50
-    )
+    stability_score = _clamp(avg_stability, 0.0, 1.0) if avg_stability is not None else 0.50
     quality_score = round(ic_score * 0.65 + stability_score * 0.35, 4)
-    label = (
-        "strong"
-        if quality_score >= 0.75
-        else ("moderate" if quality_score >= 0.55 else "weak")
-    )
+    label = "strong" if quality_score >= 0.75 else ("moderate" if quality_score >= 0.55 else "weak")
 
     return {
         "row_count": len(rows),
@@ -334,11 +326,7 @@ def _assess_see(payload: dict[str, Any]) -> dict[str, Any]:
         + return_component * 0.10,
         4,
     )
-    label = (
-        "strong"
-        if quality_score >= 0.75
-        else ("moderate" if quality_score >= 0.55 else "weak")
-    )
+    label = "strong" if quality_score >= 0.75 else ("moderate" if quality_score >= 0.55 else "weak")
 
     return {
         "status": see.get("status"),

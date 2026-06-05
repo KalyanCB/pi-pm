@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -38,9 +37,7 @@ class ObservabilityService:
 
     def get_platform_health(self) -> dict:
         latest_ingestion = self.db.scalar(
-            select(IngestionBatchRun)
-            .order_by(IngestionBatchRun.started_at.desc())
-            .limit(1)
+            select(IngestionBatchRun).order_by(IngestionBatchRun.started_at.desc()).limit(1)
         )
         latest_ranking = self.db.scalar(
             select(RankingRun)

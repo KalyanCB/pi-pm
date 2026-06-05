@@ -79,9 +79,7 @@ def test_built_packet_contains_stock_quality_evidence(db_session):
     from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 
     run, result, stock = _seed(db_session)
-    builder = InvestmentReviewPacketBuilder(
-        db_session, RankingValidationRepository(db_session)
-    )
+    builder = InvestmentReviewPacketBuilder(db_session, RankingValidationRepository(db_session))
     packet = builder.build(ranking_run=run, result=result, stock=stock)
     payload = packet.payload
 

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from app.outcome_attribution.models import BucketMetrics
 from app.ranking_research.calibration import CalibrationTables
-from app.ranking_research.constants import EXACT_RANKS, RESEARCH_HORIZONS
-from app.ranking_research.constants import SCORE_BUCKET_SPECS
+from app.ranking_research.constants import EXACT_RANKS, RESEARCH_HORIZONS, SCORE_BUCKET_SPECS
 from app.ranking_research.models import (
     CalibratedRankingBacktestReport,
     FactorReliabilitySegment,
@@ -107,8 +105,12 @@ def _strongest_weakest_ranks(segment: StrategyRankReliability, horizon: int) -> 
 
 def _monotonicity_tests(segment: StrategyRankReliability) -> list[str]:
     lines = ["#### Monotonicity tests", ""]
-    lines.append("| Horizon | Spearman(rank, α) | Adj. α inversions | Rank-decile Spearman | Decile mono? | Top-5 overconfident? |")
-    lines.append("|---------|-------------------|-------------------|----------------------|--------------|----------------------|")
+    lines.append(
+        "| Horizon | Spearman(rank, α) | Adj. α inversions | Rank-decile Spearman | Decile mono? | Top-5 overconfident? |"
+    )
+    lines.append(
+        "|---------|-------------------|-------------------|----------------------|--------------|----------------------|"
+    )
     for horizon in RESEARCH_HORIZONS:
         mono = segment.monotonicity.get(horizon)
         dec = segment.decile_monotonicity.get(horizon)
@@ -216,7 +218,9 @@ def _lower_rank_hypothesis(segment: StrategyRankReliability) -> list[str]:
     return lines
 
 
-def _band_mean(segment: StrategyRankReliability, start: int, end: int, horizon: int) -> float | None:
+def _band_mean(
+    segment: StrategyRankReliability, start: int, end: int, horizon: int
+) -> float | None:
     vals = []
     for r in range(start, end + 1):
         a = segment.per_rank[r][horizon].alpha
@@ -318,8 +322,12 @@ def build_regime_rank_reliability_markdown(report: RankReliabilityReport) -> str
 
     for strategy, segments in sorted(by_strategy.items()):
         lines.extend([f"### {strategy}", ""])
-        lines.append("| Regime | Rank-1 α | Rank-20 α | Spearman | Inversions | Monotonic? | Top-5 overconfident? |")
-        lines.append("|--------|----------|-----------|----------|------------|------------|----------------------|")
+        lines.append(
+            "| Regime | Rank-1 α | Rank-20 α | Spearman | Inversions | Monotonic? | Top-5 overconfident? |"
+        )
+        lines.append(
+            "|--------|----------|-----------|----------|------------|------------|----------------------|"
+        )
         for seg in sorted(segments, key=lambda s: s.regime_label):
             mono = seg.monotonicity.get(20)
             a1 = seg.per_rank[1][20].alpha

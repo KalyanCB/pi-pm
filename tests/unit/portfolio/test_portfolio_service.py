@@ -1,13 +1,13 @@
 """Portfolio Service unit tests — AC-PE-01..04."""
+
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
-from datetime import date
-from uuid import uuid4
 
 from app.services.portfolio_service import (
-    PortfolioService,
     _CONVICTION_WEIGHTS,
     _DEFAULT_REGIME_SLOTS,
+    PortfolioService,
 )
 
 
@@ -42,6 +42,7 @@ def _make_svc(positions=None, config=None, regime="neutral"):
 
 # ── Conviction weights ────────────────────────────────────────────────────────
 
+
 def test_conviction_weights_ordering():
     assert _CONVICTION_WEIGHTS["EXCEPTIONAL"] > _CONVICTION_WEIGHTS["HIGH"]
     assert _CONVICTION_WEIGHTS["HIGH"] > _CONVICTION_WEIGHTS["MEDIUM"]
@@ -50,6 +51,7 @@ def test_conviction_weights_ordering():
 
 
 # ── Capital math (AC-PE-01) ───────────────────────────────────────────────────
+
 
 def test_summary_no_positions():
     svc = _make_svc()
@@ -96,6 +98,7 @@ def test_equity_cash_market_value_reconciliation():
 
 # ── Regime slot enforcement (AC-PE-02) ────────────────────────────────────────
 
+
 def test_risk_on_allows_8_positions():
     svc = _make_svc(regime="risk_on")
     limits = svc.get_limits()
@@ -135,6 +138,7 @@ def test_portfolio_full_blocks_buy():
 
 # ── Allocation math ───────────────────────────────────────────────────────────
 
+
 def test_allocation_high_conviction():
     svc = _make_svc(regime="neutral")
     alloc = svc.compute_allocation("HIGH", last_price=1000.0)
@@ -170,6 +174,7 @@ def test_single_name_cap_check():
 
 # ── Regime slots default table ────────────────────────────────────────────────
 
+
 def test_default_regime_slots_complete():
     for posture in ["risk_on", "neutral", "defensive", "crisis"]:
         assert posture in _DEFAULT_REGIME_SLOTS
@@ -178,14 +183,20 @@ def test_default_regime_slots_complete():
 
 
 def test_crisis_most_conservative():
-    assert _DEFAULT_REGIME_SLOTS["crisis"]["max_positions"] < _DEFAULT_REGIME_SLOTS["defensive"]["max_positions"]
+    assert (
+        _DEFAULT_REGIME_SLOTS["crisis"]["max_positions"]
+        < _DEFAULT_REGIME_SLOTS["defensive"]["max_positions"]
+    )
     assert _DEFAULT_REGIME_SLOTS["crisis"]["max_buy_per_day"] == 0
 
 
 # ── No LLM in portfolio service ───────────────────────────────────────────────
 
+
 def test_no_llm_imports():
-    import ast, pathlib
+    import ast
+    import pathlib
+
     src = pathlib.Path(__file__).parents[3] / "app" / "services" / "portfolio_service.py"
     tree = ast.parse(src.read_text())
     for node in ast.walk(tree):

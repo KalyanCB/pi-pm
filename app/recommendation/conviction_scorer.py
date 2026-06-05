@@ -9,6 +9,7 @@ Formula (PRD §4, conv_v1.1.0):
   + 0.10 * S_exit_health
   ), 0, 100)
 """
+
 from __future__ import annotations
 
 import math

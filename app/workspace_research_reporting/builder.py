@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import RankingRunStatus
-from app.db.repositories.factor_performance_metric_repository import FactorPerformanceMetricRepository
+from app.db.repositories.factor_performance_metric_repository import (
+    FactorPerformanceMetricRepository,
+)
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
 from app.models.ranking_validation_report import RankingValidationReport
@@ -201,7 +202,9 @@ class ResearchIntelligenceBuilder:
                 {
                     "factor_name": m.factor_name,
                     "ic_spearman": float(m.ic_spearman) if m.ic_spearman is not None else None,
-                    "stability_score": float(m.stability_score) if m.stability_score is not None else None,
+                    "stability_score": float(m.stability_score)
+                    if m.stability_score is not None
+                    else None,
                     "sample_size": m.sample_size,
                 }
                 for m in sorted(
@@ -310,7 +313,9 @@ class ResearchIntelligenceBuilder:
                 conclusions.append("momentum_v1 matches or exceeds breakout_v1 on pooled IC.")
         if bull_spread is not None and float(bull_spread) > 0:
             conclusions.append("Strongest edge is concentrated in BULL_LOW_VOL.")
-        conclusions.append("Regime-aware deployment is recommended pending exit research confirmation.")
+        conclusions.append(
+            "Regime-aware deployment is recommended pending exit research confirmation."
+        )
 
         return {
             "report": "executive_committee_summary",

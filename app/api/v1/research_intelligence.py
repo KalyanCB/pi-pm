@@ -1,5 +1,3 @@
-from datetime import date
-
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_research_intelligence_service

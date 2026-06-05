@@ -1,15 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
 from decimal import Decimal
-
-from app.factor_analytics.constants import (
-    DATASET_SPLIT_ALL,
-    DATASET_SPLIT_HOLDOUT,
-    DATASET_SPLIT_TRAIN,
-    DATASET_SPLITS,
-    DEFAULT_HOLDOUT_START_DATE,
-)
 
 MIN_EXIT_SAMPLE_SIZE = 30
 PERSIST_COMMIT_INTERVAL = 25

@@ -67,8 +67,16 @@ def _breakout_packet(
         },
         "quant_evidence": {
             "factor_ic": [
-                {"factor_name": "high_proximity", "ic_spearman": -0.146, "regime_label": "BEAR_LOW_VOL"},
-                {"factor_name": "relative_strength", "ic_spearman": -0.141, "regime_label": "BEAR_LOW_VOL"},
+                {
+                    "factor_name": "high_proximity",
+                    "ic_spearman": -0.146,
+                    "regime_label": "BEAR_LOW_VOL",
+                },
+                {
+                    "factor_name": "relative_strength",
+                    "ic_spearman": -0.141,
+                    "regime_label": "BEAR_LOW_VOL",
+                },
             ],
             "exit_research": [{"hit_rate": 0.55, "sample_size": 400, "mean_return": 0.01}],
         },
@@ -125,12 +133,14 @@ def test_qrc_sqe_brief_structure_and_no_raw_ic():
         assert key in condensed
 
     assert condensed["sqe_score"] == sqe["overall_stock_quality_score"]
-    assert condensed["strategy_quality"]["quality_score"] == brief["historical_strategy_assessment"][
-        "quality_score"
-    ]
-    assert condensed["current_regime"]["regime_label"] == brief["current_regime_assessment"][
-        "current_regime_label"
-    ]
+    assert (
+        condensed["strategy_quality"]["quality_score"]
+        == brief["historical_strategy_assessment"]["quality_score"]
+    )
+    assert (
+        condensed["current_regime"]["regime_label"]
+        == brief["current_regime_assessment"]["current_regime_label"]
+    )
     assert condensed["regime_alignment_score"] == sqe["C_regime_alignment"]["alignment_score"]
 
     for factor_row in condensed["top_positive_factors"] + condensed["top_negative_factors"]:
@@ -160,7 +170,9 @@ def test_build_qrc_user_payload_flag_off_unchanged(monkeypatch):
     user = build_qrc_user_payload(payload, "HFCL.NS")
     assert "qrc_sqe_brief" not in user
     assert "overall_stock_quality_score" not in user
-    assert user["overall_quant_confidence"] == user["quant_research_brief"]["overall_quant_confidence"]
+    assert (
+        user["overall_quant_confidence"] == user["quant_research_brief"]["overall_quant_confidence"]
+    )
     assert "quant_research_brief" in user["instructions"].lower()
 
 
@@ -190,6 +202,8 @@ def test_build_qrc_user_payload_flag_on_attaches_sqe_brief(sqe_flag_on):
     user = build_qrc_user_payload(payload, "WOCKPHARMA.NS")
     assert "qrc_sqe_brief" in user
     assert user["overall_stock_quality_score"] == user["qrc_sqe_brief"]["sqe_score"]
-    assert user["overall_quant_confidence"] == user["quant_research_brief"]["overall_quant_confidence"]
+    assert (
+        user["overall_quant_confidence"] == user["quant_research_brief"]["overall_quant_confidence"]
+    )
     assert "qrc_sqe_brief" in user["instructions"].lower()
     assert user["overall_stock_quality_score"] != user["overall_quant_confidence"]

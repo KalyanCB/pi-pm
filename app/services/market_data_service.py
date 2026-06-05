@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -10,13 +10,13 @@ from app.core.constants import (
     MARKET_DATA_SOURCE_YAHOO,
     DataStatus,
     IngestBatchStatus,
-    IngestPeriod,
     IngestionMode,
     IngestionRunStatus,
+    IngestPeriod,
     LineageEntityType,
     LineageRelationshipType,
 )
-from app.core.exceptions import InvalidSymbolError, NotFoundError, PiPMError, ProviderError
+from app.core.exceptions import InvalidSymbolError, NotFoundError, PiPMError
 from app.core.structured_logging import log_event
 from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
@@ -76,7 +76,9 @@ class MarketDataService:
         Used by the daily batch to decide FULL_REFRESH vs INCREMENTAL ingest mode.
         """
         from sqlalchemy import func, select
+
         from app.models.market_data import MarketData
+
         count = self.db.scalar(select(func.count(MarketData.id)).limit(min_rows + 1))
         return (count or 0) >= min_rows
 
@@ -189,9 +191,7 @@ class MarketDataService:
         )
 
         response_status = (
-            IngestBatchStatus.SUCCESS
-            if symbols_failed == 0
-            else IngestBatchStatus.PARTIAL_SUCCESS
+            IngestBatchStatus.SUCCESS if symbols_failed == 0 else IngestBatchStatus.PARTIAL_SUCCESS
         )
         return MarketDataIngestResponse(
             batch_id=batch.id,
@@ -220,7 +220,9 @@ class MarketDataService:
         stock = self.stock_repo.upsert_from_metadata(metadata)
         latest = self.market_data_repo.get_latest_market_data(stock.id)
 
-        bars = self._fetch_bars(symbol, period, ingestion_mode, latest, since_date=since_date, end_date=end_date)
+        bars = self._fetch_bars(
+            symbol, period, ingestion_mode, latest, since_date=since_date, end_date=end_date
+        )
         if not bars:
             if (
                 since_date is None
@@ -241,7 +243,11 @@ class MarketDataService:
 
         counts = self.market_data_repo.upsert_bars(stock.id, bars, source=MARKET_DATA_SOURCE_YAHOO)
 
-        if counts.inserted == 0 and counts.updated == 0 and ingestion_mode != IngestionMode.INCREMENTAL:
+        if (
+            counts.inserted == 0
+            and counts.updated == 0
+            and ingestion_mode != IngestionMode.INCREMENTAL
+        ):
             raise InvalidSymbolError(f"No valid OHLCV rows ingested for symbol: {symbol}")
 
         first_date, last_date = _bar_date_range(bars)

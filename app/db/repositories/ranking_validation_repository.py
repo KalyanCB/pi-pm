@@ -25,7 +25,9 @@ class RankingValidationRepository:
             )
         )
 
-    def find_completed_by_validation_hash(self, validation_hash: str) -> RankingValidationReport | None:
+    def find_completed_by_validation_hash(
+        self, validation_hash: str
+    ) -> RankingValidationReport | None:
         return self.db.scalar(
             select(RankingValidationReport).where(
                 RankingValidationReport.validation_hash == validation_hash,

@@ -103,7 +103,9 @@ class ResearchIntelligenceReportRepository:
         )
         return list(self.db.scalars(stmt).all())
 
-    def get_latest(self, *, report_type: str, universe_code: str) -> ResearchIntelligenceReport | None:
+    def get_latest(
+        self, *, report_type: str, universe_code: str
+    ) -> ResearchIntelligenceReport | None:
         stmt = (
             select(ResearchIntelligenceReport)
             .where(

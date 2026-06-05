@@ -14,17 +14,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.args.plugins.stock_quality_evidence import condense_stock_quality_evidence
 from app.db.session import get_session_factory
 from app.models.args import (
-    CommitteeReview,
-    CroReview,
     GovernanceResearchReport,
-    GovernanceResearchReportEvidence,
-    InvestmentReviewPacket,
     LlmExecutionRecord,
     ResearchRun,
 )
-from app.args.plugins.stock_quality_evidence import condense_stock_quality_evidence
 from app.models.platform_traceability import RunLineageRecord
 
 
@@ -166,89 +162,123 @@ def export_run(db: Session, run_id: UUID, output: Path) -> None:
         conf = gov.confidence if gov and gov.confidence is not None else ""
         lines.append(f"| {rank} | {packet.symbol} | {score} | {conf} |")
 
-    lines.extend(["", "## 1) Research Run", "", "```json", _dump({
-        "id": str(run.id),
-        "status": run.status,
-        "as_of_date": run.as_of_date.isoformat(),
-        "universe_code": run.universe_code,
-        "strategy_name": run.strategy_name,
-        "strategy_version": run.strategy_version,
-        "top_n": run.top_n,
-        "committee_codes": run.committee_codes,
-        "ranking_run_ids": run.ranking_run_ids,
-        "phase": run.phase,
-        "started_at": run.started_at,
-        "completed_at": run.completed_at,
-        "duration_seconds": str(run.duration_seconds) if run.duration_seconds is not None else None,
-        "config_snapshot": run.config_snapshot,
-    }), "```", "", "## 2) Investment Review Packets", ""])
-
-    for index, packet in enumerate(packets, start=1):
-        lines.extend([
-            f"### Packet {index}: `{packet.symbol}`",
+    lines.extend(
+        [
+            "",
+            "## 1) Research Run",
             "",
             "```json",
-            _dump({
-                "id": str(packet.id),
-                "symbol": packet.symbol,
-                "packet_hash": packet.packet_hash,
-                "packet_version": packet.packet_version,
-                "built_at": packet.built_at,
-                "ranking_run_id": str(packet.ranking_run_id),
-                "stock_id": str(packet.stock_id),
-                "payload": packet.payload,
-            }),
+            _dump(
+                {
+                    "id": str(run.id),
+                    "status": run.status,
+                    "as_of_date": run.as_of_date.isoformat(),
+                    "universe_code": run.universe_code,
+                    "strategy_name": run.strategy_name,
+                    "strategy_version": run.strategy_version,
+                    "top_n": run.top_n,
+                    "committee_codes": run.committee_codes,
+                    "ranking_run_ids": run.ranking_run_ids,
+                    "phase": run.phase,
+                    "started_at": run.started_at,
+                    "completed_at": run.completed_at,
+                    "duration_seconds": str(run.duration_seconds)
+                    if run.duration_seconds is not None
+                    else None,
+                    "config_snapshot": run.config_snapshot,
+                }
+            ),
             "```",
             "",
-        ])
+            "## 2) Investment Review Packets",
+            "",
+        ]
+    )
+
+    for index, packet in enumerate(packets, start=1):
+        lines.extend(
+            [
+                f"### Packet {index}: `{packet.symbol}`",
+                "",
+                "```json",
+                _dump(
+                    {
+                        "id": str(packet.id),
+                        "symbol": packet.symbol,
+                        "packet_hash": packet.packet_hash,
+                        "packet_version": packet.packet_version,
+                        "built_at": packet.built_at,
+                        "ranking_run_id": str(packet.ranking_run_id),
+                        "stock_id": str(packet.stock_id),
+                        "payload": packet.payload,
+                    }
+                ),
+                "```",
+                "",
+            ]
+        )
 
     lines.extend(["", "## 2b) Stock Quality Evidence (condensed)", ""])
     for index, packet in enumerate(packets, start=1):
         sqe = (packet.payload or {}).get("stock_quality_evidence")
         if not sqe:
-            lines.extend([
+            lines.extend(
+                [
+                    f"### SQE {index}: `{packet.symbol}`",
+                    "",
+                    "_No stock_quality_evidence on packet._",
+                    "",
+                ]
+            )
+            continue
+        lines.extend(
+            [
                 f"### SQE {index}: `{packet.symbol}`",
                 "",
-                "_No stock_quality_evidence on packet._",
+                "```json",
+                _dump(condense_stock_quality_evidence(sqe)),
+                "```",
                 "",
-            ])
-            continue
-        lines.extend([
-            f"### SQE {index}: `{packet.symbol}`",
-            "",
-            "```json",
-            _dump(condense_stock_quality_evidence(sqe)),
-            "```",
-            "",
-        ])
+            ]
+        )
 
     lines.append("## 3) Committee Reviews")
     lines.append("")
     for index, review in enumerate(committee_reviews, start=1):
         packet = packet_by_id.get(review.packet_id)
         symbol = packet.symbol if packet else str(review.packet_id)
-        lines.extend([
-            f"### Committee Review {index}: `{symbol}` / `{review.committee_code}`",
-            "",
-            "```json",
-            _dump({
-                "id": str(review.id),
-                "committee_code": review.committee_code,
-                "committee_version": review.committee_version,
-                "status": review.status,
-                "findings": review.findings,
-                "strengths": review.strengths,
-                "risks": review.risks,
-                "supporting_evidence": review.supporting_evidence,
-                "confidence": str(review.confidence) if review.confidence is not None else None,
-                "extensions": review.extensions,
-                "prompt_version_id": str(review.prompt_version_id) if review.prompt_version_id else None,
-                "llm_execution_id": str(review.llm_execution_id) if review.llm_execution_id else None,
-                "created_at": review.created_at,
-            }),
-            "```",
-            "",
-        ])
+        lines.extend(
+            [
+                f"### Committee Review {index}: `{symbol}` / `{review.committee_code}`",
+                "",
+                "```json",
+                _dump(
+                    {
+                        "id": str(review.id),
+                        "committee_code": review.committee_code,
+                        "committee_version": review.committee_version,
+                        "status": review.status,
+                        "findings": review.findings,
+                        "strengths": review.strengths,
+                        "risks": review.risks,
+                        "supporting_evidence": review.supporting_evidence,
+                        "confidence": str(review.confidence)
+                        if review.confidence is not None
+                        else None,
+                        "extensions": review.extensions,
+                        "prompt_version_id": str(review.prompt_version_id)
+                        if review.prompt_version_id
+                        else None,
+                        "llm_execution_id": str(review.llm_execution_id)
+                        if review.llm_execution_id
+                        else None,
+                        "created_at": review.created_at,
+                    }
+                ),
+                "```",
+                "",
+            ]
+        )
 
     lines.extend(["## 4) CRO Reviews", ""])
     if not cro_reviews:
@@ -256,65 +286,85 @@ def export_run(db: Session, run_id: UUID, output: Path) -> None:
     for index, review in enumerate(cro_reviews, start=1):
         packet = packet_by_id.get(review.packet_id)
         symbol = packet.symbol if packet else str(review.packet_id)
-        lines.extend([
-            f"### CRO Review {index}: `{symbol}`",
-            "",
-            "```json",
-            _dump({
-                "id": str(review.id),
-                "aggregation_snapshot": review.aggregation_snapshot,
-                "rationale": review.rationale,
-                "dissent_summary": review.dissent_summary,
-                "confidence": str(review.confidence) if review.confidence is not None else None,
-                "prompt_version_id": str(review.prompt_version_id) if review.prompt_version_id else None,
-                "llm_execution_id": str(review.llm_execution_id) if review.llm_execution_id else None,
-                "created_at": review.created_at,
-            }),
-            "```",
-            "",
-        ])
+        lines.extend(
+            [
+                f"### CRO Review {index}: `{symbol}`",
+                "",
+                "```json",
+                _dump(
+                    {
+                        "id": str(review.id),
+                        "aggregation_snapshot": review.aggregation_snapshot,
+                        "rationale": review.rationale,
+                        "dissent_summary": review.dissent_summary,
+                        "confidence": str(review.confidence)
+                        if review.confidence is not None
+                        else None,
+                        "prompt_version_id": str(review.prompt_version_id)
+                        if review.prompt_version_id
+                        else None,
+                        "llm_execution_id": str(review.llm_execution_id)
+                        if review.llm_execution_id
+                        else None,
+                        "created_at": review.created_at,
+                    }
+                ),
+                "```",
+                "",
+            ]
+        )
 
     lines.extend(["## 5) Governance Research Reports", ""])
     for index, report in enumerate(governance_reports, start=1):
-        lines.extend([
-            f"### Governance Report {index}: `{report.symbol}`",
+        lines.extend(
+            [
+                f"### Governance Report {index}: `{report.symbol}`",
+                "",
+                "```json",
+                _dump(
+                    {
+                        "id": str(report.id),
+                        "symbol": report.symbol,
+                        "as_of_date": report.as_of_date.isoformat(),
+                        "summary": report.summary,
+                        "narrative_md": report.narrative_md,
+                        "structured": report.structured,
+                        "research_score": str(report.research_score)
+                        if report.research_score is not None
+                        else None,
+                        "confidence": str(report.confidence)
+                        if report.confidence is not None
+                        else None,
+                        "created_at": report.created_at,
+                    }
+                ),
+                "```",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "## 6) Governance Evidence Rows",
             "",
             "```json",
-            _dump({
-                "id": str(report.id),
-                "symbol": report.symbol,
-                "as_of_date": report.as_of_date.isoformat(),
-                "summary": report.summary,
-                "narrative_md": report.narrative_md,
-                "structured": report.structured,
-                "research_score": str(report.research_score) if report.research_score is not None else None,
-                "confidence": str(report.confidence) if report.confidence is not None else None,
-                "created_at": report.created_at,
-            }),
+            _dump(evidence_rows),
             "```",
             "",
-        ])
-
-    lines.extend([
-        "## 6) Governance Evidence Rows",
-        "",
-        "```json",
-        _dump(evidence_rows),
-        "```",
-        "",
-        "## 7) LLM Execution Records",
-        "",
-        "```json",
-        _dump(llm_records),
-        "```",
-        "",
-        "## 8) Lineage Edges",
-        "",
-        "```json",
-        _dump(lineage_edges),
-        "```",
-        "",
-    ])
+            "## 7) LLM Execution Records",
+            "",
+            "```json",
+            _dump(llm_records),
+            "```",
+            "",
+            "## 8) Lineage Edges",
+            "",
+            "```json",
+            _dump(lineage_edges),
+            "```",
+            "",
+        ]
+    )
 
     output.write_text("\n".join(lines), encoding="utf-8")
 

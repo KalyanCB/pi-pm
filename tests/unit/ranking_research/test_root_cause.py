@@ -11,7 +11,6 @@ from app.ranking_research.models import (
     RankingResearchConfig,
     RankReliabilityReport,
     ScoreCompressionReport,
-    ScoreCompressionSegment,
 )
 from app.ranking_research.root_cause import build_root_cause_headlines
 from app.ranking_research.score_compression import build_score_compression_segment

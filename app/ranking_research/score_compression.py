@@ -74,16 +74,12 @@ def build_score_compression_segment(
     benchmark_by_run: dict,
 ) -> ScoreCompressionSegment | None:
     if regime_label == REGIME_LABEL_ALL:
-        subset = [
-            o for o in observations if o.strategy_name == strategy_name and o.rank <= 20
-        ]
+        subset = [o for o in observations if o.strategy_name == strategy_name and o.rank <= 20]
     else:
         subset = [
             o
             for o in observations
-            if o.strategy_name == strategy_name
-            and o.regime_label == regime_label
-            and o.rank <= 20
+            if o.strategy_name == strategy_name and o.regime_label == regime_label and o.rank <= 20
         ]
     if not subset:
         return None

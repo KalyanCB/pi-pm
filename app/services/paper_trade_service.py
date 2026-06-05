@@ -6,6 +6,7 @@ Fill rules (PRD §4):
 - Full quantity only (no partials v1)
 - Fees: flat ₹20 per leg (config)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -15,12 +16,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.constants import TradeSide, TradeStatus
+from app.core.constants import DEFAULT_BENCHMARK_SYMBOL, TradeSide, TradeStatus
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.models.paper_trade import PaperTrade
-from app.models.recommendation import RecommendationOutcome, RecommendationResult
-from app.services.portfolio_service import PortfolioService
+from app.models.recommendation import RecommendationOutcome, RecommendationResult, RecommendationRun
 from app.services.portfolio_nav_service import PortfolioNavService
+from app.services.portfolio_service import PortfolioService
 
 
 class PaperTradeService:
@@ -52,9 +53,7 @@ class PaperTradeService:
             raise ValueError(f"Cannot execute entry — action is {result.action}, expected BUY")
 
         idem_key = idempotency_key or self._make_idem_key("entry", recommendation_result_id)
-        existing = self.db.scalar(
-            select(PaperTrade).where(PaperTrade.idempotency_key == idem_key)
-        )
+        existing = self.db.scalar(select(PaperTrade).where(PaperTrade.idempotency_key == idem_key))
         if existing:
             return existing
 
@@ -71,6 +70,13 @@ class PaperTradeService:
         except Exception:
             quantity = 1.0
 
+        rec_run = self.db.get(RecommendationRun, result.recommendation_run_id)
+        ranking_run_id = rec_run.ranking_run_id if rec_run else None
+        strategy_name = rec_run.strategy_name if rec_run else None
+        regime_label = None
+        if rec_run and rec_run.regime_snapshot:
+            regime_label = rec_run.regime_snapshot.get("regime_label")
+
         trade = PaperTrade(
             stock_id=result.stock_id,
             side=TradeSide.BUY.value,
@@ -79,12 +85,13 @@ class PaperTradeService:
             fill_price=fill_price,
             fill_quantity=quantity,
             status=TradeStatus.FILLED.value,
-            ranking_run_id=None,
+            ranking_run_id=ranking_run_id,
             idempotency_key=idem_key,
             requested_at=datetime.now(UTC),
             filled_at=datetime.now(UTC),
             metadata_={
                 "recommendation_result_id": str(recommendation_result_id),
+                "recommendation_run_id": str(result.recommendation_run_id),
                 "conviction_band": result.conviction_band,
                 "conviction_score": result.conviction_score,
                 "reason_codes": result.reason_codes,
@@ -97,6 +104,7 @@ class PaperTradeService:
 
         # Open portfolio position
         from app.models.stock import Stock
+
         stock = self.db.get(Stock, result.stock_id)
         sector = stock.industry if stock else None
 
@@ -107,7 +115,7 @@ class PaperTradeService:
             entry_date=fill_date,
             recommendation_result_id=recommendation_result_id,
             conviction_band=result.conviction_band,
-            strategy_name=None,
+            strategy_name=strategy_name,
             sector=sector,
         )
 
@@ -125,8 +133,11 @@ class PaperTradeService:
         )
         if fee:
             self.nav_service.record_cash_entry(
-                entry_type="FEE", amount=-fee, as_of_date=fill_date,
-                reference_id=trade.id, reference_type="paper_trade",
+                entry_type="FEE",
+                amount=-fee,
+                as_of_date=fill_date,
+                reference_id=trade.id,
+                reference_type="paper_trade",
                 description="Entry fee",
             )
 
@@ -144,7 +155,8 @@ class PaperTradeService:
                 entry_price=fill_price,
                 conviction_band=result.conviction_band,
                 symbol=stock.symbol if stock else None,
-                regime_label=None,
+                strategy_name=strategy_name,
+                regime_label=regime_label,
             )
             self.db.add(outcome)
 
@@ -155,7 +167,11 @@ class PaperTradeService:
         return trade
 
     def _fee(self) -> float:
-        cfg = self.portfolio_service.get_config() if hasattr(self.portfolio_service, "get_config") else None
+        cfg = (
+            self.portfolio_service.get_config()
+            if hasattr(self.portfolio_service, "get_config")
+            else None
+        )
         try:
             return float(cfg.fee_per_leg) if cfg else 20.0
         except Exception:
@@ -176,9 +192,7 @@ class PaperTradeService:
             raise ValueError(f"Cannot execute exit — action is {result.action}")
 
         idem_key = idempotency_key or self._make_idem_key("exit", recommendation_result_id)
-        existing = self.db.scalar(
-            select(PaperTrade).where(PaperTrade.idempotency_key == idem_key)
-        )
+        existing = self.db.scalar(select(PaperTrade).where(PaperTrade.idempotency_key == idem_key))
         if existing:
             return existing
 
@@ -187,6 +201,7 @@ class PaperTradeService:
 
         # Get position for quantity
         from app.models.portfolio_position import PortfolioPosition
+
         pos = self.db.scalar(
             select(PortfolioPosition).where(
                 PortfolioPosition.stock_id == result.stock_id,
@@ -194,6 +209,9 @@ class PaperTradeService:
             )
         )
         quantity = float(pos.quantity) if pos else 1.0
+
+        rec_run = self.db.get(RecommendationRun, result.recommendation_run_id)
+        ranking_run_id = rec_run.ranking_run_id if rec_run else None
 
         trade = PaperTrade(
             stock_id=result.stock_id,
@@ -203,12 +221,13 @@ class PaperTradeService:
             fill_price=fill_price,
             fill_quantity=quantity,
             status=TradeStatus.FILLED.value,
-            ranking_run_id=None,
+            ranking_run_id=ranking_run_id,
             idempotency_key=idem_key,
             requested_at=datetime.now(UTC),
             filled_at=datetime.now(UTC),
             metadata_={
                 "recommendation_result_id": str(recommendation_result_id),
+                "recommendation_run_id": str(result.recommendation_run_id),
                 "exit_reason_codes": result.reason_codes,
                 "last_close": last_close,
                 "slippage_bps": 5.0,
@@ -236,8 +255,11 @@ class PaperTradeService:
         )
         if fee:
             self.nav_service.record_cash_entry(
-                entry_type="FEE", amount=-fee, as_of_date=fill_date,
-                reference_id=trade.id, reference_type="paper_trade",
+                entry_type="FEE",
+                amount=-fee,
+                as_of_date=fill_date,
+                reference_id=trade.id,
+                reference_type="paper_trade",
                 description="Exit fee",
             )
 
@@ -248,8 +270,14 @@ class PaperTradeService:
             )
         )
         if outcome:
-            entry = float(outcome.entry_price) if outcome.entry_price else float(pos.avg_cost if pos else 0)
-            benchmark_return = 0.0  # populated by analytics job
+            entry = (
+                float(outcome.entry_price)
+                if outcome.entry_price
+                else float(pos.avg_cost if pos else 0)
+            )
+            benchmark_return = self._holding_benchmark_return(
+                outcome.entry_date, fill_date
+            )
             pnl_pct = ((fill_price - entry) / entry * 100) if entry else 0
             days = (fill_date - outcome.entry_date).days if outcome.entry_date else 0
 
@@ -257,8 +285,14 @@ class PaperTradeService:
             outcome.exit_price = fill_price
             outcome.days_held = days
             outcome.pnl_pct = round(pnl_pct, 4)
-            outcome.alpha_pct = round(pnl_pct - benchmark_return, 4)
-            outcome.outcome_status = "WIN" if pnl_pct > 0 else ("LOSS" if pnl_pct < 0 else "BREAKEVEN")
+            outcome.benchmark_return_pct = round(benchmark_return, 4) if benchmark_return else None
+            outcome.alpha_pct = (
+                round(pnl_pct - benchmark_return, 4) if benchmark_return is not None else None
+            )
+            outcome.exit_reason_codes = result.reason_codes
+            outcome.outcome_status = (
+                "WIN" if pnl_pct > 0 else ("LOSS" if pnl_pct < 0 else "BREAKEVEN")
+            )
 
         result.lifecycle_state = "CLOSED"
         self.db.flush()
@@ -276,3 +310,27 @@ class PaperTradeService:
     def _make_idem_key(self, action: str, result_id: UUID) -> str:
         raw = f"{action}:{result_id}"
         return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+    def _holding_benchmark_return(self, entry_date: date, exit_date: date) -> float | None:
+        """Cumulative ^NSEI return over holding period (read-only market data)."""
+        try:
+            from app.models.stock import Stock
+
+            stock = self.db.scalar(
+                select(Stock).where(Stock.symbol == DEFAULT_BENCHMARK_SYMBOL)
+            )
+            if stock is None:
+                return None
+            bars = self.market_data_repo.get_by_stock_and_date_range(
+                stock.id, end_date=exit_date, limit=400
+            )
+            if not bars:
+                return None
+            by_date = {b.trading_date: float(b.close) for b in bars}
+            entry_close = by_date.get(entry_date)
+            exit_close = by_date.get(exit_date)
+            if entry_close is None or exit_close is None or entry_close <= 0:
+                return None
+            return (exit_close - entry_close) / entry_close * 100
+        except Exception:
+            return None

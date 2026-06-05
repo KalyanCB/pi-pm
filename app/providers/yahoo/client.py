@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime, timedelta
+from datetime import datetime as dt
 from decimal import Decimal, InvalidOperation
 
 import yfinance as yf
-from datetime import datetime as dt
 
 from app.core.constants import IngestPeriod
 from app.core.exceptions import InvalidSymbolError, ProviderError

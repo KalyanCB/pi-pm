@@ -6,7 +6,7 @@ from app.providers.yahoo.models import YahooOHLCVBar, YahooStockMetadata
 
 
 def _bars():
-    bar_date = (datetime.now(UTC).date() - timedelta(days=1))
+    bar_date = datetime.now(UTC).date() - timedelta(days=1)
     return [
         YahooOHLCVBar(
             date=bar_date,
@@ -61,8 +61,9 @@ def test_ingest_and_read_flow(client, mock_provider):
     def fetch_metadata(symbol: str):
         return metadata[symbol]
 
-    with patch.object(mock_provider, "fetch_metadata", side_effect=fetch_metadata), patch.object(
-        mock_provider, "fetch_history", return_value=_bars()
+    with (
+        patch.object(mock_provider, "fetch_metadata", side_effect=fetch_metadata),
+        patch.object(mock_provider, "fetch_history", return_value=_bars()),
     ):
         response = client.post(
             "/api/v1/market-data/ingest",
@@ -92,8 +93,9 @@ def test_reingest_no_duplicates(client, mock_provider):
         industry="Oil & Gas",
     )
 
-    with patch.object(mock_provider, "fetch_metadata", return_value=metadata), patch.object(
-        mock_provider, "fetch_history", return_value=_bars()
+    with (
+        patch.object(mock_provider, "fetch_metadata", return_value=metadata),
+        patch.object(mock_provider, "fetch_history", return_value=_bars()),
     ):
         first = client.post(
             "/api/v1/market-data/ingest",
@@ -140,8 +142,9 @@ def test_list_stocks(client, mock_provider):
         industry="Defense",
     )
 
-    with patch.object(mock_provider, "fetch_metadata", return_value=metadata), patch.object(
-        mock_provider, "fetch_history", return_value=_bars()
+    with (
+        patch.object(mock_provider, "fetch_metadata", return_value=metadata),
+        patch.object(mock_provider, "fetch_history", return_value=_bars()),
     ):
         client.post(
             "/api/v1/market-data/ingest",
@@ -162,8 +165,9 @@ def test_ingest_benchmark_index_symbol(client, mock_provider):
         industry=None,
     )
 
-    with patch.object(mock_provider, "fetch_metadata", return_value=metadata), patch.object(
-        mock_provider, "fetch_history", return_value=_benchmark_bars()
+    with (
+        patch.object(mock_provider, "fetch_metadata", return_value=metadata),
+        patch.object(mock_provider, "fetch_history", return_value=_benchmark_bars()),
     ):
         response = client.post(
             "/api/v1/market-data/ingest",

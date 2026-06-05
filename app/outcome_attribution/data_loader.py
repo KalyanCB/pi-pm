@@ -67,9 +67,7 @@ class OutcomeAttributionDataLoader:
                 )
             )
 
-            snapshot_by_stock = {
-                snap.stock_id: snap for snap in snapshots_by_run.get(run.id, [])
-            }
+            snapshot_by_stock = {snap.stock_id: snap for snap in snapshots_by_run.get(run.id, [])}
             for result in results_by_run.get(run.id, []):
                 returns = self._returns_from_snapshot(snapshot_by_stock.get(result.stock_id))
                 observations.append(
@@ -162,6 +160,5 @@ class OutcomeAttributionDataLoader:
         bars = cache.load_extended_series(stock.id, through_date)
         raw = compute_forward_returns(bars, as_of_date, ATTRIBUTION_HORIZONS)
         return {
-            horizon: float(value) if value is not None else None
-            for horizon, value in raw.items()
+            horizon: float(value) if value is not None else None for horizon, value in raw.items()
         }

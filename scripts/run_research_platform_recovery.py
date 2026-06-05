@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
 from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
 from app.db.repositories.factor_performance_run_repository import FactorPerformanceRunRepository
+from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
@@ -20,11 +21,9 @@ from app.db.repositories.research_intelligence_repository import (
     ResearchIntelligenceRunRepository,
 )
 from app.db.repositories.stock_repository import StockRepository
-from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.session import get_session_factory
 from app.factor_analytics.constants import DEFAULT_HOLDOUT_START_DATE
 from app.ops.daily_batch.evidence_windows import (
-    DEFAULT_REGIME_PERFORMANCE_HORIZON,
     list_completed_validation_dates,
     resolve_quant_evidence_window,
 )
@@ -130,7 +129,10 @@ def main() -> int:
         phase_extra: dict = {}
         if window:
             start, end = window
-            for strategy_name, strategy_version in (("breakout_v1", "1.0.0"), ("momentum_v1", "1.0.0")):
+            for strategy_name, strategy_version in (
+                ("breakout_v1", "1.0.0"),
+                ("momentum_v1", "1.0.0"),
+            ):
                 fic = factor_service.backfill(
                     strategy_name=strategy_name,
                     strategy_version=strategy_version,

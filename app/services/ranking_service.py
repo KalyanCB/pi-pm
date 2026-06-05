@@ -68,9 +68,7 @@ class RankingService:
 
     def run_ranking_with_outcome(self, payload: RankingRunRequest) -> RankingRunOutcome:
         started = time.perf_counter()
-        universe_code = (
-            payload.universe_code or self.settings.ranking_default_universe_code
-        )
+        universe_code = payload.universe_code or self.settings.ranking_default_universe_code
         strategy_name = payload.strategy_name or self.settings.ranking_default_strategy
         strategy_version = (
             payload.strategy_version or self.settings.ranking_default_strategy_version
@@ -105,9 +103,7 @@ class RankingService:
         benchmark_stock = self.stock_repo.get_by_symbol(benchmark_symbol)
         benchmark_stock_id = benchmark_stock.id if benchmark_stock else None
 
-        regime_label = self._resolve_regime_label(
-            benchmark_stock_id, as_of_date, market_data_cache
-        )
+        regime_label = self._resolve_regime_label(benchmark_stock_id, as_of_date, market_data_cache)
 
         engine = RankingEngine(MarketDataLoader(market_data_cache))
         output = engine.run(
@@ -160,7 +156,9 @@ class RankingService:
 
             effective_weights = output.metadata.get("effective_weights") or {}
             weight_hash = hash_weight_config(effective_weights) if effective_weights else None
-            ranked_count = int(output.metadata.get("ranked_stock_count") or len(output.ranked_stocks))
+            ranked_count = int(
+                output.metadata.get("ranked_stock_count") or len(output.ranked_stocks)
+            )
             universe_count = int(output.metadata.get("universe_stock_count") or 0)
             excluded_count = max(universe_count - ranked_count, 0)
             elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -233,7 +231,9 @@ class RankingService:
     ) -> UniverseFilterConfig:
         schema: UniverseFilterConfigSchema = payload.filter_config or UniverseFilterConfigSchema(
             min_history_days=self.settings.ranking_min_history_days,
-            min_avg_daily_traded_value=Decimal(str(self.settings.ranking_min_avg_daily_traded_value)),
+            min_avg_daily_traded_value=Decimal(
+                str(self.settings.ranking_min_avg_daily_traded_value)
+            ),
             min_stock_price=Decimal(str(self.settings.ranking_min_stock_price)),
             market_data_source=self.settings.ranking_market_data_source,
         )

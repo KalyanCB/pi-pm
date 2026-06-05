@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     # QRC evidence mode — SQE experiment (default off; legacy brief unchanged when false)
     args_qrc_use_sqe: bool = False
 
+    # Authentication (Track E)
+    auth_enabled: bool = True
+    jwt_secret_key: str = "change-me-in-production-use-openssl-rand"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_minutes: int = 15
+    jwt_refresh_token_days: int = 7
+    auth_bypass_for_tests: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

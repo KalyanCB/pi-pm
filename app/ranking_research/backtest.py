@@ -133,8 +133,7 @@ def _build_horizon_portfolio_calibrated(
         scored.sort(key=lambda item: (-item[0], item[1].rank))
         top = scored[:20]
         run_selections[run_id] = [
-            {"rank": idx + 1, "return": o.returns.get(horizon)}
-            for idx, (_, o) in enumerate(top)
+            {"rank": idx + 1, "return": o.returns.get(horizon)} for idx, (_, o) in enumerate(top)
         ]
     return _portfolio_metrics_for_runs(
         label=label,
@@ -179,9 +178,7 @@ def _finalize_backtest(
         and cal_10.alpha > prod_10.alpha
     )
     meets_sharpe = (
-        cal_20.sharpe is not None
-        and prod_20.sharpe is not None
-        and cal_20.sharpe > prod_20.sharpe
+        cal_20.sharpe is not None and prod_20.sharpe is not None and cal_20.sharpe > prod_20.sharpe
     )
     alpha_20_bps = 0.0
     if prod_20.alpha is not None and cal_20.alpha is not None:

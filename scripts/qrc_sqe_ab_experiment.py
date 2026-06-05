@@ -17,7 +17,6 @@ from app.args.plugins.stock_quality_evidence import build_stock_quality_evidence
 from app.core.config import get_settings
 from app.validation.constants import VALIDATION_STATUS_PENDING
 
-
 FOCUS_SYMBOLS = ("HFCL.NS", "WOCKPHARMA.NS", "THERMAX.NS", "TRITURBINE.NS")
 
 _HFCL_COMPONENTS = {
@@ -107,8 +106,16 @@ def _breakout_base_packet(strategy: str = "breakout_v1") -> dict[str, Any]:
         },
         "quant_evidence": {
             "factor_ic": [
-                {"factor_name": "high_proximity", "ic_spearman": -0.146, "regime_label": "BEAR_LOW_VOL"},
-                {"factor_name": "relative_strength", "ic_spearman": -0.141, "regime_label": "BEAR_LOW_VOL"},
+                {
+                    "factor_name": "high_proximity",
+                    "ic_spearman": -0.146,
+                    "regime_label": "BEAR_LOW_VOL",
+                },
+                {
+                    "factor_name": "relative_strength",
+                    "ic_spearman": -0.141,
+                    "regime_label": "BEAR_LOW_VOL",
+                },
                 {
                     "factor_name": "relative_strength_acceleration",
                     "ic_spearman": 0.024,
@@ -179,7 +186,11 @@ def _fixture_packet(base: dict[str, Any], fixture: StockFixture) -> dict[str, An
 def _momentum_factor_ic() -> list[dict[str, Any]]:
     return [
         {"factor_name": "momentum", "ic_spearman": 0.06, "regime_label": "BEAR_LOW_VOL"},
-        {"factor_name": "volatility_adjusted_momentum", "ic_spearman": 0.04, "regime_label": "BEAR_LOW_VOL"},
+        {
+            "factor_name": "volatility_adjusted_momentum",
+            "ic_spearman": 0.04,
+            "regime_label": "BEAR_LOW_VOL",
+        },
         {"factor_name": "relative_strength", "ic_spearman": 0.03, "regime_label": "BEAR_LOW_VOL"},
     ]
 
@@ -281,7 +292,9 @@ def analyze_strategy(strategy: str, packets: list[tuple[str, dict[str, Any]]]) -
     for symbol, payload in packets:
         rank = float((payload.get("ranking") or {}).get("rank") or 0)
         see = float((payload.get("stock_setup_evidence") or {}).get("setup_evidence_score") or 0)
-        sqe = float((payload.get("stock_quality_evidence") or {}).get("overall_stock_quality_score") or 0)
+        sqe = float(
+            (payload.get("stock_quality_evidence") or {}).get("overall_stock_quality_score") or 0
+        )
         leg = _confidence_for_mode(payload, symbol, use_sqe=False)
         exp = _confidence_for_mode(payload, symbol, use_sqe=True)
         leg_chars = _payload_chars(payload, symbol, use_sqe=False)
@@ -355,9 +368,7 @@ def try_load_db_packets(strategy: str, as_of: str) -> list[tuple[str, dict[str, 
             )
             if run is None:
                 return None
-            rows = db.scalars(
-                select(DbPacket).where(DbPacket.ranking_run_id == run.id)
-            ).all()
+            rows = db.scalars(select(DbPacket).where(DbPacket.ranking_run_id == run.id)).all()
             if not rows:
                 return None
             out: list[tuple[str, dict[str, Any]]] = []

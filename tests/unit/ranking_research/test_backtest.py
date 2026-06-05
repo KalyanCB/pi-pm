@@ -26,8 +26,7 @@ def _obs(run_id, rank: int, ret20: float, score: float) -> EnrichedStockObservat
 def test_backtest_produces_metrics():
     run_id = uuid4()
     observations = [
-        _obs(run_id, rank=r, ret20=0.10 - r * 0.01, score=1.0 - r * 0.04)
-        for r in range(1, 26)
+        _obs(run_id, rank=r, ret20=0.10 - r * 0.01, score=1.0 - r * 0.04) for r in range(1, 26)
     ]
     benchmarks = [
         RunBenchmark(

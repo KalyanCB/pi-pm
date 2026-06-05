@@ -1,53 +1,3 @@
-from app.models.daily_batch import DailyBatchRun, DailyBatchRunArtifact
-from app.models.full_universe_validation import (
-    FullUniverseValidationCampaign,
-    FullUniverseValidationDecile,
-    FullUniverseValidationMetric,
-    FullUniverseValidationRun,
-)
-from app.models.market_data import MarketData
-from app.models.market_data_ingestion_run import MarketDataIngestionRun
-from app.models.platform_traceability import (
-    ExperimentRun,
-    IngestionBatchRun,
-    RankingFactorContribution,
-    RegimeHistory,
-    RunLineageRecord,
-    StrategyRegimePerformance,
-    ValidationDecileMetric,
-    ValidationHorizonMetric,
-)
-from app.models.paper_trade import PaperTrade
-from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
-from app.models.portfolio_analytics import (
-    CashLedger,
-    ExitRecommendation,
-    PortfolioNavHistory,
-    PortfolioReconciliationReport,
-)
-from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
-from app.models.ranking_result import RankingResult
-from app.models.ranking_run import RankingRun
-from app.models.ranking_validation_report import RankingValidationReport
-from app.models.exit_research import (
-    ExitResearchAlphaDecayPoint,
-    ExitResearchPolicyMetric,
-    ExitResearchRun,
-)
-from app.models.factor_analytics import (
-    FactorDailyMetric,
-    FactorPerformanceMetric,
-    FactorPerformanceRun,
-)
-from app.models.regime_policy import (
-    RegimeBacktestRun,
-    RegimePolicyConfig,
-    RegimePolicyDecision,
-)
-from app.models.research_intelligence import (
-    ResearchIntelligenceReport,
-    ResearchIntelligenceRun,
-)
 from app.models.args import (
     CommitteeReview,
     CroReview,
@@ -58,16 +8,77 @@ from app.models.args import (
     PromptVersion,
     ResearchRun,
 )
-from app.models.stock_setup_research import StockSetupResearch, StockSetupResearchMetric
-from app.models.research_report import ResearchReport
-from app.models.recommendation import (
-    RecommendationConfig,
-    RecommendationRun,
-    RecommendationResult,
-    RecommendationApproval,
-    RecommendationOutcome,
+from app.models.auth import (
+    PermissionRecord,
+    Portfolio,
+    RefreshToken,
+    Role,
+    RolePermission,
+    User,
+    UserPortfolioMembership,
+    UserPreference,
 )
+from app.models.copilot import CopilotQueryLog
+from app.models.daily_batch import DailyBatchRun, DailyBatchRunArtifact
+from app.models.exit_research import (
+    ExitResearchAlphaDecayPoint,
+    ExitResearchPolicyMetric,
+    ExitResearchRun,
+)
+from app.models.factor_analytics import (
+    FactorDailyMetric,
+    FactorPerformanceMetric,
+    FactorPerformanceRun,
+)
+from app.models.full_universe_validation import (
+    FullUniverseValidationCampaign,
+    FullUniverseValidationDecile,
+    FullUniverseValidationMetric,
+    FullUniverseValidationRun,
+)
+from app.models.market_data import MarketData
+from app.models.market_data_ingestion_run import MarketDataIngestionRun
+from app.models.paper_trade import PaperTrade
+from app.models.platform_traceability import (
+    ExperimentRun,
+    IngestionBatchRun,
+    RankingFactorContribution,
+    RegimeHistory,
+    RunLineageRecord,
+    StrategyRegimePerformance,
+    ValidationDecileMetric,
+    ValidationHorizonMetric,
+)
+from app.models.portfolio_analytics import (
+    CashLedger,
+    ExitRecommendation,
+    PortfolioNavHistory,
+    PortfolioReconciliationReport,
+)
+from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
+from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
+from app.models.ranking_result import RankingResult
+from app.models.ranking_run import RankingRun
+from app.models.ranking_validation_report import RankingValidationReport
+from app.models.recommendation import (
+    RecommendationApproval,
+    RecommendationConfig,
+    RecommendationOutcome,
+    RecommendationResult,
+    RecommendationRun,
+)
+from app.models.regime_policy import (
+    RegimeBacktestRun,
+    RegimePolicyConfig,
+    RegimePolicyDecision,
+)
+from app.models.research_intelligence import (
+    ResearchIntelligenceReport,
+    ResearchIntelligenceRun,
+)
+from app.models.research_report import ResearchReport
 from app.models.stock import Stock
+from app.models.stock_setup_research import StockSetupResearch, StockSetupResearchMetric
 from app.models.stock_universe import StockUniverse
 from app.models.universe_membership import UniverseMembership
 
@@ -129,4 +140,13 @@ __all__ = [
     "RecommendationResult",
     "RecommendationApproval",
     "RecommendationOutcome",
+    "CopilotQueryLog",
+    "User",
+    "Role",
+    "PermissionRecord",
+    "RolePermission",
+    "UserPreference",
+    "Portfolio",
+    "UserPortfolioMembership",
+    "RefreshToken",
 ]

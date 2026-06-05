@@ -5,8 +5,11 @@ from datetime import UTC, date, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.platform_traceability import RegimeHistory, StrategyRegimePerformance
-from app.models.platform_traceability import ValidationHorizonMetric
+from app.models.platform_traceability import (
+    RegimeHistory,
+    StrategyRegimePerformance,
+    ValidationHorizonMetric,
+)
 
 
 class RegimeAnalyticsRepository:

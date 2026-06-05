@@ -11,6 +11,12 @@ from app.args.builders.packet_evidence_coverage import (
     derive_evidence_confidence,
     score_packet_evidence,
 )
+from app.args.plugins.stock_quality_evidence import (
+    SCHEMA_VERSION as SQE_SCHEMA_VERSION,
+)
+from app.args.plugins.stock_quality_evidence import (
+    build_stock_quality_evidence,
+)
 from app.args.validation_status import normalize_validation_status_for_packet
 from app.db.repositories.exit_research_metric_repository import ExitResearchMetricRepository
 from app.db.repositories.factor_performance_metric_repository import (
@@ -19,6 +25,7 @@ from app.db.repositories.factor_performance_metric_repository import (
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
+from app.db.repositories.recommendation_repository import RecommendationRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.db.repositories.research_intelligence_repository import (
     ResearchIntelligenceReportRepository,
@@ -29,17 +36,12 @@ from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
 from app.models.stock import Stock
+from app.services.portfolio_service import PortfolioService
+from app.services.stock_setup_research_service import StockSetupResearchService
+from app.stock_setup_evidence.packet_enricher import attach_stock_setup_evidence
 from app.workspace_args.constants import PACKET_VERSION
 from app.workspace_args.models import InvestmentReviewPacket
-from app.args.plugins.stock_quality_evidence import (
-    SCHEMA_VERSION as SQE_SCHEMA_VERSION,
-    build_stock_quality_evidence,
-)
-from app.stock_setup_evidence.packet_enricher import attach_stock_setup_evidence
-from app.services.stock_setup_research_service import StockSetupResearchService
 from app.workspace_args.packet_schema import compute_packet_hash
-from app.db.repositories.recommendation_repository import RecommendationRepository
-from app.services.portfolio_service import PortfolioService
 
 _HISTORICAL_VALIDATION_LOOKBACK_DAYS = 120
 _MAX_HISTORICAL_VALIDATION_REPORTS = 12
@@ -177,9 +179,7 @@ class InvestmentReviewPacketBuilder:
             "source_lineage": {
                 "ranking_run_id": str(ranking_run.id),
                 "ranking_result_id": str(result.id),
-                "validation_report_id": (
-                    str(validation_report.id) if validation_report else None
-                ),
+                "validation_report_id": (str(validation_report.id) if validation_report else None),
                 "factor_metric_ids": factor_metric_ids,
                 "exit_research_run_ids": exit_run_ids,
                 "research_intelligence_run_id": research_context.get("run_id"),
@@ -210,9 +210,7 @@ class InvestmentReviewPacketBuilder:
         # Committee plugins must never mutate this block.
         rec_run = self.recommendation_repo.get_run_by_ranking_run_id(ranking_run.id)
         if rec_run is not None:
-            rec_result = self.recommendation_repo.get_result_by_symbol(
-                rec_run.id, result.stock_id
-            )
+            rec_result = self.recommendation_repo.get_result_by_symbol(rec_run.id, result.stock_id)
             if rec_result is not None:
                 payload["recommendation"] = {
                     "action": rec_result.action,
@@ -234,12 +232,12 @@ class InvestmentReviewPacketBuilder:
             "high_concern_committees": [],
             "committee_actions": {},
             "display_names": {
-                "TARC":  "Technical Analysis Committee",
-                "FRC":   "Fundamentals & Risk Committee",
-                "QRC":   "Quantitative Research Committee",
-                "NRCC":  "News & Events Committee",
-                "RC":    "Risk & Compliance Committee",
-                "CRO":   "Investment Committee Chair",
+                "TARC": "Technical Analysis Committee",
+                "FRC": "Fundamentals & Risk Committee",
+                "QRC": "Quantitative Research Committee",
+                "NRCC": "News & Events Committee",
+                "RC": "Risk & Compliance Committee",
+                "CRO": "Investment Committee Chair",
             },
             "note": "Advisory only. Does not affect recommendation.action or conviction_score.",
         }
@@ -260,7 +258,9 @@ class InvestmentReviewPacketBuilder:
         """Return real portfolio context for ARGS packet (AC-PE-03)."""
         try:
             from sqlalchemy import select
+
             from app.models.portfolio_position import PortfolioPosition
+
             pos = self.db.scalar(
                 select(PortfolioPosition).where(
                     PortfolioPosition.stock_id == stock_id,
@@ -587,9 +587,7 @@ def _load_research_context(
             "end": run.as_of_date_end.isoformat(),
         },
         "notes": notes,
-        "reports": {
-            key: _compact_report_payload(value) for key, value in report_map.items()
-        },
+        "reports": {key: _compact_report_payload(value) for key, value in report_map.items()},
     }
 
 

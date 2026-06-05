@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from app.outcome_attribution.constants import ATTRIBUTION_BUCKETS, ATTRIBUTION_HORIZONS, RANK_BANDS_TOP_20
+from app.outcome_attribution.constants import (
+    ATTRIBUTION_BUCKETS,
+    ATTRIBUTION_HORIZONS,
+    RANK_BANDS_TOP_20,
+)
 from app.outcome_attribution.models import BucketMetrics, OutcomeAttributionReport, SegmentMetrics
 
 
@@ -78,7 +82,7 @@ def build_markdown_report(report: OutcomeAttributionReport) -> str:
         "",
         "## Executive summary",
         "",
-        f"**Question:** Does higher rank reliably lead to better future outcomes?",
+        "**Question:** Does higher rank reliably lead to better future outcomes?",
         "",
         f"**Verdict:** `{report.verdict}` — {report.verdict_summary}",
         "",

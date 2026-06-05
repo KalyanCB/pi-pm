@@ -51,9 +51,7 @@ def test_bootstrap_nifty500_from_fixture(
     assert universe_repo.count_active_memberships(UNIVERSE_NIFTY_500) == 3
 
 
-def test_bootstrap_is_idempotent(
-    db_session, stock_repo, universe_repo, nifty500_universe
-) -> None:
+def test_bootstrap_is_idempotent(db_session, stock_repo, universe_repo, nifty500_universe) -> None:
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "nifty500_sample.csv"
     service = UniverseBootstrapService(db_session, stock_repo, universe_repo)
     constituents = load_nifty500_constituents(fixture)

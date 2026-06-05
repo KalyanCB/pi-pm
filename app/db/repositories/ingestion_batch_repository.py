@@ -60,9 +60,7 @@ class IngestionBatchRepository:
         return batch
 
     def get_by_id(self, batch_id: UUID) -> IngestionBatchRun | None:
-        return self.db.scalar(
-            select(IngestionBatchRun).where(IngestionBatchRun.id == batch_id)
-        )
+        return self.db.scalar(select(IngestionBatchRun).where(IngestionBatchRun.id == batch_id))
 
     def list_recent(self, limit: int = 20) -> list[IngestionBatchRun]:
         return list(

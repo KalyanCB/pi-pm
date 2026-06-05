@@ -12,8 +12,8 @@ from app.api.deps import (
 )
 from app.db.repositories.stock_repository import StockRepository
 from app.schemas.validation import (
-    FullUniverseDecilesResponse,
     FullUniverseDecileRead,
+    FullUniverseDecilesResponse,
     FullUniverseValidationRunRequest,
     FullUniverseValidationRunResponse,
     FullUniverseValidationSummaryRead,
@@ -25,7 +25,12 @@ from app.schemas.validation import (
 )
 from app.services.full_universe_validation_service import FullUniverseValidationService
 from app.services.signal_validation_service import SignalValidationService
-from app.services.validation_serializers import report_to_read, snapshot_to_read, summary_to_read, symbol_map
+from app.services.validation_serializers import (
+    report_to_read,
+    snapshot_to_read,
+    summary_to_read,
+    symbol_map,
+)
 
 router = APIRouter()
 

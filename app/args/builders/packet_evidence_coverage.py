@@ -19,7 +19,9 @@ def score_packet_evidence(payload: dict[str, Any]) -> dict[str, Any]:
 
     validation = payload.get("validation") or {}
     current_status = validation.get("status")
-    pending_current = current_status == "pending" or validation.get("database_status") == "insufficient_data"
+    pending_current = (
+        current_status == "pending" or validation.get("database_status") == "insufficient_data"
+    )
     if validation.get("status") == "completed" and validation.get("horizon_metrics"):
         components["validation_current"] = float(weights["validation_current"])
     elif pending_current:

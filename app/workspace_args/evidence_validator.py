@@ -55,9 +55,7 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
             metrics = validation.get("decile_metrics") or []
             if decile is None:
                 return any(m.get("horizon") == horizon for m in metrics)
-            return any(
-                m.get("horizon") == horizon and m.get("decile") == decile for m in metrics
-            )
+            return any(m.get("horizon") == horizon and m.get("decile") == decile for m in metrics)
         if len(parts) == 2:
             return parts[1] in validation
         return bool(validation)

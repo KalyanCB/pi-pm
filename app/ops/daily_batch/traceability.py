@@ -19,7 +19,12 @@ class DailyBatchTraceabilityRecorder:
         self.artifact_repo = DailyBatchArtifactRepository(db)
 
     def record_ingestion_batch(self, daily_batch_id: UUID, batch_id: UUID, *, status: str) -> None:
-        self._link(daily_batch_id, LineageEntityType.INGESTION_BATCH, batch_id, LineageRelationshipType.DAILY_BATCH_INGESTION)
+        self._link(
+            daily_batch_id,
+            LineageEntityType.INGESTION_BATCH,
+            batch_id,
+            LineageRelationshipType.DAILY_BATCH_INGESTION,
+        )
         self.artifact_repo.add(
             daily_batch_run_id=daily_batch_id,
             artifact_type=DailyBatchArtifactType.INGESTION_BATCH.value,
@@ -36,7 +41,12 @@ class DailyBatchTraceabilityRecorder:
         as_of_date,
         status: str,
     ) -> None:
-        self._link(daily_batch_id, LineageEntityType.RANKING_RUN, ranking_run_id, LineageRelationshipType.DAILY_BATCH_RANKING)
+        self._link(
+            daily_batch_id,
+            LineageEntityType.RANKING_RUN,
+            ranking_run_id,
+            LineageRelationshipType.DAILY_BATCH_RANKING,
+        )
         self.artifact_repo.add(
             daily_batch_run_id=daily_batch_id,
             artifact_type=DailyBatchArtifactType.RANKING_RUN.value,
@@ -46,7 +56,9 @@ class DailyBatchTraceabilityRecorder:
             status=status,
         )
 
-    def record_validation_report(self, daily_batch_id: UUID, report_id: UUID, *, status: str) -> None:
+    def record_validation_report(
+        self, daily_batch_id: UUID, report_id: UUID, *, status: str
+    ) -> None:
         self._link(
             daily_batch_id,
             LineageEntityType.VALIDATION_REPORT,
@@ -60,7 +72,9 @@ class DailyBatchTraceabilityRecorder:
             status=status,
         )
 
-    def record_factor_run(self, daily_batch_id: UUID, run_id: UUID, *, strategy_name: str, status: str) -> None:
+    def record_factor_run(
+        self, daily_batch_id: UUID, run_id: UUID, *, strategy_name: str, status: str
+    ) -> None:
         self._link(
             daily_batch_id,
             LineageEntityType.FACTOR_PERFORMANCE_RUN,
@@ -146,7 +160,9 @@ class DailyBatchTraceabilityRecorder:
             status=status,
         )
 
-    def record_exit_research_run(self, daily_batch_id: UUID, run_id: UUID, *, strategy_name: str, status: str) -> None:
+    def record_exit_research_run(
+        self, daily_batch_id: UUID, run_id: UUID, *, strategy_name: str, status: str
+    ) -> None:
         self._link(
             daily_batch_id,
             LineageEntityType.EXIT_RESEARCH_RUN,

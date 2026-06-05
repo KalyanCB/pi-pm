@@ -10,7 +10,9 @@ from app.ranking_research.models import (
 from app.ranking_research.score_compression import compare_score_buckets
 
 
-def _band_mean(segment: StrategyRankReliability, start: int, end: int, horizon: int) -> float | None:
+def _band_mean(
+    segment: StrategyRankReliability, start: int, end: int, horizon: int
+) -> float | None:
     vals = []
     for r in range(start, end + 1):
         m = segment.per_rank[r][horizon]

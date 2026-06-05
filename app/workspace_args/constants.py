@@ -42,8 +42,8 @@ class CommitteeAdvisoryAction(StrEnum):
 # Mapping from legacy research label → investor-facing advisory action
 _LABEL_TO_ADVISORY: dict[str, CommitteeAdvisoryAction] = {
     CommitteeResearchLabel.SUPPORTIVE: CommitteeAdvisoryAction.APPROVE,
-    CommitteeResearchLabel.NEUTRAL:    CommitteeAdvisoryAction.WATCH,
-    CommitteeResearchLabel.CAUTIOUS:   CommitteeAdvisoryAction.REJECT,
+    CommitteeResearchLabel.NEUTRAL: CommitteeAdvisoryAction.WATCH,
+    CommitteeResearchLabel.CAUTIOUS: CommitteeAdvisoryAction.REJECT,
 }
 
 
@@ -95,18 +95,18 @@ def aggregate_cro_advisory(
 # Investor-facing display names (PO approved 2026-06-05)
 COMMITTEE_DISPLAY_NAMES: dict[str, str] = {
     COMMITTEE_TARC: "Technical Analysis Committee",
-    COMMITTEE_FRC:  "Fundamentals & Risk Committee",
-    COMMITTEE_QRC:  "Quantitative Research Committee",
+    COMMITTEE_FRC: "Fundamentals & Risk Committee",
+    COMMITTEE_QRC: "Quantitative Research Committee",
     COMMITTEE_NRCC: "News & Events Committee",
-    COMMITTEE_RC:   "Risk & Compliance Committee",
-    COMMITTEE_CRO:  "Investment Committee Chair",
+    COMMITTEE_RC: "Risk & Compliance Committee",
+    COMMITTEE_CRO: "Investment Committee Chair",
 }
 
 # Internal → external terminology map (presentation layer only)
 INTERNAL_TO_EXTERNAL_TERMS: dict[str, str] = {
-    "ARGS research run":   "Investment Committee review",
-    "committee_label":     "advisory_action",
-    "cro_synthesis":       "committee_report",
-    "governance_report":   "investment_committee_report",
-    "research_run":        "committee_review",
+    "ARGS research run": "Investment Committee review",
+    "committee_label": "advisory_action",
+    "cro_synthesis": "committee_report",
+    "governance_report": "investment_committee_report",
+    "research_run": "committee_review",
 }

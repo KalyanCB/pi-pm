@@ -1,4 +1,5 @@
 """Recommendation Engine REST API (Phase 2 / M1)."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -9,12 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.api.deps import get_recommendation_service
+from app.api.auth_deps import OwnerUser
 from app.services.recommendation_service import RecommendationService
 
 router = APIRouter()
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
+
 
 class RunRecommendationRequest(BaseModel):
     ranking_run_id: UUID
@@ -84,9 +87,11 @@ class ApproveRequest(BaseModel):
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
+
 @router.post("/run", response_model=RecommendationRunRead, status_code=201)
 def run_recommendation(
     payload: RunRecommendationRequest,
+    _owner: OwnerUser,
     service: RecommendationService = Depends(get_recommendation_service),
 ) -> RecommendationRunRead:
     try:
@@ -140,7 +145,9 @@ def get_approval_queue(
 @router.get("/daily", response_model=DailyRecommendationsRead)
 def get_daily(
     as_of_date: date = Query(..., description="Trading date, e.g. 2026-06-05"),
-    action: str | None = Query(default=None, description="Filter by action: BUY, WATCH, HOLD, REJECT"),
+    action: str | None = Query(
+        default=None, description="Filter by action: BUY, WATCH, HOLD, REJECT"
+    ),
     service: RecommendationService = Depends(get_recommendation_service),
 ) -> DailyRecommendationsRead:
     """All strategies' recommendations for a given date in one call."""
@@ -199,8 +206,8 @@ def get_result_by_symbol(
     service: RecommendationService = Depends(get_recommendation_service),
 ) -> RecommendationResultRead:
     from sqlalchemy import select
+
     from app.models.stock import Stock
-    from app.models.recommendation import RecommendationResult
 
     db = service.db
     stock = db.scalar(select(Stock).where(Stock.symbol == symbol.upper()))
@@ -220,6 +227,7 @@ def why_not_recommended(
 ) -> dict[str, Any]:
     """Deterministic explanation for why a symbol was not recommended BUY."""
     from sqlalchemy import select
+
     from app.models.stock import Stock
 
     db = service.db
@@ -255,6 +263,7 @@ def why_not_recommended(
 def approve_recommendation(
     result_id: UUID,
     payload: ApproveRequest,
+    owner: OwnerUser,
     service: RecommendationService = Depends(get_recommendation_service),
 ) -> dict[str, str]:
     try:
@@ -262,7 +271,7 @@ def approve_recommendation(
             result_id,
             approval_type=payload.approval_type,
             decision=payload.decision,
-            actor_id=payload.actor_id,
+            actor_id=str(owner.user_id),
             note=payload.note,
             idempotency_key=payload.idempotency_key,
         )
@@ -274,8 +283,8 @@ def approve_recommendation(
 @router.post("/{result_id}/reject", status_code=200)
 def reject_recommendation(
     result_id: UUID,
+    owner: OwnerUser,
     note: str | None = None,
-    actor_id: str = "owner",
     service: RecommendationService = Depends(get_recommendation_service),
 ) -> dict[str, str]:
     try:
@@ -283,7 +292,7 @@ def reject_recommendation(
             result_id,
             approval_type="ENTRY",
             decision="REJECTED",
-            actor_id=actor_id,
+            actor_id=str(owner.user_id),
             note=note,
         )
     except ValueError as exc:

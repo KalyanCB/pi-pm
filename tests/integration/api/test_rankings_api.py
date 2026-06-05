@@ -178,8 +178,9 @@ def test_ranking_with_ingested_benchmark(client, db_session, mock_provider):
             )
         )
 
-    with patch.object(mock_provider, "fetch_metadata", return_value=metadata), patch.object(
-        mock_provider, "fetch_history", return_value=bars
+    with (
+        patch.object(mock_provider, "fetch_metadata", return_value=metadata),
+        patch.object(mock_provider, "fetch_history", return_value=bars),
     ):
         ingest = client.post(
             "/api/v1/market-data/ingest",
@@ -246,12 +247,13 @@ def test_ranking_with_default_config(client, db_session):
 
 def test_breakout_v1_ranking_api_flow(client, db_session):
     as_of = date(2025, 6, 1)
+    from datetime import UTC, datetime, timedelta
+
     from app.core.constants import DataStatus
     from app.models.market_data import MarketData
     from app.models.stock import Stock
     from app.models.stock_universe import StockUniverse
     from app.models.universe_membership import UniverseMembership
-    from datetime import UTC, datetime, timedelta
 
     universe = StockUniverse(code="PI_PM_CORE", name="Core", is_active=True)
     db_session.add(universe)
@@ -326,9 +328,7 @@ def test_breakout_v1_ranking_api_flow(client, db_session):
     assert body["results_count"] == 3
     assert body["metadata"]["benchmark_available"] is True
     factor_names = {
-        name
-        for result in body["results"]
-        for name in (result.get("score_components") or {})
+        name for result in body["results"] for name in (result.get("score_components") or {})
     }
     assert "high_proximity" in factor_names
     assert "consolidation_breakout" in factor_names

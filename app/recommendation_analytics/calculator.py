@@ -3,12 +3,11 @@
 All functions are pure (take data, return metrics). No DB access, no LLM.
 Same inputs → same outputs (AC-RP-08, AC-RP-09).
 """
+
 from __future__ import annotations
 
-import math
 import statistics
 from dataclasses import dataclass
-from typing import Any
 
 from app.recommendation_analytics.dtos import (
     CommitteeAdvisoryMetricsDTO,
@@ -17,14 +16,14 @@ from app.recommendation_analytics.dtos import (
     RegimeMetricsDTO,
 )
 
-
 # ── Outcome row shape expected by calculators ─────────────────────────────────
 # Callers pass plain dicts or dataclasses with these keys.
 # This avoids coupling to ORM models in the pure layer.
 
+
 @dataclass(frozen=True)
 class OutcomeRow:
-    outcome_status: str           # OPEN | WIN | LOSS | BREAKEVEN
+    outcome_status: str  # OPEN | WIN | LOSS | BREAKEVEN
     alpha_pct: float | None
     pnl_pct: float | None
     benchmark_return_pct: float | None
@@ -39,6 +38,7 @@ class OutcomeRow:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _closed(rows: list[OutcomeRow]) -> list[OutcomeRow]:
     return [r for r in rows if r.outcome_status in ("WIN", "LOSS", "BREAKEVEN")]
@@ -57,6 +57,7 @@ def _safe_div(num: float, den: float) -> float | None:
 
 
 # ── Core quality metrics ──────────────────────────────────────────────────────
+
 
 def compute_quality_metrics(rows: list[OutcomeRow]) -> QualityMetricsDTO:
     closed = _closed(rows)
@@ -123,19 +124,23 @@ def compute_conviction_breakdown(rows: list[OutcomeRow]) -> list[ConvictionBandM
         loss_sum = abs(sum(a for a in alphas if a < 0))
         targets = [r for r in closed if r.target_hit is True]
 
-        results.append(ConvictionBandMetricsDTO(
-            band=band,
-            count=len(band_rows),
-            closed_count=len(closed),
-            win_rate=_safe_div(len(wins), len(closed)),
-            avg_alpha_pct=_safe_mean(alphas),
-            profit_factor=_safe_div(gain_sum, loss_sum),
-            target_hit_rate=_safe_div(len(targets), len(closed)),
-        ))
+        results.append(
+            ConvictionBandMetricsDTO(
+                band=band,
+                count=len(band_rows),
+                closed_count=len(closed),
+                win_rate=_safe_div(len(wins), len(closed)),
+                avg_alpha_pct=_safe_mean(alphas),
+                profit_factor=_safe_div(gain_sum, loss_sum),
+                target_hit_rate=_safe_div(len(targets), len(closed)),
+            )
+        )
     return results
 
 
-def check_conviction_calibration(band_metrics: list[ConvictionBandMetricsDTO]) -> tuple[bool | None, float | None]:
+def check_conviction_calibration(
+    band_metrics: list[ConvictionBandMetricsDTO],
+) -> tuple[bool | None, float | None]:
     """Return (is_calibrated, rank_correlation).
 
     Checks whether win_rate decreases monotonically from EXCEPTIONAL→HIGH→MEDIUM→LOW.
@@ -186,15 +191,17 @@ def compute_regime_breakdown(rows: list[OutcomeRow]) -> list[RegimeMetricsDTO]:
         wins = [r for r in closed if r.outcome_status == "WIN"]
         alphas = [float(r.alpha_pct) for r in closed if r.alpha_pct is not None]
         returns = [float(r.pnl_pct) for r in closed if r.pnl_pct is not None]
-        results.append(RegimeMetricsDTO(
-            regime_label=label,
-            regime_posture=_REGIME_POSTURE_MAP.get(label),
-            recommendation_count=len(regime_rows),
-            closed_count=len(closed),
-            win_rate=_safe_div(len(wins), len(closed)),
-            avg_alpha_pct=_safe_mean(alphas),
-            avg_return_pct=_safe_mean(returns),
-        ))
+        results.append(
+            RegimeMetricsDTO(
+                regime_label=label,
+                regime_posture=_REGIME_POSTURE_MAP.get(label),
+                recommendation_count=len(regime_rows),
+                closed_count=len(closed),
+                win_rate=_safe_div(len(wins), len(closed)),
+                avg_alpha_pct=_safe_mean(alphas),
+                avg_return_pct=_safe_mean(returns),
+            )
+        )
     return results
 
 
@@ -221,13 +228,17 @@ def compute_committee_breakdown(rows: list[OutcomeRow]) -> list[CommitteeAdvisor
         # Agreement: advisory "supportive" → machine action BUY — we can only
         # approximate this from the outcome set (all outcomes here are for BUY
         # recommendations that were approved); supportive = agrees with BUY
-        agreement = 1.0 if adv == "supportive" else (0.0 if adv in ("cautious", "high_concern") else None)
+        agreement = (
+            1.0 if adv == "supportive" else (0.0 if adv in ("cautious", "high_concern") else None)
+        )
 
-        results.append(CommitteeAdvisoryMetricsDTO(
-            advisory=adv,
-            count=len(adv_rows),
-            win_rate=_safe_div(len(wins), len(closed)),
-            avg_alpha_pct=_safe_mean(alphas),
-            agreement_with_machine=agreement,
-        ))
+        results.append(
+            CommitteeAdvisoryMetricsDTO(
+                advisory=adv,
+                count=len(adv_rows),
+                win_rate=_safe_div(len(wins), len(closed)),
+                avg_alpha_pct=_safe_mean(alphas),
+                agreement_with_machine=agreement,
+            )
+        )
     return results

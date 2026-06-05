@@ -12,27 +12,27 @@ Why-not evaluation order (16_WHY_NOT_RECOMMENDED_FRAMEWORK.md §4):
   4. Conviction scoring
   5. CONVICTION_LOW / PORTFOLIO_FULL → WATCH or BUY
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 from app.core.constants import (
-    CONVICTION_ENGINE_VERSION,
     CONVICTION_TOP_POOL_SIZE,
-    ConvictionBand,
-    RecommendationAction,
-    RecommendationLifecycleState,
     REC_REASON_CONVICTION_LOW,
     REC_REASON_EXIT_RISK,
+    REC_REASON_PORTFOLIO_FULL,
     REC_REASON_RANK_OUTSIDE_POOL,
     REC_REASON_RANK_POOL_TOP20,
     REC_REASON_REGIME_BLOCK,
     REC_REASON_VALIDATION_PENDING,
-    REC_REASON_PORTFOLIO_FULL,
+    ConvictionBand,
+    RecommendationAction,
+    RecommendationLifecycleState,
 )
 from app.recommendation.conviction_scorer import ConvictionInputs, ConvictionResult, score
 
@@ -55,9 +55,10 @@ class ValidationSummary:
 @dataclass
 class ExitSignal:
     """Per-stock exit signal derived from exit research data."""
-    rank_deteriorated: bool = False      # R-EXIT-01: rank fell below threshold
-    alpha_decayed: bool = False          # R-EXIT-02: alpha decay curve breached
-    holding_days: int = 0               # R-EXIT-04: time stop
+
+    rank_deteriorated: bool = False  # R-EXIT-01: rank fell below threshold
+    alpha_decayed: bool = False  # R-EXIT-02: alpha decay curve breached
+    holding_days: int = 0  # R-EXIT-04: time stop
     regime_turned_defensive: bool = False  # R-EXIT-03: regime transition
 
 
@@ -71,8 +72,8 @@ class EngineConfig:
     factor_ic_median: float | None = None
     rank_v2_promoted: bool = False
     exceptional_daily_cap: int = 3
-    rank_deterioration_threshold: int = 40   # rank > this → exit signal
-    max_holding_days: int = 30               # R-EXIT-04 time stop
+    rank_deterioration_threshold: int = 40  # rank > this → exit signal
+    max_holding_days: int = 30  # R-EXIT-04 time stop
 
 
 @dataclass
@@ -126,9 +127,7 @@ def run(
         ranking_run_id, config.config_version, config.regime_posture, validation.status
     )
 
-    top20_scores = [
-        r.composite_score for r in ranking_results if r.rank <= config.top_pool_size
-    ]
+    top20_scores = [r.composite_score for r in ranking_results if r.rank <= config.top_pool_size]
 
     results: list[RecommendationRow] = []
     buy_count = 0

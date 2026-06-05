@@ -176,14 +176,10 @@ def summarize_validation(
         "primary_horizon_metric": primary,
         "decile_summary": decile_summary,
         "horizons_with_data": [
-            m.get("horizon")
-            for m in horizon_metrics
-            if int(m.get("sample_size") or 0) > 0
+            m.get("horizon") for m in horizon_metrics if int(m.get("sample_size") or 0) > 0
         ],
         "horizons_missing_data": [
-            m.get("horizon")
-            for m in horizon_metrics
-            if int(m.get("sample_size") or 0) == 0
+            m.get("horizon") for m in horizon_metrics if int(m.get("sample_size") or 0) == 0
         ],
         "evidence_ref_hints": [
             ref
@@ -209,12 +205,8 @@ def compute_validation_coverage(payload: dict[str, Any]) -> dict[str, Any]:
     pending = is_current_validation_pending(validation)
     historical = latest_historical_validation_block(payload) if pending else {}
 
-    horizon_ok = bool(validation.get("horizon_metrics")) or bool(
-        historical.get("horizon_metrics")
-    )
-    decile_ok = bool(validation.get("decile_metrics")) or bool(
-        historical.get("decile_metrics")
-    )
+    horizon_ok = bool(validation.get("horizon_metrics")) or bool(historical.get("horizon_metrics"))
+    decile_ok = bool(validation.get("decile_metrics")) or bool(historical.get("decile_metrics"))
 
     checks = {
         "horizon_metrics": horizon_ok,
@@ -226,9 +218,7 @@ def compute_validation_coverage(payload: dict[str, Any]) -> dict[str, Any]:
         "current_validation_pending_neutral": pending,
     }
     covered = sum(
-        1
-        for key, value in checks.items()
-        if value and key != "current_validation_pending_neutral"
+        1 for key, value in checks.items() if value and key != "current_validation_pending_neutral"
     )
     scorable = len(checks) - 1
     pct = round((covered / scorable) * 100.0, 1) if scorable else 0.0
@@ -289,9 +279,7 @@ def detect_evidence_gaps(payload: dict[str, Any]) -> list[str]:
     gaps: list[str] = []
 
     if pending:
-        gaps.append(
-            "Current-run forward validation is pending (neutral; not a negative signal)."
-        )
+        gaps.append("Current-run forward validation is pending (neutral; not a negative signal).")
     if not validation.get("horizon_metrics") and not historical.get("horizon_metrics"):
         gaps.append("No horizon metrics present (current or historical).")
     if not validation.get("decile_metrics") and not historical.get("decile_metrics"):

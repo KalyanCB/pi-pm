@@ -4,15 +4,14 @@ Orchestrates the pure analytics modules with DB data. Read-only.
 Gated by reconciliation: refuses to compute when latest recon is FAIL.
 No LLM. Deterministic (AC-PE-13).
 """
+
 from __future__ import annotations
 
 from datetime import date
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.constants import DEFAULT_BENCHMARK_SYMBOL
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.models.portfolio_analytics import PortfolioNavHistory
 from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
@@ -77,10 +76,15 @@ class PortfolioAnalyticsService:
         metrics.total_open_positions = open_count
         nav_rows = self._nav_rows(from_date, to_date)
         if nav_rows:
-            exposures = [float(r.market_value) / float(r.total_equity) * 100
-                         for r in nav_rows if r.total_equity and float(r.total_equity) > 0]
+            exposures = [
+                float(r.market_value) / float(r.total_equity) * 100
+                for r in nav_rows
+                if r.total_equity and float(r.total_equity) > 0
+            ]
             cash_pcts = [float(r.cash_pct) * 100 for r in nav_rows if r.cash_pct is not None]
-            metrics.avg_exposure_pct = round(sum(exposures) / len(exposures), 2) if exposures else None
+            metrics.avg_exposure_pct = (
+                round(sum(exposures) / len(exposures), 2) if exposures else None
+            )
             metrics.avg_cash_pct = round(sum(cash_pcts) / len(cash_pcts), 2) if cash_pcts else None
         metrics.turnover_pct = self._compute_turnover(from_date, to_date)
         return metrics
@@ -210,12 +214,14 @@ class PortfolioAnalyticsService:
         ]
 
     def _open_positions_as_dicts(self) -> list[dict]:
-        positions = list(self.db.scalars(
-            select(PortfolioPosition).where(
-                PortfolioPosition.is_current.is_(True),
-                PortfolioPosition.position_status == "OPEN",
-            )
-        ).all())
+        positions = list(
+            self.db.scalars(
+                select(PortfolioPosition).where(
+                    PortfolioPosition.is_current.is_(True),
+                    PortfolioPosition.position_status == "OPEN",
+                )
+            ).all()
+        )
         out = []
         for p in positions:
             stock = self.db.get(Stock, p.stock_id)
@@ -224,32 +230,42 @@ class PortfolioAnalyticsService:
                 cost_basis = float(p.avg_cost) * float(p.quantity)
                 if cost_basis > 0:
                     unrealized_pct = (float(p.market_value) - cost_basis) / cost_basis * 100
-            out.append({
-                "symbol": stock.symbol if stock else None,
-                "market_value": float(p.market_value) if p.market_value else 0,
-                "weight_pct": float(p.weight_pct) if p.weight_pct else 0,
-                "sector": p.sector or (stock.sector if stock else None),
-                "unrealized_pnl_pct": unrealized_pct,
-            })
+            out.append(
+                {
+                    "symbol": stock.symbol if stock else None,
+                    "market_value": float(p.market_value) if p.market_value else 0,
+                    "weight_pct": float(p.weight_pct) if p.weight_pct else 0,
+                    "sector": p.sector or (stock.sector if stock else None),
+                    "unrealized_pnl_pct": unrealized_pct,
+                }
+            )
         return out
 
     def _open_position_count(self) -> int:
         from sqlalchemy import func
-        return int(self.db.scalar(
-            select(func.count(PortfolioPosition.id)).where(
-                PortfolioPosition.is_current.is_(True),
-                PortfolioPosition.position_status == "OPEN",
+
+        return int(
+            self.db.scalar(
+                select(func.count(PortfolioPosition.id)).where(
+                    PortfolioPosition.is_current.is_(True),
+                    PortfolioPosition.position_status == "OPEN",
+                )
             )
-        ) or 0)
+            or 0
+        )
 
     def _current_cash(self, total_equity: float) -> float:
         from sqlalchemy import func
-        mv = float(self.db.scalar(
-            select(func.sum(PortfolioPosition.market_value)).where(
-                PortfolioPosition.is_current.is_(True),
-                PortfolioPosition.position_status == "OPEN",
+
+        mv = float(
+            self.db.scalar(
+                select(func.sum(PortfolioPosition.market_value)).where(
+                    PortfolioPosition.is_current.is_(True),
+                    PortfolioPosition.position_status == "OPEN",
+                )
             )
-        ) or 0.0)
+            or 0.0
+        )
         return max(0.0, total_equity - mv)
 
     def _current_drawdown(self) -> float | None:
@@ -265,7 +281,9 @@ class PortfolioAnalyticsService:
 
     def _compute_turnover(self, from_date: date | None, to_date: date | None) -> float | None:
         from sqlalchemy import func
+
         from app.models.paper_trade import PaperTrade
+
         q = select(func.sum(PaperTrade.fill_price * PaperTrade.fill_quantity)).where(
             PaperTrade.status == "filled"
         )

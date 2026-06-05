@@ -6,8 +6,8 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.workspace_exit_research.models import AlphaDecayPointResult, PolicyMetricResult
 from app.models.exit_research import ExitResearchAlphaDecayPoint, ExitResearchPolicyMetric
+from app.workspace_exit_research.models import AlphaDecayPointResult, PolicyMetricResult
 
 
 class ExitResearchMetricRepository:
@@ -189,7 +189,11 @@ class ExitResearchMetricRepository:
         )
         if regime_labels:
             stmt = stmt.where(ExitResearchPolicyMetric.regime_label.in_(regime_labels))
-        return list(self.db.scalars(stmt.order_by(ExitResearchPolicyMetric.policy_family).limit(limit)).all())
+        return list(
+            self.db.scalars(
+                stmt.order_by(ExitResearchPolicyMetric.policy_family).limit(limit)
+            ).all()
+        )
 
     def list_alpha_decay(
         self,

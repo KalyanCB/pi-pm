@@ -5,6 +5,7 @@ Three dimensions:
 2. Recommendation Stability — how often do actions churn day-to-day?
 3. Recommendation Reliability — how often are recommendations data-complete?
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,10 +18,10 @@ from app.recommendation_analytics.calculator import (
 )
 from app.recommendation_analytics.dtos import (
     ConvictionCalibrationDTO,
+    OutcomeWindowDTO,
     ReliabilityDTO,
     StabilityDTO,
     TrustMetricsDTO,
-    OutcomeWindowDTO,
 )
 
 
@@ -44,7 +45,7 @@ def compute_calibration(rows: list[OutcomeRow]) -> ConvictionCalibrationDTO:
 @dataclass
 class _ActionHistory:
     symbol: str
-    dates_actions: list[tuple]   # [(date, action), ...] sorted ascending
+    dates_actions: list[tuple]  # [(date, action), ...] sorted ascending
 
 
 def compute_stability(action_history: list[_ActionHistory]) -> StabilityDTO:

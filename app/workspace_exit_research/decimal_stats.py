@@ -5,7 +5,6 @@ import random
 from decimal import ROUND_HALF_UP, Decimal
 from statistics import median
 
-
 _QUANTIZE = Decimal("0.00000001")
 
 

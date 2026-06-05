@@ -4,7 +4,17 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,7 +57,12 @@ class RegimePolicyConfig(Base, UUIDPrimaryKeyMixin):
             "policy_version",
             name="uq_regime_policy_configs_name_version",
         ),
-        Index("ix_regime_policy_configs_strategy_status", "strategy_name", "strategy_version", "status"),
+        Index(
+            "ix_regime_policy_configs_strategy_status",
+            "strategy_name",
+            "strategy_version",
+            "status",
+        ),
     )
 
 
@@ -76,7 +91,9 @@ class RegimePolicyDecision(Base, UUIDPrimaryKeyMixin):
 
     policy_config: Mapped[RegimePolicyConfig] = relationship(back_populates="decisions")
     ranking_run: Mapped[RankingRun | None] = relationship("RankingRun")
-    validation_report: Mapped[RankingValidationReport | None] = relationship("RankingValidationReport")
+    validation_report: Mapped[RankingValidationReport | None] = relationship(
+        "RankingValidationReport"
+    )
     experiment_run: Mapped[ExperimentRun | None] = relationship("ExperimentRun")
 
     __table_args__ = (

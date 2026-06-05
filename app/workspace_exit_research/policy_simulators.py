@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.factor_analytics.constants import DATASET_SPLIT_ALL
 from app.factor_analytics.window import include_in_split
 from app.ranking.math_utils import (
     PriceBar,
@@ -11,10 +10,6 @@ from app.ranking.math_utils import (
     simple_moving_average,
 )
 from app.validation.forward_returns import compute_forward_return
-from app.workspace_exit_research.forward_returns_index import (
-    BarForwardReturnIndex,
-    alpha_decay_returns_indexed,
-)
 from app.workspace_exit_research.constants import (
     ALPHA_DECAY_MAX_DAYS,
     ATR_TRAIL_MULTIPLIER,
@@ -25,7 +20,6 @@ from app.workspace_exit_research.constants import (
     FIXED_HOLD_DAYS,
     INSUFFICIENT_SAMPLE_STATUS,
     MIN_EXIT_SAMPLE_SIZE,
-    POLICY_FAMILY_ALPHA_DECAY,
     POLICY_FAMILY_FIXED_HOLD,
     POLICY_FAMILY_RANK_DETERIORATION,
     POLICY_FAMILY_REGIME_EXIT,
@@ -33,17 +27,22 @@ from app.workspace_exit_research.constants import (
     RANK_EXIT_THRESHOLDS,
     REGIME_EXIT_VARIANTS,
     REGIME_LABEL_ALL,
-    REGIME_LABELS,
     SNAPSHOT_RETURN_DAYS,
     TREND_FAILURE_VARIANTS,
 )
-from app.workspace_exit_research.data_cache import RankPathCache, RegimePathCache, ResearchBarCache
+from app.workspace_exit_research.data_cache import RankPathCache, RegimePathCache
 from app.workspace_exit_research.decimal_stats import (
     bootstrap_ci as compute_bootstrap_ci,
+)
+from app.workspace_exit_research.decimal_stats import (
     hit_rate_decimal,
     mean_decimal,
     median_decimal,
     pstdev_decimal,
+)
+from app.workspace_exit_research.forward_returns_index import (
+    BarForwardReturnIndex,
+    alpha_decay_returns_indexed,
 )
 from app.workspace_exit_research.models import (
     AlphaDecayPointResult,
@@ -79,9 +78,16 @@ def _trading_days_after(bars: list[PriceBar], entry_date, count: int) -> list[Pr
     return future[:count]
 
 
-def simulate_fixed_hold(entry: SignalEntry, hold_days: int, bars: list[PriceBar]) -> ExitSimulationResult:
+def simulate_fixed_hold(
+    entry: SignalEntry, hold_days: int, bars: list[PriceBar]
+) -> ExitSimulationResult:
     variant = f"FIXED_HOLD_{hold_days}"
-    snapshot_map = {5: entry.return_5d, 10: entry.return_10d, 20: entry.return_20d, 60: entry.return_60d}
+    snapshot_map = {
+        5: entry.return_5d,
+        10: entry.return_10d,
+        20: entry.return_20d,
+        60: entry.return_60d,
+    }
     if hold_days in SNAPSHOT_RETURN_DAYS and snapshot_map.get(hold_days) is not None:
         return ExitSimulationResult(
             POLICY_FAMILY_FIXED_HOLD,
@@ -184,7 +190,9 @@ def simulate_trend_failure(
             POLICY_FAMILY_TREND_FAILURE, variant, None, 0, "DATA_END", censored=True
         )
     pre_entry = bars_on_or_before(bars, entry.entry_date)
-    breakout_level = max((b.close for b in pre_entry[-BREAKOUT_LOOKBACK_DAYS:]), default=entry_close)
+    breakout_level = max(
+        (b.close for b in pre_entry[-BREAKOUT_LOOKBACK_DAYS:]), default=entry_close
+    )
     atr = average_true_range(pre_entry, 14) if len(pre_entry) >= 15 else None
     trail_stop = entry_close - ATR_TRAIL_MULTIPLIER * atr if atr else None
     peak = entry_close
@@ -213,7 +221,12 @@ def simulate_trend_failure(
             holding = index
             ret = _return_between(bars, entry.entry_date, exit_date)
             return ExitSimulationResult(
-                POLICY_FAMILY_TREND_FAILURE, variant, ret, holding, exit_reason, censored=ret is None
+                POLICY_FAMILY_TREND_FAILURE,
+                variant,
+                ret,
+                holding,
+                exit_reason,
+                censored=ret is None,
             )
     ret = _return_between(bars, entry.entry_date, exit_date)
     return ExitSimulationResult(
@@ -248,7 +261,9 @@ def run_regime_exit_batch(
     bars: list[PriceBar],
     regime_cache: RegimePathCache,
 ) -> list[ExitSimulationResult]:
-    return [simulate_regime_exit(entry, variant, bars, regime_cache) for variant in REGIME_EXIT_VARIANTS]
+    return [
+        simulate_regime_exit(entry, variant, bars, regime_cache) for variant in REGIME_EXIT_VARIANTS
+    ]
 
 
 def run_trend_failure_batch(

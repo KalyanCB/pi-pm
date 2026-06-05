@@ -21,13 +21,8 @@ def _bars(n: int) -> list[PriceBar]:
 
 def test_momentum_reference_and_historical_share_factor_space():
     momentum = resolve_see_strategy("momentum_v1")
-    score_components = {
-        name: {"normalized": 0.75, "raw": 1.0}
-        for name in momentum.factor_names
-    }
-    reference = extract_reference_profile(
-        score_components, factor_names=momentum.factor_names
-    )
+    score_components = {name: {"normalized": 0.75, "raw": 1.0} for name in momentum.factor_names}
+    reference = extract_reference_profile(score_components, factor_names=momentum.factor_names)
     assert set(reference.keys()) == set(momentum.factor_names)
 
     stock = StockSnapshot(

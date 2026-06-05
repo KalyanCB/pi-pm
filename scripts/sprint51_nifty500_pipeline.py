@@ -14,12 +14,12 @@ from pathlib import Path
 from app.core.config import get_settings
 from app.core.constants import (
     DEFAULT_BENCHMARK_SYMBOL,
-    IngestPeriod,
     RANKING_STRATEGY_BREAKOUT_V1,
     RANKING_STRATEGY_BREAKOUT_V1_VERSION,
     RANKING_STRATEGY_MOMENTUM_V1,
     RANKING_STRATEGY_MOMENTUM_V1_VERSION,
     UNIVERSE_NIFTY_500,
+    IngestPeriod,
 )
 from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
@@ -315,9 +315,7 @@ def run_pipeline(args: argparse.Namespace) -> dict:
         services = _build_services(db)
 
         if "bootstrap" in args.phases:
-            report["phases"]["bootstrap"] = phase_bootstrap(
-                services, fetch_live=args.fetch_live
-            )
+            report["phases"]["bootstrap"] = phase_bootstrap(services, fetch_live=args.fetch_live)
             report["universe_size"] = report["phases"]["bootstrap"]["membership_total"]
 
         if "reactivate" in args.phases:

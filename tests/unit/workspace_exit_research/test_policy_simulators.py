@@ -163,7 +163,13 @@ def test_aggregate_alpha_decay_decimal_returns():
 
 
 def test_bootstrap_ci_returns_bounds():
-    values = [Decimal("0.01"), Decimal("0.02"), Decimal("0.03"), Decimal("0.04"), Decimal("0.05")] * 10
+    values = [
+        Decimal("0.01"),
+        Decimal("0.02"),
+        Decimal("0.03"),
+        Decimal("0.04"),
+        Decimal("0.05"),
+    ] * 10
     lower, upper = bootstrap_ci(values)
     assert lower is not None and upper is not None
     assert lower <= upper

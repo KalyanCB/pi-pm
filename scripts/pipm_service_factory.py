@@ -6,7 +6,9 @@ from app.core.config import get_settings
 from app.core.constants import DEFAULT_BENCHMARK_SYMBOL
 from app.db.repositories.exit_research_metric_repository import ExitResearchMetricRepository
 from app.db.repositories.exit_research_run_repository import ExitResearchRunRepository
-from app.db.repositories.factor_performance_metric_repository import FactorPerformanceMetricRepository
+from app.db.repositories.factor_performance_metric_repository import (
+    FactorPerformanceMetricRepository,
+)
 from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository

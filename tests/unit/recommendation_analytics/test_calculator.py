@@ -1,4 +1,5 @@
 """Tests for recommendation analytics calculator (AC-RP-01..09)."""
+
 import pytest
 
 from app.recommendation_analytics.calculator import (
@@ -32,8 +33,11 @@ def _row(**kwargs) -> OutcomeRow:
 
 # ── AC-RP-01: Every closed outcome can produce metrics ────────────────────────
 
+
 def test_quality_metrics_win():
-    rows = [_row(outcome_status="WIN", alpha_pct=5.0)] * 3 + [_row(outcome_status="LOSS", alpha_pct=-2.0)]
+    rows = [_row(outcome_status="WIN", alpha_pct=5.0)] * 3 + [
+        _row(outcome_status="LOSS", alpha_pct=-2.0)
+    ]
     m = compute_quality_metrics(rows)
     assert m.win_count == 3
     assert m.loss_count == 1
@@ -65,7 +69,7 @@ def test_win_rate_none_when_no_closed():
 def test_alpha_calculation():
     rows = [_row(outcome_status="WIN", alpha_pct=6.0), _row(outcome_status="LOSS", alpha_pct=-2.0)]
     m = compute_quality_metrics(rows)
-    assert m.avg_alpha_pct == pytest.approx(2.0)   # (6 + -2) / 2
+    assert m.avg_alpha_pct == pytest.approx(2.0)  # (6 + -2) / 2
     assert m.median_alpha_pct == pytest.approx(2.0)
 
 
@@ -77,7 +81,7 @@ def test_profit_factor():
         _row(outcome_status="LOSS", alpha_pct=-2.0),
     ]
     m = compute_quality_metrics(rows)
-    assert m.profit_factor == pytest.approx(15.0 / 5.0)   # 15 gain / 5 loss
+    assert m.profit_factor == pytest.approx(15.0 / 5.0)  # 15 gain / 5 loss
 
 
 def test_profit_factor_none_when_no_losses():
@@ -180,7 +184,9 @@ def test_deterministic_replay():
 
 # AC-RP-09: no LLM imports
 def test_no_llm_imports_in_calculator():
-    import ast, pathlib
+    import ast
+    import pathlib
+
     src = pathlib.Path(__file__).parents[3] / "app" / "recommendation_analytics" / "calculator.py"
     tree = ast.parse(src.read_text())
     for node in ast.walk(tree):
@@ -193,8 +199,12 @@ def test_no_llm_imports_in_calculator():
 
 
 def test_no_llm_imports_in_trust_metrics():
-    import ast, pathlib
-    src = pathlib.Path(__file__).parents[3] / "app" / "recommendation_analytics" / "trust_metrics.py"
+    import ast
+    import pathlib
+
+    src = (
+        pathlib.Path(__file__).parents[3] / "app" / "recommendation_analytics" / "trust_metrics.py"
+    )
     tree = ast.parse(src.read_text())
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -214,8 +224,8 @@ def test_target_and_stop_rates():
         _row(outcome_status="LOSS", target_hit=False, stop_hit=False),
     ]
     m = compute_quality_metrics(rows)
-    assert m.target_hit_rate == pytest.approx(0.5)   # 2/4 closed
-    assert m.stop_hit_rate == pytest.approx(0.25)    # 1/4 closed
+    assert m.target_hit_rate == pytest.approx(0.5)  # 2/4 closed
+    assert m.stop_hit_rate == pytest.approx(0.25)  # 1/4 closed
 
 
 def test_avg_days_held():

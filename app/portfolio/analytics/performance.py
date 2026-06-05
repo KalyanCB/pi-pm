@@ -3,13 +3,13 @@
 All metrics are deterministic. Same inputs → same outputs (AC-PE-13).
 No LLM. No feedback into recommendation or conviction.
 """
+
 from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
-from typing import Any
 
 
 @dataclass(frozen=True)
@@ -27,7 +27,7 @@ class PerformanceMetrics:
     alpha_pct: float | None
 
     # Risk
-    volatility_pct: float | None       # annualised daily return std
+    volatility_pct: float | None  # annualised daily return std
     sharpe_ratio: float | None
     sortino_ratio: float | None
     max_drawdown_pct: float | None
@@ -35,13 +35,13 @@ class PerformanceMetrics:
     max_drawdown_end: date | None
 
     # Activity
-    turnover_pct: float | None          # (buys + sells) / avg_nav
+    turnover_pct: float | None  # (buys + sells) / avg_nav
     win_rate: float | None
     profit_factor: float | None
     avg_holding_days: float | None
 
     # Exposure
-    avg_exposure_pct: float | None      # avg market_value / nav
+    avg_exposure_pct: float | None  # avg market_value / nav
     avg_cash_pct: float | None
 
     # Counts
@@ -155,7 +155,9 @@ def compute_performance(
     )
 
 
-def _compute_max_drawdown(nav_series: list[NavPoint]) -> tuple[float | None, date | None, date | None]:
+def _compute_max_drawdown(
+    nav_series: list[NavPoint],
+) -> tuple[float | None, date | None, date | None]:
     if len(nav_series) < 2:
         return None, None, None
     peak = nav_series[0].nav
@@ -178,11 +180,24 @@ def _compute_max_drawdown(nav_series: list[NavPoint]) -> tuple[float | None, dat
 
 def _empty_metrics() -> PerformanceMetrics:
     return PerformanceMetrics(
-        total_return_pct=None, cagr_pct=None, alpha_pct=None,
-        volatility_pct=None, sharpe_ratio=None, sortino_ratio=None,
-        max_drawdown_pct=None, max_drawdown_start=None, max_drawdown_end=None,
-        turnover_pct=None, win_rate=None, profit_factor=None, avg_holding_days=None,
-        avg_exposure_pct=None, avg_cash_pct=None,
-        total_closed_positions=0, total_open_positions=0,
-        from_date=None, to_date=None, trading_days=0,
+        total_return_pct=None,
+        cagr_pct=None,
+        alpha_pct=None,
+        volatility_pct=None,
+        sharpe_ratio=None,
+        sortino_ratio=None,
+        max_drawdown_pct=None,
+        max_drawdown_start=None,
+        max_drawdown_end=None,
+        turnover_pct=None,
+        win_rate=None,
+        profit_factor=None,
+        avg_holding_days=None,
+        avg_exposure_pct=None,
+        avg_cash_pct=None,
+        total_closed_positions=0,
+        total_open_positions=0,
+        from_date=None,
+        to_date=None,
+        trading_days=0,
     )

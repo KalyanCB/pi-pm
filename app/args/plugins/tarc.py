@@ -95,7 +95,11 @@ def _build_tarc_diagnostics(payload: dict[str, Any]) -> dict[str, Any]:
     above_08 = sum(1 for _, v in normalized_values if v >= 0.80)
     above_06 = sum(1 for _, v in normalized_values if v >= 0.60)
     below_03 = sum(1 for _, v in normalized_values if v < 0.30)
-    breadth = "STRONG_BREADTH" if above_08 >= 4 else ("MEDIUM_BREADTH" if above_06 >= 4 else "NARROW_SIGNAL")
+    breadth = (
+        "STRONG_BREADTH"
+        if above_08 >= 4
+        else ("MEDIUM_BREADTH" if above_06 >= 4 else "NARROW_SIGNAL")
+    )
 
     concentration = 1.0
     if normalized_values:
@@ -104,15 +108,26 @@ def _build_tarc_diagnostics(payload: dict[str, Any]) -> dict[str, Any]:
         concentration = min(1.0, (sum(vals[:2]) / total))
 
     regime_perf = list(regime.get("strategy_regime_performance") or [])
-    regime_alignment = "HIGH" if len(regime_perf) >= 3 else ("MODERATE" if len(regime_perf) >= 1 else "UNSUPPORTED")
+    regime_alignment = (
+        "HIGH"
+        if len(regime_perf) >= 3
+        else ("MODERATE" if len(regime_perf) >= 1 else "UNSUPPORTED")
+    )
 
     composite = float(ranking.get("composite_score") or 0.0)
     signal_quality_score = _clamp((composite / 1.0), 0.0, 1.0)
-    breadth_score = 0.90 if breadth == "STRONG_BREADTH" else (0.65 if breadth == "MEDIUM_BREADTH" else 0.40)
-    regime_score = 0.90 if regime_alignment == "HIGH" else (0.65 if regime_alignment == "MODERATE" else 0.35)
+    breadth_score = (
+        0.90 if breadth == "STRONG_BREADTH" else (0.65 if breadth == "MEDIUM_BREADTH" else 0.40)
+    )
+    regime_score = (
+        0.90 if regime_alignment == "HIGH" else (0.65 if regime_alignment == "MODERATE" else 0.35)
+    )
     risk_score = _clamp(1.0 - (0.5 * concentration + 0.1 * below_03), 0.25, 0.95)
     weighted = round(
-        signal_quality_score * 0.30 + breadth_score * 0.25 + regime_score * 0.25 + risk_score * 0.20,
+        signal_quality_score * 0.30
+        + breadth_score * 0.25
+        + regime_score * 0.25
+        + risk_score * 0.20,
         2,
     )
 
@@ -124,7 +139,9 @@ def _build_tarc_diagnostics(payload: dict[str, Any]) -> dict[str, Any]:
         f"historical return_5d={historical.get('return_5d')}."
     )
     return {
-        "signal_quality": "HIGH" if signal_quality_score >= 0.8 else ("MEDIUM" if signal_quality_score >= 0.6 else "LOW"),
+        "signal_quality": "HIGH"
+        if signal_quality_score >= 0.8
+        else ("MEDIUM" if signal_quality_score >= 0.6 else "LOW"),
         "signal_breadth": breadth,
         "regime_alignment": regime_alignment,
         "technical_summary": summary,

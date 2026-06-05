@@ -24,7 +24,9 @@ def _packet_payload(*, see_score: float) -> dict:
             "recent_completed_validations": [
                 {
                     "as_of_date": "2026-05-11",
-                    "horizon_metrics": [{"horizon": 5, "sample_size": 300, "rank_ic_spearman": 0.1}],
+                    "horizon_metrics": [
+                        {"horizon": 5, "sample_size": 300, "rank_ic_spearman": 0.1}
+                    ],
                     "decile_metrics": [{"horizon": 5, "decile": 10, "avg_return": 0.02}],
                 }
             ],
@@ -35,7 +37,12 @@ def _packet_payload(*, see_score: float) -> dict:
         },
         "regime": {
             "strategy_regime_performance": [
-                {"regime_label": "BEAR_LOW_VOL", "avg_ic": 0.02, "sample_count": 10, "is_current_regime": True}
+                {
+                    "regime_label": "BEAR_LOW_VOL",
+                    "avg_ic": 0.02,
+                    "sample_count": 10,
+                    "is_current_regime": True,
+                }
             ]
         },
         "ranking": {

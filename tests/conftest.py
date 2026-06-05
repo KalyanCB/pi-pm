@@ -8,22 +8,30 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.models.stock_setup_research import StockSetupResearch, StockSetupResearchMetric  # noqa: F401
 from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_factor_contribution_repository import (
     RankingFactorContributionRepository,
 )
-from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
-from app.db.repositories.ranking_result_repository import RankingResultRepository
-from app.db.repositories.ranking_run_repository import RankingRunRepository
-from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
 from app.db.repositories.validation_metrics_repository import ValidationMetricsRepository
 from app.main import create_app
+from app.auth.constants import UserRole
+from app.auth.password import hash_password
+from app.db.repositories.auth_repository import (
+    PortfolioRepository,
+    UserPortfolioRepository,
+    UserPreferenceRepository,
+    UserRepository,
+)
+from app.models.auth import User, UserPortfolioMembership, Portfolio  # noqa: F401
+from app.models.stock_setup_research import (  # noqa: F401
+    StockSetupResearch,
+    StockSetupResearchMetric,
+)
 from app.providers.yahoo.client import YahooFinanceProvider
 from app.services.market_data_service import MarketDataService
 from app.services.stock_service import StockService
@@ -121,6 +129,57 @@ def market_data_service(
         RunLineageRepository(db_session),
         mock_provider,
     )
+
+
+@pytest.fixture(autouse=True)
+def auth_bypass(monkeypatch):
+    """Disable JWT enforcement for existing test suite."""
+    monkeypatch.setenv("AUTH_BYPASS_FOR_TESTS", "true")
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def user_a(db_session: Session) -> User:
+    users = UserRepository(db_session)
+    portfolios = PortfolioRepository(db_session)
+    memberships = UserPortfolioRepository(db_session)
+    prefs = UserPreferenceRepository(db_session)
+
+    user = users.create(
+        email="alice@example.com",
+        password_hash=hash_password("password123"),
+        display_name="Alice",
+    )
+    prefs.create_default(user.id)
+    portfolio = portfolios.create(name="Alice Portfolio", slug="alice-portfolio")
+    memberships.create_membership(user_id=user.id, portfolio_id=portfolio.id, role=UserRole.OWNER)
+    db_session.commit()
+    user._test_portfolio_id = portfolio.id  # type: ignore[attr-defined]
+    return user
+
+
+@pytest.fixture
+def user_b(db_session: Session) -> User:
+    users = UserRepository(db_session)
+    portfolios = PortfolioRepository(db_session)
+    memberships = UserPortfolioRepository(db_session)
+    prefs = UserPreferenceRepository(db_session)
+
+    user = users.create(
+        email="bob@example.com",
+        password_hash=hash_password("password123"),
+        display_name="Bob",
+    )
+    prefs.create_default(user.id)
+    portfolio = portfolios.create(name="Bob Portfolio", slug="bob-portfolio")
+    memberships.create_membership(user_id=user.id, portfolio_id=portfolio.id, role=UserRole.OWNER)
+    db_session.commit()
+    user._test_portfolio_id = portfolio.id  # type: ignore[attr-defined]
+    return user
 
 
 @pytest.fixture
