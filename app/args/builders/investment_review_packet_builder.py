@@ -38,6 +38,7 @@ from app.args.plugins.stock_quality_evidence import (
 from app.stock_setup_evidence.packet_enricher import attach_stock_setup_evidence
 from app.services.stock_setup_research_service import StockSetupResearchService
 from app.workspace_args.packet_schema import compute_packet_hash
+from app.db.repositories.recommendation_repository import RecommendationRepository
 
 _HISTORICAL_VALIDATION_LOOKBACK_DAYS = 120
 _MAX_HISTORICAL_VALIDATION_REPORTS = 12
@@ -56,10 +57,12 @@ class InvestmentReviewPacketBuilder:
         regime_repo: RegimeAnalyticsRepository | None = None,
         research_intel_repo: ResearchIntelligenceReportRepository | None = None,
         stock_setup_service: StockSetupResearchService | None = None,
+        recommendation_repo: RecommendationRepository | None = None,
     ) -> None:
         self.db = db
         self.validation_repo = validation_repo
         self.stock_setup_service = stock_setup_service
+        self.recommendation_repo = recommendation_repo or RecommendationRepository(db)
         self.factor_metric_repo = factor_metric_repo or FactorPerformanceMetricRepository(db)
         self.exit_metric_repo = exit_metric_repo or ExitResearchMetricRepository(db)
         self.market_data_repo = market_data_repo or MarketDataRepository(db)
@@ -201,6 +204,25 @@ class InvestmentReviewPacketBuilder:
         lineage = payload.setdefault("source_lineage", {})
         lineage["stock_quality_evidence_schema_version"] = SQE_SCHEMA_VERSION
         lineage["stock_quality_evidence_ranking_run_id"] = sqe.get("ranking_run_id")
+
+        # Attach deterministic recommendation block if available (R-ARGS-04: read-only).
+        # Committee plugins must never mutate this block.
+        rec_run = self.recommendation_repo.get_run_by_ranking_run_id(ranking_run.id)
+        if rec_run is not None:
+            rec_result = self.recommendation_repo.get_result_by_symbol(
+                rec_run.id, result.stock_id
+            )
+            if rec_result is not None:
+                payload["recommendation"] = {
+                    "action": rec_result.action,
+                    "conviction_score": rec_result.conviction_score,
+                    "conviction_band": rec_result.conviction_band,
+                    "reason_codes": rec_result.reason_codes,
+                    "engine_version": rec_result.conviction_components.get(
+                        "config_version", "rec_v1.0.0"
+                    ),
+                    "ranking_run_id": str(ranking_run.id),
+                }
 
         payload["packet_built_at"] = datetime.now(UTC).isoformat()
         packet_hash = compute_packet_hash(payload)

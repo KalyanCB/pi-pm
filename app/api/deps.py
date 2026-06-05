@@ -58,6 +58,8 @@ from app.services.regime_analytics_service import RegimeAnalyticsService
 from app.services.regime_policy_service import RegimePolicyPresetService, RegimePolicyService
 from app.services.signal_validation_service import SignalValidationService
 from app.services.stock_service import StockService
+from app.db.repositories.recommendation_repository import RecommendationRepository
+from app.services.recommendation_service import RecommendationService
 from app.services.traceability_service import TraceabilityService
 from app.db.repositories.research_run_repository import ResearchRunRepository
 from app.db.repositories.investment_review_packet_repository import (
@@ -598,6 +600,16 @@ def get_args_research_run_service(
         stock_setup_service=stock_setup_service,
         llm_registry=llm_registry,
     )
+
+
+def get_recommendation_repository(db: Session = Depends(get_db)) -> RecommendationRepository:
+    return RecommendationRepository(db)
+
+
+def get_recommendation_service(
+    db: Session = Depends(get_db),
+) -> RecommendationService:
+    return RecommendationService(db)
 
 
 def get_args_explainability_service(

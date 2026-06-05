@@ -54,6 +54,13 @@ from app.models.args import (
 )
 from app.models.stock_setup_research import StockSetupResearch, StockSetupResearchMetric
 from app.models.research_report import ResearchReport
+from app.models.recommendation import (
+    RecommendationConfig,
+    RecommendationRun,
+    RecommendationResult,
+    RecommendationApproval,
+    RecommendationOutcome,
+)
 from app.models.stock import Stock
 from app.models.stock_universe import StockUniverse
 from app.models.universe_membership import UniverseMembership
@@ -106,4 +113,9 @@ __all__ = [
     "LlmExecutionRecord",
     "StockSetupResearch",
     "StockSetupResearchMetric",
+    "RecommendationConfig",
+    "RecommendationRun",
+    "RecommendationResult",
+    "RecommendationApproval",
+    "RecommendationOutcome",
 ]
