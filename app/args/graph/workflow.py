@@ -12,13 +12,13 @@ from app.args.graph.state import ArgsGraphState
 from app.args.llm.registry import CommitteeLlmRegistry
 from app.args.plugins.base import CommitteePlugin
 from app.args.plugins.registry import CommitteeRegistry
+from app.workspace_args.committee_contracts import CommitteeReviewOutput
 from app.workspace_args.constants import (
     COMMITTEE_CRO,
     CommitteeAdvisoryAction,
     aggregate_cro_advisory,
     label_to_advisory_action,
 )
-from app.workspace_args.committee_contracts import CommitteeReviewOutput
 from app.workspace_args.models import InvestmentReviewPacket
 
 logger = logging.getLogger(__name__)
@@ -174,7 +174,8 @@ class ArgsResearchWorkflow:
 
             # Identify HIGH_CONCERN originating committees for CRO narrative
             high_concern_committees = [
-                code for code, action in committee_actions.items()
+                code
+                for code, action in committee_actions.items()
                 if action == CommitteeAdvisoryAction.HIGH_CONCERN
             ]
 

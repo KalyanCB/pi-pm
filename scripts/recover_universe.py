@@ -144,8 +144,10 @@ def main() -> int:
             total_batches = len(batches)
 
             if pass_number > 1:
-                print(f"\n--- Retry pass {pass_number - 1}/{args.max_retries} "
-                      f"({len(error_symbols)} symbols remaining) ---")
+                print(
+                    f"\n--- Retry pass {pass_number - 1}/{args.max_retries} "
+                    f"({len(error_symbols)} symbols remaining) ---"
+                )
 
             for batch_index, batch in enumerate(batches, start=1):
                 result = service.ingest(batch, period)

@@ -1,7 +1,7 @@
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from datetime import date
 
 from app.api.deps import (
     get_experiment_service,
@@ -9,7 +9,6 @@ from app.api.deps import (
     get_regime_analytics_service,
     get_traceability_service,
 )
-from app.core.exceptions import NotFoundError
 from app.schemas.observability import ExperimentRunCreate, ScoreReconstructionRead
 from app.services.experiment_service import ExperimentService
 from app.services.observability_service import ObservabilityService

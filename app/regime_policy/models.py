@@ -52,9 +52,7 @@ class ReplayWindowSpec:
     def split_dates(self, as_of_date: date) -> str:
         if self.mode == "single_holdout" and self.holdout_start_date is not None:
             return "holdout" if as_of_date >= self.holdout_start_date else "train"
-        for period_name, periods in (
-            ("holdout", self.holdout_periods),
-        ):
+        for period_name, periods in (("holdout", self.holdout_periods),):
             for start, end in periods:
                 if start <= as_of_date <= end:
                     return period_name

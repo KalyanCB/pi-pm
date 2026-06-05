@@ -33,9 +33,7 @@ HISTORY_DAYS = max(
     FiftyTwoWeekHighFactor.lookback,
     VolumeSurgeFactor.long_window + 1,
     AtrExpansionFactor.long_window + 1,
-    RelativeStrengthAccelerationFactor.rs_lookback
-    + RelativeStrengthAccelerationFactor.lag
-    + 1,
+    RelativeStrengthAccelerationFactor.rs_lookback + RelativeStrengthAccelerationFactor.lag + 1,
 )
 
 DEFAULT_WEIGHTS: dict[str, Decimal] = {

@@ -1,6 +1,7 @@
+import random
 from datetime import date, timedelta
 from decimal import Decimal
-import random
+from uuid import uuid4
 
 import pytest
 
@@ -12,9 +13,8 @@ from app.workspace_exit_research.forward_returns_index import (
     alpha_decay_returns_indexed,
     alpha_decay_returns_matches_reference,
 )
-from app.workspace_exit_research.policy_simulators import alpha_decay_returns
 from app.workspace_exit_research.models import SignalEntry
-from uuid import uuid4
+from app.workspace_exit_research.policy_simulators import alpha_decay_returns
 
 
 def _bars_from_closes(start: date, closes: list[str]) -> list[PriceBar]:

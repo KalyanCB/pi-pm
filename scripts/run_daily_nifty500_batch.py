@@ -23,8 +23,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force-recompute", action="store_true")
     parser.add_argument("--force-regenerate-rankings", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--portfolio",
+        action="store_true",
+        help="Enable portfolio phases (recompute, exit monitor, NAV, reconcile)",
+    )
+    parser.add_argument(
+        "--pilot-auto-approve",
+        action="store_true",
+        help="Auto-approve BUY recommendations before paper fill (pilot only)",
+    )
+    parser.add_argument(
+        "--pilot-auto-execute",
+        action="store_true",
+        help="Simulate paper entries/exits (pilot only)",
+    )
     parser.add_argument("--assume-session-done", action="store_true", default=True)
-    parser.add_argument("--no-assume-session-done", action="store_false", dest="assume_session_done")
+    parser.add_argument(
+        "--no-assume-session-done", action="store_false", dest="assume_session_done"
+    )
     parser.add_argument("--timeout", type=float, default=7200.0)
     parser.add_argument("--poll-run-id", default=None, help="Poll existing run instead of creating")
     return parser.parse_args()
@@ -41,7 +58,7 @@ def main() -> int:
             print(json.dumps(response.json(), indent=2, default=str))
             return 0
 
-        payload = {
+        payload: dict = {
             "target_date": args.target_date.isoformat() if args.target_date else None,
             "from_date": args.from_date.isoformat() if args.from_date else None,
             "force_from_date": args.force_from_date,
@@ -50,6 +67,13 @@ def main() -> int:
             "dry_run": args.dry_run,
             "assume_session_done": args.assume_session_done,
         }
+        if args.portfolio:
+            payload["phases"] = {"portfolio": True}
+            payload["ingest_portfolio_benchmarks"] = True
+        if args.pilot_auto_approve:
+            payload["pilot_auto_approve"] = True
+        if args.pilot_auto_execute:
+            payload["pilot_auto_execute"] = True
         response = client.post(API_PATH, json=payload)
         response.raise_for_status()
         print(json.dumps(response.json(), indent=2, default=str))

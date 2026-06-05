@@ -28,8 +28,7 @@ def _synthetic_bars(start: date, count: int, base: float) -> list[PriceBar]:
 
 def _legacy_alpha_decay(bars: list[PriceBar], as_of: date) -> dict[int, Decimal | None]:
     return {
-        day: compute_forward_return(bars, as_of, day)
-        for day in range(1, ALPHA_DECAY_MAX_DAYS + 1)
+        day: compute_forward_return(bars, as_of, day) for day in range(1, ALPHA_DECAY_MAX_DAYS + 1)
     }
 
 

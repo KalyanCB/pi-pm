@@ -103,9 +103,7 @@ class RecommendationRepository:
 
     def get_run_by_ranking_run_id(self, ranking_run_id: UUID) -> RecommendationRun | None:
         return self.db.scalar(
-            select(RecommendationRun).where(
-                RecommendationRun.ranking_run_id == ranking_run_id
-            )
+            select(RecommendationRun).where(RecommendationRun.ranking_run_id == ranking_run_id)
         )
 
     def get_latest_run_by_strategy(
@@ -136,9 +134,7 @@ class RecommendationRepository:
         run_id: UUID,
         action_filter: list[str] | None = None,
     ) -> list[RecommendationResult]:
-        q = select(RecommendationResult).where(
-            RecommendationResult.recommendation_run_id == run_id
-        )
+        q = select(RecommendationResult).where(RecommendationResult.recommendation_run_id == run_id)
         if action_filter:
             q = q.where(RecommendationResult.action.in_(action_filter))
         return list(self.db.scalars(q).all())

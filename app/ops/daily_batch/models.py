@@ -34,9 +34,7 @@ class DailyBatchPlan:
             "target_trading_day": self.target_trading_day.isoformat(),
             "from_date": self.from_date.isoformat(),
             "needs_ingest": self.needs_ingest,
-            "ranking_gaps": {
-                k: [d.isoformat() for d in v] for k, v in self.ranking_gaps.items()
-            },
+            "ranking_gaps": {k: [d.isoformat() for d in v] for k, v in self.ranking_gaps.items()},
             "validation_gap_count": self.validation_gap_count,
             "factor_ic_needed": self.factor_ic_needed,
             "regime_history_needed": self.regime_history_needed,

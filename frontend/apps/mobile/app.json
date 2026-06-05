@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Pi-PM",
+    "slug": "pipm-mobile",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "scheme": "pipm",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "io.pipm.mobile",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "io.pipm.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0e14"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

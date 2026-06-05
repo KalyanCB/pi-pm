@@ -4,7 +4,6 @@ import logging
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
-from statistics import median
 from uuid import UUID
 
 from sqlalchemy import select
@@ -74,7 +73,10 @@ class FactorObservationLoader:
             )
             .join(
                 RankingPerformanceSnapshot,
-                (RankingPerformanceSnapshot.ranking_run_id == RankingFactorContribution.ranking_run_id)
+                (
+                    RankingPerformanceSnapshot.ranking_run_id
+                    == RankingFactorContribution.ranking_run_id
+                )
                 & (RankingPerformanceSnapshot.stock_id == RankingFactorContribution.stock_id),
             )
             .where(RankingRun.status == RankingRunStatus.COMPLETED.value)

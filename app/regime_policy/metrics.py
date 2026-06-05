@@ -174,10 +174,7 @@ def compare_spread_significance(
     paired_len = min(len(policy_daily_spreads), len(baseline_daily_spreads))
     if paired_len == 0:
         return MetricWithSignificance(value=None)
-    diffs = [
-        policy_daily_spreads[i] - baseline_daily_spreads[i]
-        for i in range(paired_len)
-    ]
+    diffs = [policy_daily_spreads[i] - baseline_daily_spreads[i] for i in range(paired_len)]
     point = sum(diffs) / len(diffs)
     rng = random.Random(seed)
     boot_diffs: list[float] = []
@@ -232,12 +229,7 @@ def build_research_findings(
         ranked_days=ranked_days,
     )
     recommendation = "continue_research"
-    if (
-        is_sig
-        and improvement is not None
-        and improvement > 0
-        and confidence in {"medium", "high"}
-    ):
+    if is_sig and improvement is not None and improvement > 0 and confidence in {"medium", "high"}:
         recommendation = "promote_to_next_research_stage"
     elif improvement is not None and improvement <= 0:
         recommendation = "reject_policy"

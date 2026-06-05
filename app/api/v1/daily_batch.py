@@ -17,7 +17,9 @@ from app.services.daily_batch_service import DailyBatchService
 router = APIRouter()
 
 
-@router.post("/runs", response_model=DailyBatchRunCreateResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/runs", response_model=DailyBatchRunCreateResponse, status_code=status.HTTP_201_CREATED
+)
 def create_daily_batch_run(
     payload: DailyBatchRunCreateRequest,
     service: DailyBatchService = Depends(get_daily_batch_service),

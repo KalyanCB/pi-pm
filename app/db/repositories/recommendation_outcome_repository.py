@@ -1,10 +1,11 @@
 """Repository for RecommendationOutcome — filtered queries for analytics."""
+
 from __future__ import annotations
 
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.recommendation import RecommendationOutcome, RecommendationResult, RecommendationRun
@@ -67,14 +68,11 @@ class RecommendationOutcomeRepository:
     ) -> dict[str, int]:
         """Return {completed: N, insufficient_data: N} for reliability metric."""
         # Join to recommendation_results to get conviction_components which holds validation status
-        q = (
-            select(
-                RecommendationResult.conviction_components,
-            )
-            .join(
-                RecommendationOutcome,
-                RecommendationOutcome.recommendation_result_id == RecommendationResult.id,
-            )
+        q = select(
+            RecommendationResult.conviction_components,
+        ).join(
+            RecommendationOutcome,
+            RecommendationOutcome.recommendation_result_id == RecommendationResult.id,
         )
         if strategy_name:
             q = q.join(
@@ -108,16 +106,13 @@ class RecommendationOutcomeRepository:
         to_date: date | None = None,
     ) -> list[dict]:
         """Return rows of (symbol, as_of_date, action) for stability computation."""
-        q = (
-            select(
-                RecommendationOutcome.symbol,
-                RecommendationOutcome.entry_date,
-                RecommendationResult.action,
-            )
-            .join(
-                RecommendationResult,
-                RecommendationResult.id == RecommendationOutcome.recommendation_result_id,
-            )
+        q = select(
+            RecommendationOutcome.symbol,
+            RecommendationOutcome.entry_date,
+            RecommendationResult.action,
+        ).join(
+            RecommendationResult,
+            RecommendationResult.id == RecommendationOutcome.recommendation_result_id,
         )
         if strategy_name:
             q = q.join(
@@ -137,14 +132,18 @@ class RecommendationOutcomeRepository:
     ) -> list[RecommendationResult]:
         """All recommendation results for a symbol (for why-not analysis)."""
         from sqlalchemy import select
+
         from app.models.stock import Stock
 
         stock = self.db.scalar(select(Stock).where(Stock.symbol == symbol.upper()))
         if stock is None:
             return []
-        q = select(RecommendationResult).where(
-            RecommendationResult.stock_id == stock.id
-        ).order_by(RecommendationResult.created_at.desc()).limit(50)
+        q = (
+            select(RecommendationResult)
+            .where(RecommendationResult.stock_id == stock.id)
+            .order_by(RecommendationResult.created_at.desc())
+            .limit(50)
+        )
         if strategy_name:
             q = q.join(
                 RecommendationRun,

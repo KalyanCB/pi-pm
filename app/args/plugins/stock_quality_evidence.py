@@ -95,7 +95,11 @@ def _build_ranking_attribution(payload: dict[str, Any]) -> dict[str, Any]:
             "composite_score": composite,
             "top_contributors": [],
             "weakest_factor": None,
-            "signal_breadth": {"factors_above_0.8": 0, "factors_below_0.3": 0, "label": "UNAVAILABLE"},
+            "signal_breadth": {
+                "factors_above_0.8": 0,
+                "factors_below_0.3": 0,
+                "label": "UNAVAILABLE",
+            },
             "concentration_ratio_top3": None,
             "quality_score": 0.40,
             "evidence_ref": "ranking:score_components",
@@ -290,15 +294,9 @@ def _build_regime_alignment(payload: dict[str, Any], regime_label: str | None) -
     breakout = _normalized_factor(payload, "consolidation_breakout")
 
     flags = {
-        "high_momentum_in_bear_regime": bool(
-            bearish and mom is not None and mom >= 0.75
-        ),
-        "near_highs_in_bear_regime": bool(
-            bearish and high_prox is not None and high_prox >= 0.85
-        ),
-        "weak_breakout_confirmation": bool(
-            breakout is not None and breakout < 0.35
-        ),
+        "high_momentum_in_bear_regime": bool(bearish and mom is not None and mom >= 0.75),
+        "near_highs_in_bear_regime": bool(bearish and high_prox is not None and high_prox >= 0.85),
+        "weak_breakout_confirmation": bool(breakout is not None and breakout < 0.35),
     }
 
     headwind_count = sum(1 for v in flags.values() if v)
@@ -416,11 +414,7 @@ def _build_historical_analog(payload: dict[str, Any], regime_label: str | None) 
         score_component * 0.50 + win_component * 0.30 + return_component * 0.20,
         4,
     )
-    label = (
-        "strong"
-        if quality_score >= 0.75
-        else ("moderate" if quality_score >= 0.55 else "weak")
-    )
+    label = "strong" if quality_score >= 0.75 else ("moderate" if quality_score >= 0.55 else "weak")
 
     return {
         "source": "stock_setup_evidence",
@@ -549,9 +543,7 @@ def _build_validation_context(payload: dict[str, Any]) -> dict[str, Any]:
         spread_score = _clamp(0.5 + abs(spread or 0.0) * 12.0, 0.35, 0.90)
         hist_quality = round(ic_score * 0.55 + spread_score * 0.45, 4)
         hist_label = (
-            "strong"
-            if hist_quality >= 0.75
-            else ("moderate" if hist_quality >= 0.55 else "weak")
+            "strong" if hist_quality >= 0.75 else ("moderate" if hist_quality >= 0.55 else "weak")
         )
 
     informational = 0.50 if pending else 0.85
@@ -658,27 +650,33 @@ def condense_stock_quality_evidence(sqe: dict[str, Any]) -> dict[str, Any]:
         "A_ranking": {
             "rank": (sqe.get("A_ranking_attribution") or {}).get("rank"),
             "quality_score": (sqe.get("A_ranking_attribution") or {}).get("quality_score"),
-            "breadth_label": ((sqe.get("A_ranking_attribution") or {}).get("signal_breadth") or {}).get(
-                "label"
-            ),
+            "breadth_label": (
+                (sqe.get("A_ranking_attribution") or {}).get("signal_breadth") or {}
+            ).get("label"),
         },
         "B_factor": {
             "quality_score": (sqe.get("B_factor_attribution") or {}).get("quality_score"),
             "quality_label": (sqe.get("B_factor_attribution") or {}).get("quality_label"),
-            "net_signed_alignment": (sqe.get("B_factor_attribution") or {}).get("net_signed_alignment"),
+            "net_signed_alignment": (sqe.get("B_factor_attribution") or {}).get(
+                "net_signed_alignment"
+            ),
         },
         "C_regime": {
             "alignment_score": (sqe.get("C_regime_alignment") or {}).get("alignment_score"),
             "alignment_label": (sqe.get("C_regime_alignment") or {}).get("alignment_label"),
         },
         "D_analog": {
-            "setup_evidence_score": (sqe.get("D_historical_analog") or {}).get("setup_evidence_score"),
+            "setup_evidence_score": (sqe.get("D_historical_analog") or {}).get(
+                "setup_evidence_score"
+            ),
             "quality_score": (sqe.get("D_historical_analog") or {}).get("quality_score"),
             "win_rate_20d": (sqe.get("D_historical_analog") or {}).get("win_rate_20d"),
         },
         "E_exit": {"quality_score": (sqe.get("E_exit_profile") or {}).get("quality_score")},
         "F_validation": {
             "pending_neutral": (sqe.get("F_validation_context") or {}).get("pending_neutral"),
-            "informational_score": (sqe.get("F_validation_context") or {}).get("informational_score"),
+            "informational_score": (sqe.get("F_validation_context") or {}).get(
+                "informational_score"
+            ),
         },
     }

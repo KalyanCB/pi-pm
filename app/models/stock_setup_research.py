@@ -4,7 +4,17 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,7 +44,9 @@ class StockSetupResearch(Base, UUIDPrimaryKeyMixin):
     engine_version: Mapped[str] = mapped_column(String(16), nullable=False, default="see_v2")
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     reference_profile: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    similar_setups: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    similar_setups: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
     nearest_n: Mapped[int] = mapped_column(Integer, nullable=False, default=25)
     min_similarity: Mapped[float] = mapped_column(Numeric(8, 6), nullable=False)
     match_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

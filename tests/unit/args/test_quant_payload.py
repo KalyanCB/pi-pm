@@ -21,7 +21,9 @@ def _pending_packet_with_historical() -> dict:
                     "as_of_date": "2026-05-26",
                     "report_id": "hist-1",
                     "regime_label": "BEAR_LOW_VOL",
-                    "horizon_metrics": [{"horizon": 5, "sample_size": 400, "rank_ic_spearman": 0.04}],
+                    "horizon_metrics": [
+                        {"horizon": 5, "sample_size": 400, "rank_ic_spearman": 0.04}
+                    ],
                     "decile_metrics": [{"horizon": 5, "decile": 10, "avg_return": 0.02}],
                 }
             ]

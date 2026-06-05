@@ -5,17 +5,19 @@ investor-friendly terminology. Internal batch phase remains RESEARCH (ADR-023).
 
 Old routes at /research/* are preserved as deprecated aliases.
 """
+
 from __future__ import annotations
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_args_research_run_service, get_args_explainability_service
+from app.api.auth_deps import OwnerUser
+from app.api.deps import get_args_explainability_service, get_args_research_run_service
 from app.core.exceptions import NotFoundError
 from app.schemas.args import ResearchRunRequest
-from app.services.args_research_run_service import ArgsResearchRunService
 from app.services.args_explainability_service import ArgsExplainabilityService
+from app.services.args_research_run_service import ArgsResearchRunService
 from app.workspace_args.constants import COMMITTEE_DISPLAY_NAMES, CommitteeAdvisoryAction
 
 router = APIRouter()
@@ -24,6 +26,7 @@ router = APIRouter()
 @router.post("/review", status_code=201)
 def start_committee_review(
     payload: ResearchRunRequest,
+    _owner: OwnerUser,
     service: ArgsResearchRunService = Depends(get_args_research_run_service),
 ) -> dict:
     """Start an Investment Committee review for the top-N ranked stocks.
@@ -105,6 +108,7 @@ def get_committee_report(
     from app.db.repositories.governance_research_report_repository import (
         GovernanceResearchReportRepository,
     )
+
     report_repo = GovernanceResearchReportRepository(service.db)
     reports = report_repo.list_for_run(UUID(run["id"]))
     return {

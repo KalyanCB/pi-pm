@@ -4,7 +4,6 @@ import time
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
-from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -48,8 +47,8 @@ from app.workspace_exit_research.progress import (
     log_backfill_complete,
     log_backfill_startup,
     log_entry_progress,
-    log_phase_changed,
     log_persist_progress,
+    log_phase_changed,
     log_policy_batch_completed,
     persistence_progress_fields,
     should_log_persist_progress,
@@ -80,7 +79,9 @@ class ExitResearchService:
         self.engine = ExitMetricsEngine()
         self.persist_commit_interval = persist_commit_interval
 
-    def _transition_phase(self, run: ExitResearchRun, phase: ExitResearchPhase, *, strategy_name: str) -> None:
+    def _transition_phase(
+        self, run: ExitResearchRun, phase: ExitResearchPhase, *, strategy_name: str
+    ) -> None:
         self.run_repo.set_phase(run, phase)
         self.db.commit()
         log_phase_changed(strategy_name=strategy_name, phase=phase.value)
@@ -173,7 +174,9 @@ class ExitResearchService:
                 self.metric_repo.delete_for_run(run.id)
                 self.db.commit()
 
-            self._transition_phase(run, ExitResearchPhase.COLLECTING_ENTRIES, strategy_name=strategy_name)
+            self._transition_phase(
+                run, ExitResearchPhase.COLLECTING_ENTRIES, strategy_name=strategy_name
+            )
             entries = self.loader.load_entries(
                 strategy_name=strategy_name,
                 strategy_version=strategy_version,
@@ -262,7 +265,9 @@ class ExitResearchService:
             log_policy_batch_completed(POLICY_FAMILY_REGIME_EXIT, entries=entries_with_bars)
             log_policy_batch_completed(POLICY_FAMILY_TREND_FAILURE, entries=entries_with_bars)
 
-            self._transition_phase(run, ExitResearchPhase.AGGREGATING_METRICS, strategy_name=strategy_name)
+            self._transition_phase(
+                run, ExitResearchPhase.AGGREGATING_METRICS, strategy_name=strategy_name
+            )
 
             policy_buckets = build_policy_metric_buckets(
                 entries,
@@ -270,7 +275,9 @@ class ExitResearchService:
                 holdout_start_date=holdout_start_date,
             )
             policy_persist_total = count_policy_persist_items(policy_buckets)
-            alpha_persist_total = count_alpha_persist_items(len(alpha_by_stratum), trading_days=ALPHA_DECAY_MAX_DAYS)
+            alpha_persist_total = count_alpha_persist_items(
+                len(alpha_by_stratum), trading_days=ALPHA_DECAY_MAX_DAYS
+            )
             persistence_total = policy_persist_total + alpha_persist_total
             self.run_repo.set_persistence_totals(run, persistence_items_total=persistence_total)
             self.db.commit()
@@ -284,7 +291,9 @@ class ExitResearchService:
                 strategy_name=strategy_name,
             )
 
-            for (family, variant, regime_label, dataset_split), matching in sorted(policy_buckets.items()):
+            for (family, variant, regime_label, dataset_split), matching in sorted(
+                policy_buckets.items()
+            ):
                 if not matching:
                     continue
                 result = self.engine.aggregate_policy(
@@ -407,7 +416,9 @@ class ExitResearchService:
                     "sample_size": p.sample_size,
                     "mean_return": float(p.mean_return) if p.mean_return is not None else None,
                     "cumulative_mean_return": (
-                        float(p.cumulative_mean_return) if p.cumulative_mean_return is not None else None
+                        float(p.cumulative_mean_return)
+                        if p.cumulative_mean_return is not None
+                        else None
                     ),
                     "conclusion_status": p.conclusion_status,
                 }
@@ -433,10 +444,14 @@ class ExitResearchService:
                 "metrics_written": r.metrics_written,
                 "total_entries": r.total_entries,
                 "processed_entries": r.processed_entries,
-                "percent_complete": float(r.percent_complete) if r.percent_complete is not None else None,
+                "percent_complete": float(r.percent_complete)
+                if r.percent_complete is not None
+                else None,
                 "persistence_items_total": r.persistence_items_total,
                 "persistence_items_processed": r.persistence_items_processed,
-                "elapsed_seconds": float(r.elapsed_seconds) if r.elapsed_seconds is not None else None,
+                "elapsed_seconds": float(r.elapsed_seconds)
+                if r.elapsed_seconds is not None
+                else None,
                 "last_progress_at": r.last_progress_at.isoformat() if r.last_progress_at else None,
                 "started_at": r.started_at.isoformat(),
                 "completed_at": r.completed_at.isoformat() if r.completed_at else None,

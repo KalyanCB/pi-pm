@@ -32,7 +32,11 @@ from app.stock_setup_evidence.constants import (
     STOCK_SETUP_STATUS_INSUFFICIENT_DATA,
 )
 from app.stock_setup_evidence.hashing import compute_research_hash
-from app.stock_setup_evidence.outcomes import aggregate_outcomes, build_setup_outcomes, metrics_to_dict
+from app.stock_setup_evidence.outcomes import (
+    aggregate_outcomes,
+    build_setup_outcomes,
+    metrics_to_dict,
+)
 from app.stock_setup_evidence.profile import (
     build_stock_internal_normalized_profiles,
     extract_reference_profile,
@@ -268,9 +272,7 @@ class StockSetupResearchService:
         return self.to_payload(row)
 
     def get_packet_evidence(self, *, ranking_run_id: UUID, stock_id: UUID) -> dict:
-        row = self.research_repo.get_for_run_stock(
-            ranking_run_id=ranking_run_id, stock_id=stock_id
-        )
+        row = self.research_repo.get_for_run_stock(ranking_run_id=ranking_run_id, stock_id=stock_id)
         if row is None:
             run = self.db.get(RankingRun, ranking_run_id)
             result = self.db.scalar(
@@ -298,8 +300,12 @@ class StockSetupResearchService:
                 "similar_setups": m.occurrence_count,
                 "win_rate_5d": float(m.win_rate_5d) if m.win_rate_5d is not None else None,
                 "win_rate_20d": float(m.win_rate_20d) if m.win_rate_20d is not None else None,
-                "average_return_5d": float(m.avg_return_5d) if m.avg_return_5d is not None else None,
-                "average_return_20d": float(m.avg_return_20d) if m.avg_return_20d is not None else None,
+                "average_return_5d": float(m.avg_return_5d)
+                if m.avg_return_5d is not None
+                else None,
+                "average_return_20d": float(m.avg_return_20d)
+                if m.avg_return_20d is not None
+                else None,
                 "avg_return_5d": float(m.avg_return_5d) if m.avg_return_5d is not None else None,
                 "avg_return_20d": float(m.avg_return_20d) if m.avg_return_20d is not None else None,
                 "median_return_20d": (
@@ -352,9 +358,7 @@ class StockSetupResearchService:
             "top_similar_setups": (row.similar_setups or [])[:10],
         }
 
-    def _load_regime_by_date(
-        self, benchmark_symbol: str, dates: list[date]
-    ) -> dict[date, str]:
+    def _load_regime_by_date(self, benchmark_symbol: str, dates: list[date]) -> dict[date, str]:
         if not dates:
             return {}
         rows = self.db.scalars(

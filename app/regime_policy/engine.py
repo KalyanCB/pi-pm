@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.core.constants import (
-    PolicyAction,
-    PolicyType,
     REGIME_BEAR_HIGH_VOL,
     REGIME_BEAR_LOW_VOL,
     REGIME_BULL_HIGH_VOL,
     REGIME_BULL_LOW_VOL,
+    PolicyAction,
+    PolicyType,
 )
 from app.regime_policy.models import PolicyDecision, PolicyEvaluationContext
 
@@ -60,7 +60,9 @@ class RegimePolicyEngine:
         if config.policy_type == PolicyType.SOFT_GATE_E3.value:
             multiplier = Decimal(str(config.size_multipliers.get(regime, 0.5)))
             return PolicyDecision(
-                action=PolicyAction.REDUCE.value if multiplier < Decimal("1.0") else PolicyAction.ALLOW.value,
+                action=PolicyAction.REDUCE.value
+                if multiplier < Decimal("1.0")
+                else PolicyAction.ALLOW.value,
                 size_multiplier=multiplier,
                 reason=f"E3 soft gate: {regime} size_multiplier={multiplier}",
             )

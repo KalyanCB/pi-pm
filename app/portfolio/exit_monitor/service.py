@@ -2,9 +2,10 @@
 
 Generates ExitRecommendation rows. Never auto-executes. Human confirms.
 """
+
 from __future__ import annotations
 
-from datetime import date, datetime, UTC
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -75,13 +76,14 @@ class ExitMonitorService:
             trigger_codes = [t.trigger_code for t in fired_triggers]
             trigger_details = {t.trigger_code: t.details for t in fired_triggers}
             urgency = max(
-                fired_triggers,
-                key=lambda t: ["LOW", "NORMAL", "HIGH", "CRITICAL"].index(t.urgency)
+                fired_triggers, key=lambda t: ["LOW", "NORMAL", "HIGH", "CRITICAL"].index(t.urgency)
             ).urgency
 
             unrealized_pct = None
             if pos.avg_cost and context.get("last_price"):
-                unrealized_pct = (context["last_price"] - float(pos.avg_cost)) / float(pos.avg_cost) * 100
+                unrealized_pct = (
+                    (context["last_price"] - float(pos.avg_cost)) / float(pos.avg_cost) * 100
+                )
 
             exit_rec = ExitRecommendation(
                 portfolio_position_id=pos.id,
@@ -129,12 +131,14 @@ class ExitMonitorService:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _get_open_positions(self) -> list[PortfolioPosition]:
-        return list(self.db.scalars(
-            select(PortfolioPosition).where(
-                PortfolioPosition.is_current.is_(True),
-                PortfolioPosition.position_status == "OPEN",
-            )
-        ).all())
+        return list(
+            self.db.scalars(
+                select(PortfolioPosition).where(
+                    PortfolioPosition.is_current.is_(True),
+                    PortfolioPosition.position_status == "OPEN",
+                )
+            ).all()
+        )
 
     def _get_config(self) -> PortfolioConfig | None:
         return self.db.scalar(
@@ -178,7 +182,9 @@ class ExitMonitorService:
 
         # Unrealized P&L pct
         if pos.avg_cost and ctx.get("last_price"):
-            ctx["unrealized_pnl_pct"] = (ctx["last_price"] - float(pos.avg_cost)) / float(pos.avg_cost) * 100
+            ctx["unrealized_pnl_pct"] = (
+                (ctx["last_price"] - float(pos.avg_cost)) / float(pos.avg_cost) * 100
+            )
 
         # Max gain (from RecommendationOutcome if available)
         ctx["max_gain_pct"] = self._get_max_gain(pos)
@@ -213,6 +219,7 @@ class ExitMonitorService:
             if pos.recommendation_result_id is None:
                 return None
             from app.models.recommendation import RecommendationOutcome
+
             outcome = self.db.scalar(
                 select(RecommendationOutcome).where(
                     RecommendationOutcome.recommendation_result_id == pos.recommendation_result_id

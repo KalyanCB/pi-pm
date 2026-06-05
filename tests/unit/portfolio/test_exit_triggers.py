@@ -1,4 +1,5 @@
 """Exit trigger tests — AC-PE-10."""
+
 from app.portfolio.exit_monitor.triggers import (
     check_alpha_decay,
     check_concentration,
@@ -112,12 +113,16 @@ def test_concentration_no_fire():
 
 def test_liquidity_fires_thin():
     # position worth 1M, ADV 100K → 10 days to unwind > 5 day threshold
-    r = check_liquidity(avg_daily_volume=100_000, position_value=1_000_000, liquidity_days_threshold=5.0)
+    r = check_liquidity(
+        avg_daily_volume=100_000, position_value=1_000_000, liquidity_days_threshold=5.0
+    )
     assert r.fired is True
 
 
 def test_liquidity_no_fire_liquid():
-    r = check_liquidity(avg_daily_volume=10_000_000, position_value=1_000_000, liquidity_days_threshold=5.0)
+    r = check_liquidity(
+        avg_daily_volume=10_000_000, position_value=1_000_000, liquidity_days_threshold=5.0
+    )
     assert r.fired is False
 
 

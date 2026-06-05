@@ -3,7 +3,16 @@ from collections.abc import Generator
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from app.args.llm.registry import CommitteeLlmRegistry
 from app.core.config import Settings, get_settings
+from app.db.repositories.args_prompt_version_repository import ArgsPromptVersionRepository
+from app.db.repositories.committee_review_repository import CommitteeReviewRepository
+from app.db.repositories.cro_review_repository import CroReviewRepository
+from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
+from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
+from app.db.repositories.exit_research_metric_repository import ExitResearchMetricRepository
+from app.db.repositories.exit_research_run_repository import ExitResearchRunRepository
+from app.db.repositories.experiment_run_repository import ExperimentRunRepository
 from app.db.repositories.factor_performance_metric_repository import (
     FactorPerformanceMetricRepository,
 )
@@ -11,9 +20,15 @@ from app.db.repositories.factor_performance_run_repository import FactorPerforma
 from app.db.repositories.full_universe_validation_repository import (
     FullUniverseValidationRepository,
 )
+from app.db.repositories.governance_research_report_repository import (
+    GovernanceResearchReportRepository,
+)
 from app.db.repositories.ingestion_batch_repository import IngestionBatchRepository
 from app.db.repositories.ingestion_run_repository import IngestionRunRepository
-from app.db.repositories.experiment_run_repository import ExperimentRunRepository
+from app.db.repositories.investment_review_packet_repository import (
+    InvestmentReviewPacketRepository,
+)
+from app.db.repositories.llm_execution_record_repository import LlmExecutionRecordRepository
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_factor_contribution_repository import (
     RankingFactorContributionRepository,
@@ -22,10 +37,16 @@ from app.db.repositories.ranking_performance_repository import RankingPerformanc
 from app.db.repositories.ranking_result_repository import RankingResultRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
+from app.db.repositories.recommendation_repository import RecommendationRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.db.repositories.regime_backtest_run_repository import RegimeBacktestRunRepository
 from app.db.repositories.regime_policy_config_repository import RegimePolicyConfigRepository
 from app.db.repositories.regime_policy_decision_repository import RegimePolicyDecisionRepository
+from app.db.repositories.research_intelligence_repository import (
+    ResearchIntelligenceReportRepository,
+    ResearchIntelligenceRunRepository,
+)
+from app.db.repositories.research_run_repository import ResearchRunRepository
 from app.db.repositories.run_lineage_repository import RunLineageRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.stock_setup_research_repository import StockSetupResearchRepository
@@ -36,49 +57,27 @@ from app.market_data.cache import MarketDataCache
 from app.providers.yahoo.client import YahooFinanceProvider
 from app.ranking.loader import MarketDataLoader
 from app.ranking.registry import RankingStrategyRegistry
+from app.services.args_explainability_service import ArgsExplainabilityService
+from app.services.args_research_run_service import ArgsResearchRunService
 from app.services.backtest_service import BacktestService
-from app.services.experiment_service import ExperimentService
-from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
-from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
-from app.db.repositories.exit_research_metric_repository import ExitResearchMetricRepository
-from app.db.repositories.exit_research_run_repository import ExitResearchRunRepository
-from app.db.repositories.research_intelligence_repository import (
-    ResearchIntelligenceReportRepository,
-    ResearchIntelligenceRunRepository,
-)
 from app.services.daily_batch_service import DailyBatchService
 from app.services.exit_research_service import ExitResearchService
+from app.services.experiment_service import ExperimentService
 from app.services.factor_predictive_power_service import FactorPredictivePowerService
-from app.services.research_intelligence_service import ResearchIntelligenceService
 from app.services.full_universe_validation_service import FullUniverseValidationService
 from app.services.market_data_service import MarketDataService
 from app.services.observability_service import ObservabilityService
 from app.services.ranking_service import RankingService
+from app.services.recommendation_analytics_service import RecommendationAnalyticsService
+from app.services.recommendation_service import RecommendationService
 from app.services.regime_analytics_service import RegimeAnalyticsService
 from app.services.regime_policy_service import RegimePolicyPresetService, RegimePolicyService
+from app.services.research_intelligence_service import ResearchIntelligenceService
 from app.services.signal_validation_service import SignalValidationService
 from app.services.stock_service import StockService
-from app.services.universe_bootstrap_service import UniverseBootstrapService
-from app.db.repositories.recommendation_repository import RecommendationRepository
-from app.db.repositories.recommendation_outcome_repository import RecommendationOutcomeRepository
-from app.services.recommendation_service import RecommendationService
-from app.services.recommendation_analytics_service import RecommendationAnalyticsService
-from app.services.traceability_service import TraceabilityService
-from app.db.repositories.research_run_repository import ResearchRunRepository
-from app.db.repositories.investment_review_packet_repository import (
-    InvestmentReviewPacketRepository,
-)
-from app.db.repositories.committee_review_repository import CommitteeReviewRepository
-from app.db.repositories.cro_review_repository import CroReviewRepository
-from app.db.repositories.governance_research_report_repository import (
-    GovernanceResearchReportRepository,
-)
-from app.db.repositories.args_prompt_version_repository import ArgsPromptVersionRepository
-from app.args.llm.registry import CommitteeLlmRegistry
-from app.db.repositories.llm_execution_record_repository import LlmExecutionRecordRepository
-from app.services.args_research_run_service import ArgsResearchRunService
-from app.services.args_explainability_service import ArgsExplainabilityService
 from app.services.stock_setup_research_service import StockSetupResearchService
+from app.services.traceability_service import TraceabilityService
+from app.services.universe_bootstrap_service import UniverseBootstrapService
 from app.services.universe_filter_service import UniverseFilterService
 
 
@@ -144,6 +143,7 @@ def get_stock_service(stock_repo: StockRepository = Depends(get_stock_repository
 
 def get_universe_bootstrap_service(db: Session = Depends(get_db)) -> UniverseBootstrapService:
     from app.db.repositories.universe_repository import UniverseRepository
+
     return UniverseBootstrapService(db, StockRepository(db), UniverseRepository(db))
 
 
@@ -197,7 +197,9 @@ def get_traceability_service(
     factor_contribution_repo: RankingFactorContributionRepository = Depends(
         get_ranking_factor_contribution_repository
     ),
-    validation_metrics_repo: ValidationMetricsRepository = Depends(get_validation_metrics_repository),
+    validation_metrics_repo: ValidationMetricsRepository = Depends(
+        get_validation_metrics_repository
+    ),
     lineage_repo: RunLineageRepository = Depends(get_run_lineage_repository),
     ingestion_run_repo: IngestionRunRepository = Depends(get_ingestion_run_repository),
 ) -> TraceabilityService:
@@ -317,7 +319,9 @@ def get_regime_policy_service(
     decision_repo: RegimePolicyDecisionRepository = Depends(get_regime_policy_decision_repository),
     backtest_repo: RegimeBacktestRunRepository = Depends(get_regime_backtest_run_repository),
     validation_repo: RankingValidationRepository = Depends(get_ranking_validation_repository),
-    validation_metrics_repo: ValidationMetricsRepository = Depends(get_validation_metrics_repository),
+    validation_metrics_repo: ValidationMetricsRepository = Depends(
+        get_validation_metrics_repository
+    ),
     ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
     lineage_repo: RunLineageRepository = Depends(get_run_lineage_repository),
     experiment_service: ExperimentService = Depends(get_experiment_service),
@@ -351,7 +355,9 @@ def get_factor_performance_run_repository(
 
 def get_factor_predictive_power_service(
     db: Session = Depends(get_db),
-    metric_repo: FactorPerformanceMetricRepository = Depends(get_factor_performance_metric_repository),
+    metric_repo: FactorPerformanceMetricRepository = Depends(
+        get_factor_performance_metric_repository
+    ),
     run_repo: FactorPerformanceRunRepository = Depends(get_factor_performance_run_repository),
     validation_repo: RankingValidationRepository = Depends(get_ranking_validation_repository),
     ranking_run_repo: RankingRunRepository = Depends(get_ranking_run_repository),
@@ -554,7 +560,9 @@ def get_governance_research_report_repository(
     return GovernanceResearchReportRepository(db)
 
 
-def get_args_prompt_version_repository(db: Session = Depends(get_db)) -> ArgsPromptVersionRepository:
+def get_args_prompt_version_repository(
+    db: Session = Depends(get_db),
+) -> ArgsPromptVersionRepository:
     return ArgsPromptVersionRepository(db)
 
 

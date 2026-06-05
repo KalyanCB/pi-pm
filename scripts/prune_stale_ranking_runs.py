@@ -60,9 +60,12 @@ def main() -> int:
     """)
 
     with Session() as db:
-        stale_ids = [row[0] for row in db.execute(
-            stale_sql, {"from_date": args.from_date, "universe": args.universe}
-        ).all()]
+        stale_ids = [
+            row[0]
+            for row in db.execute(
+                stale_sql, {"from_date": args.from_date, "universe": args.universe}
+            ).all()
+        ]
         if not stale_ids:
             print("No stale duplicate ranking runs found.")
             return 0

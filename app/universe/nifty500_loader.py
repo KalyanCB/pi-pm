@@ -11,9 +11,7 @@ from app.universe.nse_index_loader import (
     to_yahoo_symbol,
 )
 
-NSE_NIFTY500_CSV_URL = (
-    "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
-)
+NSE_NIFTY500_CSV_URL = "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
 DEFAULT_NIFTY500_CSV_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "nifty500_constituents.csv"
 )

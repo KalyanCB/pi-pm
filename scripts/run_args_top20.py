@@ -122,7 +122,9 @@ def main() -> int:
         for _const, name in strategies:
             run_id = _latest_run_id(db, strategy_name=name, as_of_date=args.as_of_date)
             run = RankingRunRepository(db).get_by_id(run_id)
-            print(f"Running ARGS top_{args.top_n} for {name} as_of={run.as_of_date} run_id={run_id}")
+            print(
+                f"Running ARGS top_{args.top_n} for {name} as_of={run.as_of_date} run_id={run_id}"
+            )
             out = service.run(
                 ranking_run_id=run_id,
                 top_n=args.top_n,
@@ -137,7 +139,9 @@ def main() -> int:
 
     print("\nDone. Export with:")
     for r in results:
-        print(f"  .venv/bin/python scripts/export_args_research_run.py {r['run_id']} -o docs/args-{r['run_id']}.md")
+        print(
+            f"  .venv/bin/python scripts/export_args_research_run.py {r['run_id']} -o docs/args-{r['run_id']}.md"
+        )
     return 0
 
 

@@ -25,7 +25,9 @@ class DailyBatchRunRepository:
     ) -> DailyBatchRun:
         run = DailyBatchRun(
             idempotency_key=idempotency_key,
-            status=DailyBatchRunStatus.RUNNING.value if not dry_run else DailyBatchRunStatus.PLANNED.value,
+            status=DailyBatchRunStatus.RUNNING.value
+            if not dry_run
+            else DailyBatchRunStatus.PLANNED.value,
             universe_code=universe_code,
             benchmark_symbol=benchmark_symbol,
             parameter_set=parameter_set,

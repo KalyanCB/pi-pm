@@ -1,14 +1,15 @@
 """Analytics DTOs — used by REST API responses and mobile layer (M4)."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
-from typing import Any
 
 
 @dataclass
 class OutcomeWindowDTO:
     """Date range and filter context for an analytics computation."""
+
     from_date: date | None
     to_date: date | None
     strategy_name: str | None
@@ -23,7 +24,7 @@ class QualityMetricsDTO:
     win_count: int
     loss_count: int
     breakeven_count: int
-    win_rate: float | None            # closed only
+    win_rate: float | None  # closed only
     avg_gain_pct: float | None
     avg_loss_pct: float | None
     profit_factor: float | None
@@ -49,7 +50,7 @@ class ConvictionBandMetricsDTO:
 class ConvictionPerformanceDTO:
     window: OutcomeWindowDTO
     bands: list[ConvictionBandMetricsDTO]
-    calibration_rank_correct: bool | None   # True if EXCEPTIONAL>HIGH>MEDIUM>LOW alpha
+    calibration_rank_correct: bool | None  # True if EXCEPTIONAL>HIGH>MEDIUM>LOW alpha
     calibration_note: str
 
 
@@ -72,7 +73,7 @@ class RegimePerformanceDTO:
 
 @dataclass
 class CommitteeAdvisoryMetricsDTO:
-    advisory: str          # supportive / neutral / cautious / HIGH_CONCERN / unknown
+    advisory: str  # supportive / neutral / cautious / HIGH_CONCERN / unknown
     count: int
     win_rate: float | None
     avg_alpha_pct: float | None
@@ -88,19 +89,19 @@ class CommitteePerformanceDTO:
 
 @dataclass
 class ConvictionCalibrationDTO:
-    expected_order: list[str]           # [EXCEPTIONAL, HIGH, MEDIUM, LOW]
+    expected_order: list[str]  # [EXCEPTIONAL, HIGH, MEDIUM, LOW]
     actual_win_rates: dict[str, float]  # band → win_rate
-    rank_correlation: float | None      # Spearman rank corr of expected vs actual
-    is_calibrated: bool | None          # rank_correlation >= 0.6
+    rank_correlation: float | None  # Spearman rank corr of expected vs actual
+    is_calibrated: bool | None  # rank_correlation >= 0.6
 
 
 @dataclass
 class StabilityDTO:
     total_symbols_evaluated: int
     daily_action_changes: int
-    churn_rate: float | None            # changes / evaluations
-    reversal_count: int                 # BUY→WATCH→BUY in ≤3 sessions
-    stability_score: float | None       # 1 - churn_rate
+    churn_rate: float | None  # changes / evaluations
+    reversal_count: int  # BUY→WATCH→BUY in ≤3 sessions
+    stability_score: float | None  # 1 - churn_rate
 
 
 @dataclass
@@ -108,7 +109,7 @@ class ReliabilityDTO:
     total_recommendations: int
     with_completed_validation: int
     with_insufficient_data: int
-    reliability_rate: float | None      # completed / total
+    reliability_rate: float | None  # completed / total
 
 
 @dataclass
@@ -117,7 +118,7 @@ class TrustMetricsDTO:
     calibration: ConvictionCalibrationDTO
     stability: StabilityDTO
     reliability: ReliabilityDTO
-    overall_trust_score: float | None   # simple composite 0-1
+    overall_trust_score: float | None  # simple composite 0-1
 
 
 @dataclass
@@ -134,7 +135,7 @@ class SymbolAnalyticsDTO:
     avg_days_held: float | None
     last_action: str | None
     last_recommendation_date: date | None
-    why_not_recommended: list[str]      # latest reason_codes if not BUY
+    why_not_recommended: list[str]  # latest reason_codes if not BUY
 
 
 @dataclass
@@ -142,5 +143,5 @@ class RecommendationSummaryDTO:
     as_of_date: date | None
     window: OutcomeWindowDTO
     quality: QualityMetricsDTO
-    top_conviction_buys: list[dict]     # [{symbol, conviction_score, band}, ...]
-    exit_candidates: list[dict]         # [{symbol, exit_reason}, ...]
+    top_conviction_buys: list[dict]  # [{symbol, conviction_score, band}, ...]
+    exit_candidates: list[dict]  # [{symbol, exit_reason}, ...]

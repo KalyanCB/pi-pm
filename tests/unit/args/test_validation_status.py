@@ -19,9 +19,7 @@ def test_insufficient_data_maps_to_pending_for_packet():
 
 
 def test_completed_status_unchanged():
-    status, db_status, reason = normalize_validation_status_for_packet(
-        VALIDATION_STATUS_COMPLETED
-    )
+    status, db_status, reason = normalize_validation_status_for_packet(VALIDATION_STATUS_COMPLETED)
     assert status == VALIDATION_STATUS_COMPLETED
     assert db_status == VALIDATION_STATUS_COMPLETED
     assert reason is None

@@ -1,0 +1,114 @@
+import React from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { useTheme } from '@pipm/theme';
+import type { RecommendationCardProps } from '@pipm/types';
+import { Badge } from '../atoms/Badge';
+import { ConvictionBadge } from './ConvictionBadge';
+import { RecommendationReasonList } from './RecommendationReasonList';
+import { HighConcernBanner } from './HighConcernBanner';
+
+export function RecommendationCard({
+  symbol,
+  action,
+  rank,
+  convictionScore,
+  convictionBand,
+  reasonCodes,
+  committeeAdvisory,
+  layout = 'card',
+  onPress,
+}: RecommendationCardProps) {
+  const theme = useTheme();
+  const isRow = layout === 'row';
+
+  const content = (
+    <View
+      style={[
+        styles.card,
+        isRow ? styles.row : styles.column,
+        {
+          backgroundColor: theme.colors.backgroundElevated,
+          borderColor: committeeAdvisory?.high_concern
+            ? theme.colors.highConcern
+            : theme.colors.border,
+        },
+      ]}
+    >
+      <View style={styles.header}>
+        <Text style={[styles.symbol, { color: theme.colors.textPrimary }]}>{symbol}</Text>
+        <Badge
+          label={action}
+          variant={
+            action === 'BUY'
+              ? 'success'
+              : action === 'WATCH'
+                ? 'warning'
+                : action === 'EXIT_APPROVED'
+                  ? 'danger'
+                  : 'default'
+          }
+        />
+        {rank !== null && (
+          <Text style={[styles.rank, { color: theme.colors.textMuted }]}>#{rank}</Text>
+        )}
+        <ConvictionBadge score={convictionScore} band={convictionBand} size="sm" />
+      </View>
+      <RecommendationReasonList reasonCodes={reasonCodes} />
+      {committeeAdvisory?.high_concern && (
+        <HighConcernBanner
+          committees={committeeAdvisory.high_concern_committees}
+          displayNames={committeeAdvisory.display_names}
+          compact
+        />
+      )}
+      {committeeAdvisory?.cro_advisory_action && (
+        <Text style={[styles.cro, { color: theme.colors.textSecondary }]}>
+          CRO: {committeeAdvisory.cro_advisory_action}
+        </Text>
+      )}
+    </View>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${symbol} ${action}`}>
+        {content}
+      </Pressable>
+    );
+  }
+  return content;
+}
+
+const styles = StyleSheet.create({
+  card: {
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 12,
+    gap: 8,
+  },
+  column: {},
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  symbol: {
+    fontSize: 16,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+    minWidth: 80,
+  },
+  rank: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+  },
+  cro: {
+    fontSize: 11,
+  },
+});

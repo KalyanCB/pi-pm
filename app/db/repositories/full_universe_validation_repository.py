@@ -48,7 +48,9 @@ class FullUniverseValidationRepository:
         self.db.flush()
         return campaign
 
-    def mark_running(self, campaign: FullUniverseValidationCampaign) -> FullUniverseValidationCampaign:
+    def mark_running(
+        self, campaign: FullUniverseValidationCampaign
+    ) -> FullUniverseValidationCampaign:
         campaign.status = FULL_UNIVERSE_CAMPAIGN_STATUS_RUNNING
         campaign.started_at = datetime.now(UTC)
         self.db.flush()

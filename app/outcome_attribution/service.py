@@ -260,17 +260,12 @@ def _build_verdict(segments: list[SegmentMetrics]) -> tuple[str, str]:
         )
 
     positive_alpha = sum(
-        1
-        for _, _, a5, a10, a20 in evidence
-        if (a5 or 0) > 0 and (a10 or 0) > 0 and (a20 or 0) > 0
+        1 for _, _, a5, a10, a20 in evidence if (a5 or 0) > 0 and (a10 or 0) > 0 and (a20 or 0) > 0
     )
     monotonic = sum(
         1
         for _, _, a5, a10, a20 in evidence
-        if a5 is not None
-        and a10 is not None
-        and a20 is not None
-        and a5 >= a10 >= a20
+        if a5 is not None and a10 is not None and a20 is not None and a5 >= a10 >= a20
     )
 
     if positive_alpha == len(evidence) and monotonic >= len(evidence) // 2:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -49,9 +49,7 @@ class RegimePolicyConfigRepository:
         return config
 
     def get_by_id(self, config_id: UUID) -> RegimePolicyConfig | None:
-        return self.db.scalar(
-            select(RegimePolicyConfig).where(RegimePolicyConfig.id == config_id)
-        )
+        return self.db.scalar(select(RegimePolicyConfig).where(RegimePolicyConfig.id == config_id))
 
     def get_next_version(self, policy_name: str) -> int:
         current = self.db.scalar(

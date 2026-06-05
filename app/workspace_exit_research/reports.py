@@ -9,7 +9,6 @@ from app.workspace_exit_research.constants import (
     POLICY_FAMILY_REGIME_EXIT,
     POLICY_FAMILY_TREND_FAILURE,
 )
-from app.workspace_exit_research.models import PolicyMetricResult
 
 
 def policy_metric_to_dict(row: ExitResearchPolicyMetric) -> dict:
@@ -27,7 +26,9 @@ def policy_metric_to_dict(row: ExitResearchPolicyMetric) -> dict:
         "median_return": float(row.median_return) if row.median_return is not None else None,
         "std_dev": float(row.std_dev) if row.std_dev is not None else None,
         "hit_rate": float(row.hit_rate) if row.hit_rate is not None else None,
-        "avg_holding_days": float(row.avg_holding_days) if row.avg_holding_days is not None else None,
+        "avg_holding_days": float(row.avg_holding_days)
+        if row.avg_holding_days is not None
+        else None,
         "ci_lower": float(row.ci_lower) if row.ci_lower is not None else None,
         "ci_upper": float(row.ci_upper) if row.ci_upper is not None else None,
         "conclusion_status": row.conclusion_status,
@@ -51,7 +52,9 @@ def build_family_report(
     return {"report": report_name, "entries": [policy_metric_to_dict(m) for m in filtered]}
 
 
-def build_recommended_exit_policy(metrics: list[ExitResearchPolicyMetric], *, dataset_split: str) -> dict:
+def build_recommended_exit_policy(
+    metrics: list[ExitResearchPolicyMetric], *, dataset_split: str
+) -> dict:
     candidates = [
         m
         for m in metrics

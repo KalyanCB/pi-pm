@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,7 +16,12 @@ if TYPE_CHECKING:
 
 class PortfolioConfig(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Owner-configured capital parameters. One active row at a time."""
+
     __tablename__ = "portfolio_configs"
+
+    portfolio_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     total_equity: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False)  # INR
@@ -36,12 +41,20 @@ class PortfolioConfig(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class PortfolioPosition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "portfolio_positions"
 
+    portfolio_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
     stock_id: Mapped[UUID] = mapped_column(
         ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
     )
     recommendation_result_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("recommendation_results.id", ondelete="SET NULL", use_alter=True,
-                   name="fk_portfolio_position_rec_result"),
+        ForeignKey(
+            "recommendation_results.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_portfolio_position_rec_result",
+        ),
         nullable=True,
     )
     quantity: Mapped[float] = mapped_column(Numeric(18, 8), nullable=False, default=0)

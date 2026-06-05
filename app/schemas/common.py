@@ -2,7 +2,7 @@ from datetime import date
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.core.constants import IngestPeriod, IngestionMode
+from app.core.constants import IngestionMode, IngestPeriod
 from app.core.symbols import validate_ingest_symbol
 
 

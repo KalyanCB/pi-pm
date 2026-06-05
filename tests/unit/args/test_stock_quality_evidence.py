@@ -217,9 +217,10 @@ def test_hfcl_vs_thermax_differentiation():
     )
 
     assert hfcl["overall_stock_quality_score"] != thermax["overall_stock_quality_score"]
-    assert hfcl["D_historical_analog"]["setup_evidence_score"] > thermax["D_historical_analog"][
-        "setup_evidence_score"
-    ]
+    assert (
+        hfcl["D_historical_analog"]["setup_evidence_score"]
+        > thermax["D_historical_analog"]["setup_evidence_score"]
+    )
     assert hfcl["A_ranking_attribution"]["rank"] == 1
     assert thermax["A_ranking_attribution"]["rank"] == 3
 
@@ -253,7 +254,9 @@ def test_wockpharma_beats_hfcl_on_stock_quality_despite_similar_rank():
     )
 
     assert wock["overall_stock_quality_score"] > hfcl["overall_stock_quality_score"]
-    assert wock["D_historical_analog"]["quality_score"] > hfcl["D_historical_analog"]["quality_score"]
+    assert (
+        wock["D_historical_analog"]["quality_score"] > hfcl["D_historical_analog"]["quality_score"]
+    )
 
 
 def test_triturbine_vs_thermax_see_ordering():
@@ -284,9 +287,10 @@ def test_triturbine_vs_thermax_see_ordering():
         "THERMAX.NS",
     )
 
-    assert triturbine["D_historical_analog"]["quality_score"] >= thermax["D_historical_analog"][
-        "quality_score"
-    ]
+    assert (
+        triturbine["D_historical_analog"]["quality_score"]
+        >= thermax["D_historical_analog"]["quality_score"]
+    )
 
 
 def test_pending_validation_neutral_in_section_f():

@@ -8,7 +8,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from app.core.constants import IngestPeriod, IngestionMode
+from app.core.constants import IngestionMode, IngestPeriod
 from app.db.session import get_session_factory
 from scripts.pipm_service_factory import build_pipm_services
 

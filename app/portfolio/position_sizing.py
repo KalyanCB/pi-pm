@@ -7,6 +7,7 @@ v2:  position_notional = slot_budget × conviction_weight
 Both deterministic. No LLM. v2 is feature-flag controlled via
 PortfolioConfig.position_sizing_version.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,8 +27,8 @@ class SizingInputs:
     slot_budget: float
     last_price: float
     # v2 inputs (ignored by v1)
-    atr_pct: float | None = None            # ATR as % of price (volatility)
-    avg_daily_value: float | None = None    # avg daily traded value (liquidity)
+    atr_pct: float | None = None  # ATR as % of price (volatility)
+    avg_daily_value: float | None = None  # avg daily traded value (liquidity)
     regime_posture: str = "neutral"
     target_position_value: float | None = None  # for liquidity participation check
 

@@ -4,7 +4,17 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -58,7 +68,9 @@ class InvestmentReviewPacket(Base, UUIDPrimaryKeyMixin):
         ForeignKey("research_runs.id", ondelete="CASCADE"), nullable=False
     )
     ranking_run_id: Mapped[UUID] = mapped_column(nullable=False)
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     packet_version: Mapped[str] = mapped_column(String(16), nullable=False, default="1.0.0")
     packet_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -188,7 +200,9 @@ class GovernanceResearchReport(Base, UUIDPrimaryKeyMixin):
     research_run_id: Mapped[UUID] = mapped_column(
         ForeignKey("research_runs.id", ondelete="CASCADE"), nullable=False
     )
-    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
+    stock_id: Mapped[UUID] = mapped_column(
+        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
+    )
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     as_of_date: Mapped[date] = mapped_column(Date, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
@@ -201,9 +215,7 @@ class GovernanceResearchReport(Base, UUIDPrimaryKeyMixin):
     cro_review: Mapped[CroReview] = relationship(back_populates="governance_report")
     research_run: Mapped[ResearchRun] = relationship(back_populates="governance_reports")
     stock: Mapped[Stock] = relationship("Stock")
-    evidence: Mapped[list[GovernanceResearchReportEvidence]] = relationship(
-        back_populates="report"
-    )
+    evidence: Mapped[list[GovernanceResearchReportEvidence]] = relationship(back_populates="report")
 
     __table_args__ = (
         Index("ix_governance_research_reports_run", "research_run_id"),

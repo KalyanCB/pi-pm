@@ -11,7 +11,6 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.args.analytics.committee_effectiveness import (
-    compute_committee_uniqueness_score,
     compute_packet_metrics,
     confidence_clustering_by_committee,
     load_research_run_reviews,
@@ -64,7 +63,9 @@ def _print_run_summary(
         f"Headline disagreement rate (packets >= threshold): "
         f"{summary['headline_disagreement_rate']}"
     )
-    print(f"Strict independence packet rate: {summary.get('strict_independence_packet_rate', 'n/a')}")
+    print(
+        f"Strict independence packet rate: {summary.get('strict_independence_packet_rate', 'n/a')}"
+    )
     print(f"Effective independence rate: {summary.get('effective_independence_rate', 'n/a')}")
     print(f"Degraded review fraction: {summary['degraded_review_fraction']}")
 

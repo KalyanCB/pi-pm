@@ -48,8 +48,10 @@ class TradingDayResolver:
             )
 
         latest_benchmark = self._latest_benchmark_date()
-        session_complete = force or assume_session_done or (
-            calendar_today.weekday() < 5 and now_ist.time() >= self.market_close_time
+        session_complete = (
+            force
+            or assume_session_done
+            or (calendar_today.weekday() < 5 and now_ist.time() >= self.market_close_time)
         )
 
         if latest_benchmark is None:
@@ -81,5 +83,7 @@ class TradingDayResolver:
         stock = self.stock_repo.get_by_symbol(self.benchmark_symbol)
         if stock is None:
             return None
-        latest = self.market_data_repo.get_latest_market_data(stock.id, source=MARKET_DATA_SOURCE_YAHOO)
+        latest = self.market_data_repo.get_latest_market_data(
+            stock.id, source=MARKET_DATA_SOURCE_YAHOO
+        )
         return latest.date if latest else None

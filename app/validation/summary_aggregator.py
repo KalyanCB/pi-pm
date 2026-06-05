@@ -115,9 +115,7 @@ def aggregate_cross_run_summary(
         horizon=horizon,
         validated_runs=_count_status(quality_reports, VALIDATION_STATUS_COMPLETED),
         failed_runs=_count_status(quality_reports, VALIDATION_STATUS_FAILED),
-        insufficient_data_runs=_count_status(
-            quality_reports, VALIDATION_STATUS_INSUFFICIENT_DATA
-        ),
+        insufficient_data_runs=_count_status(quality_reports, VALIDATION_STATUS_INSUFFICIENT_DATA),
         average_ic=_avg(ic_values),
         median_ic=_median(ic_values),
         top_decile_return=_avg(top_returns),

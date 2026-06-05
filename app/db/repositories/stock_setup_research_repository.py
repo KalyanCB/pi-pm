@@ -13,7 +13,9 @@ class StockSetupResearchRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def get_for_run_stock(self, *, ranking_run_id: UUID, stock_id: UUID) -> StockSetupResearch | None:
+    def get_for_run_stock(
+        self, *, ranking_run_id: UUID, stock_id: UUID
+    ) -> StockSetupResearch | None:
         return self.db.scalar(
             select(StockSetupResearch)
             .where(

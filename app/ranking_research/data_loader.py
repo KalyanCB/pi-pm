@@ -3,16 +3,10 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.core.constants import RankingRunStatus
-from app.db.repositories.market_data_repository import MarketDataRepository
-from app.db.repositories.stock_repository import StockRepository
 from app.market_data.cache import MarketDataCache
-from app.models.ranking_performance_snapshot import RankingPerformanceSnapshot
-from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
-from app.models.ranking_validation_report import RankingValidationReport
 from app.outcome_attribution.constants import ATTRIBUTION_HORIZONS
 from app.outcome_attribution.data_loader import OutcomeAttributionDataLoader
 from app.outcome_attribution.models import OutcomeAttributionConfig, RunBenchmark
@@ -60,9 +54,7 @@ class RankingResearchDataLoader(OutcomeAttributionDataLoader):
                 )
             )
 
-            snapshot_by_stock = {
-                snap.stock_id: snap for snap in snapshots_by_run.get(run.id, [])
-            }
+            snapshot_by_stock = {snap.stock_id: snap for snap in snapshots_by_run.get(run.id, [])}
             for result in results_by_run.get(run.id, []):
                 returns = self._returns_from_snapshot(snapshot_by_stock.get(result.stock_id))
                 observations.append(
@@ -110,6 +102,5 @@ class RankingResearchDataLoader(OutcomeAttributionDataLoader):
         bars = cache.load_extended_series(stock.id, through_date)
         raw = compute_forward_returns(bars, as_of_date, ATTRIBUTION_HORIZONS)
         return {
-            horizon: float(value) if value is not None else None
-            for horizon, value in raw.items()
+            horizon: float(value) if value is not None else None for horizon, value in raw.items()
         }

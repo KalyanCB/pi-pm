@@ -1,4 +1,5 @@
 """Recommendation Performance & Trust Analytics API (P3)."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -6,7 +7,6 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
 
 from app.api.deps import get_recommendation_analytics_service
 from app.services.recommendation_analytics_service import RecommendationAnalyticsService
@@ -26,6 +26,7 @@ def _to_dict(obj: Any) -> Any:
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
+
 
 @router.get("/summary")
 def get_summary(
@@ -50,6 +51,7 @@ def get_summary(
 
 # ── Conviction effectiveness ───────────────────────────────────────────────────
 
+
 @router.get("/conviction")
 def get_conviction_performance(
     strategy_name: str | None = Query(default=None),
@@ -71,6 +73,7 @@ def get_conviction_performance(
 
 
 # ── Regime effectiveness ───────────────────────────────────────────────────────
+
 
 @router.get("/regime")
 def get_regime_performance(
@@ -94,6 +97,7 @@ def get_regime_performance(
 
 # ── Committee effectiveness ────────────────────────────────────────────────────
 
+
 @router.get("/committee")
 def get_committee_performance(
     strategy_name: str | None = Query(default=None),
@@ -115,6 +119,7 @@ def get_committee_performance(
 
 
 # ── Trust metrics ─────────────────────────────────────────────────────────────
+
 
 @router.get("/trust")
 def get_trust_metrics(
@@ -139,6 +144,7 @@ def get_trust_metrics(
 
 
 # ── Symbol analytics ──────────────────────────────────────────────────────────
+
 
 @router.get("/symbol/{symbol}")
 def get_symbol_analytics(

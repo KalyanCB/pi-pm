@@ -9,26 +9,26 @@ from datetime import date
 
 from sqlalchemy import text
 
-from app.db.session import get_session_factory
-from app.schemas.daily_batch import DailyBatchPhaseFlags, DailyBatchRunCreateRequest
-from app.services.daily_batch_service import DailyBatchService
-from app.services.factor_predictive_power_service import FactorPredictivePowerService
-from scripts.pipm_service_factory import build_pipm_services
+from app.core.config import get_settings
 from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
 from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
 from app.db.repositories.factor_performance_run_repository import FactorPerformanceRunRepository
+from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
-from app.services.regime_analytics_service import RegimeAnalyticsService
-from app.services.research_intelligence_service import ResearchIntelligenceService
+from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.db.repositories.research_intelligence_repository import (
     ResearchIntelligenceReportRepository,
     ResearchIntelligenceRunRepository,
 )
-from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.db.repositories.stock_repository import StockRepository
-from app.db.repositories.market_data_repository import MarketDataRepository
-from app.core.config import get_settings
+from app.db.session import get_session_factory
+from app.schemas.daily_batch import DailyBatchPhaseFlags, DailyBatchRunCreateRequest
+from app.services.daily_batch_service import DailyBatchService
+from app.services.factor_predictive_power_service import FactorPredictivePowerService
+from app.services.regime_analytics_service import RegimeAnalyticsService
+from app.services.research_intelligence_service import ResearchIntelligenceService
+from scripts.pipm_service_factory import build_pipm_services
 
 
 def _counts(db) -> dict[str, int]:

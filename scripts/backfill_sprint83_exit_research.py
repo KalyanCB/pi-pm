@@ -26,7 +26,9 @@ def main() -> int:
     parser.add_argument("--strategy-version", default=RANKING_STRATEGY_BREAKOUT_V1_VERSION)
     parser.add_argument("--start-date", type=date.fromisoformat, required=True)
     parser.add_argument("--end-date", type=date.fromisoformat, required=True)
-    parser.add_argument("--holdout-start-date", type=date.fromisoformat, default=DEFAULT_HOLDOUT_START_DATE)
+    parser.add_argument(
+        "--holdout-start-date", type=date.fromisoformat, default=DEFAULT_HOLDOUT_START_DATE
+    )
     parser.add_argument("--force-recompute", action="store_true")
     args = parser.parse_args()
     get_settings()

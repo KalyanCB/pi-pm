@@ -9,25 +9,24 @@ Status:
 
 Analytics endpoints return 409 when latest reconciliation is FAIL.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.paper_trade import PaperTrade
 from app.models.portfolio_analytics import (
     CashLedger,
     PortfolioNavHistory,
     PortfolioReconciliationReport,
 )
 from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
-from app.models.paper_trade import PaperTrade
 
-
-_PASS_THRESHOLD_PCT = 0.01    # < 0.01% discrepancy → PASS
+_PASS_THRESHOLD_PCT = 0.01  # < 0.01% discrepancy → PASS
 _WARNING_THRESHOLD_PCT = 0.10  # < 0.10% → WARNING, else FAIL
 
 
@@ -107,7 +106,8 @@ class ReconciliationService:
         cash_from_ledger = float(
             self.db.scalar(
                 select(func.sum(CashLedger.amount)).where(CashLedger.as_of_date <= as_of)
-            ) or 0.0
+            )
+            or 0.0
         )
         checks["cash_ledger"] = "PASS" if cash_from_ledger >= 0 else "WARNING"
         if cash_from_ledger < 0:
@@ -134,23 +134,32 @@ class ReconciliationService:
         checks["closed_positions"] = "PASS"
 
         # 4. Trade consistency check — every filled trade should have a position
-        filled_buys = self.db.scalar(
-            select(func.count(PaperTrade.id)).where(
-                PaperTrade.side == "BUY",
-                PaperTrade.status == "filled",
+        filled_buys = (
+            self.db.scalar(
+                select(func.count(PaperTrade.id)).where(
+                    PaperTrade.side == "BUY",
+                    PaperTrade.status == "filled",
+                )
             )
-        ) or 0
-        open_pos_count = self.db.scalar(
-            select(func.count(PortfolioPosition.id)).where(
-                PortfolioPosition.is_current.is_(True),
-                PortfolioPosition.position_status == "OPEN",
+            or 0
+        )
+        open_pos_count = (
+            self.db.scalar(
+                select(func.count(PortfolioPosition.id)).where(
+                    PortfolioPosition.is_current.is_(True),
+                    PortfolioPosition.position_status == "OPEN",
+                )
             )
-        ) or 0
-        closed_pos_count = self.db.scalar(
-            select(func.count(PortfolioPosition.id)).where(
-                PortfolioPosition.position_status == "CLOSED"
+            or 0
+        )
+        closed_pos_count = (
+            self.db.scalar(
+                select(func.count(PortfolioPosition.id)).where(
+                    PortfolioPosition.position_status == "CLOSED"
+                )
             )
-        ) or 0
+            or 0
+        )
 
         if filled_buys != (open_pos_count + closed_pos_count):
             checks["trade_consistency"] = "WARNING"
@@ -162,29 +171,47 @@ class ReconciliationService:
 
         # 5. Outcome consistency — closed positions should have outcomes
         from app.models.recommendation import RecommendationOutcome
-        closed_with_rec = self.db.scalar(
-            select(func.count(PortfolioPosition.id)).where(
-                PortfolioPosition.position_status == "CLOSED",
-                PortfolioPosition.recommendation_result_id.isnot(None),
+
+        closed_with_rec = (
+            self.db.scalar(
+                select(func.count(PortfolioPosition.id)).where(
+                    PortfolioPosition.position_status == "CLOSED",
+                    PortfolioPosition.recommendation_result_id.isnot(None),
+                )
             )
-        ) or 0
-        outcomes_count = self.db.scalar(
-            select(func.count(RecommendationOutcome.id)).where(
-                RecommendationOutcome.outcome_status != "OPEN"
+            or 0
+        )
+        outcomes_count = (
+            self.db.scalar(
+                select(func.count(RecommendationOutcome.id)).where(
+                    RecommendationOutcome.outcome_status != "OPEN"
+                )
             )
-        ) or 0
+            or 0
+        )
         if closed_with_rec > 0 and outcomes_count < closed_with_rec:
             checks["outcome_consistency"] = "WARNING"
-            warnings.append(f"Missing outcomes: {closed_with_rec - outcomes_count} closed positions without outcome records")
+            warnings.append(
+                f"Missing outcomes: {closed_with_rec - outcomes_count} closed positions without outcome records"
+            )
         else:
             checks["outcome_consistency"] = "PASS"
 
         # 6. NAV reconciliation
         computed_nav = cash_from_ledger + market_value
-        cfg = self.db.scalar(
-            select(PortfolioConfig).where(PortfolioConfig.is_active.is_(True)).limit(1)
+        latest_nav = self.db.scalar(
+            select(PortfolioNavHistory)
+            .where(PortfolioNavHistory.as_of_date <= as_of)
+            .order_by(PortfolioNavHistory.as_of_date.desc())
+            .limit(1)
         )
-        reported_nav = float(cfg.total_equity) if cfg else computed_nav
+        if latest_nav is not None:
+            reported_nav = float(latest_nav.total_equity)
+        else:
+            cfg = self.db.scalar(
+                select(PortfolioConfig).where(PortfolioConfig.is_active.is_(True)).limit(1)
+            )
+            reported_nav = float(cfg.total_equity) if cfg else computed_nav
         discrepancy = abs(computed_nav - reported_nav)
         discrepancy_pct = (discrepancy / reported_nav * 100) if reported_nav > 0 else 0.0
 

@@ -88,7 +88,9 @@ def build_evidence_repair_prompt(reason: str) -> str:
     )
 
 
-def build_frc_abstention(*, committee_code: str, committee_version: str, symbol: str) -> CommitteeReviewOutput:
+def build_frc_abstention(
+    *, committee_code: str, committee_version: str, symbol: str
+) -> CommitteeReviewOutput:
     return CommitteeReviewOutput(
         committee_code=committee_code,
         committee_version=committee_version,

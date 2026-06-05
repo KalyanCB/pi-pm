@@ -5,16 +5,14 @@ from dataclasses import dataclass
 from statistics import mean
 
 from app.outcome_attribution.constants import REGIME_LABEL_ALL
+from app.outcome_attribution.models import RunBenchmark
 from app.outcome_attribution.statistics import mean_or_none
 from app.ranking_research.constants import (
     DEFAULT_CALIBRATION_WEIGHTS,
-    EXACT_RANKS,
-    RESEARCH_HORIZONS,
     STRATEGY_FACTOR_KEYS,
 )
 from app.ranking_research.factor_reliability import _extract_normalized
 from app.ranking_research.models import EnrichedStockObservation
-from app.outcome_attribution.models import RunBenchmark
 
 
 @dataclass(frozen=True)
@@ -24,9 +22,7 @@ class CalibrationWeights:
     raw_score: float = DEFAULT_CALIBRATION_WEIGHTS["raw_score"]
     regime_reliability: float = DEFAULT_CALIBRATION_WEIGHTS["regime_reliability"]
     factor_reliability: float = DEFAULT_CALIBRATION_WEIGHTS["factor_reliability"]
-    historical_rank_reliability: float = DEFAULT_CALIBRATION_WEIGHTS[
-        "historical_rank_reliability"
-    ]
+    historical_rank_reliability: float = DEFAULT_CALIBRATION_WEIGHTS["historical_rank_reliability"]
 
     def as_dict(self) -> dict[str, float]:
         return {
@@ -162,16 +158,10 @@ def compute_calibrated_score(
     w = tables.weights
     regime_key = regime_label or REGIME_LABEL_ALL
 
-    regime_alpha = (
-        tables.regime_rank_alpha.get(strategy_name, {})
-        .get(regime_key, {})
-        .get(rank)
-    )
+    regime_alpha = tables.regime_rank_alpha.get(strategy_name, {}).get(regime_key, {}).get(rank)
     if regime_alpha is None:
         regime_alpha = (
-            tables.regime_rank_alpha.get(strategy_name, {})
-            .get(REGIME_LABEL_ALL, {})
-            .get(rank, 0.0)
+            tables.regime_rank_alpha.get(strategy_name, {}).get(REGIME_LABEL_ALL, {}).get(rank, 0.0)
         )
     regime_alpha = regime_alpha or 0.0
 
@@ -195,4 +185,3 @@ def compute_calibrated_score(
         + w.factor_reliability * factor_term
         + w.historical_rank_reliability * hist_alpha
     )
-

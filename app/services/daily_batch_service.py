@@ -9,16 +9,20 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
+    DailyBatchArtifactType,
     DailyBatchPhase,
     DailyBatchRunStatus,
-    IngestPeriod,
     IngestionMode,
+    IngestPeriod,
 )
 from app.core.exceptions import NotFoundError, PiPMError
 from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
 from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
+from app.core.constants import PORTFOLIO_TR_BENCHMARK_SYMBOL
 from app.ops.daily_batch.batch_planner import DailyBatchPlanner, StrategySpec
+from app.ops.daily_batch.evidence_windows import DEFAULT_REGIME_PERFORMANCE_HORIZON
+from app.ops.daily_batch.paper_pilot_ops import PaperPilotOps
 from app.ops.daily_batch.traceability import DailyBatchTraceabilityRecorder
 from app.ops.daily_batch.trading_day_resolver import TradingDayResolver
 from app.schemas.backtest import GenerateRankingsRequest
@@ -31,14 +35,13 @@ from app.schemas.daily_batch import (
     DailyBatchTraceResponse,
 )
 from app.services.backtest_service import BacktestService
-from app.ops.daily_batch.evidence_windows import DEFAULT_REGIME_PERFORMANCE_HORIZON
 from app.services.exit_research_service import ExitResearchService
 from app.services.factor_predictive_power_service import FactorPredictivePowerService
 from app.services.market_data_service import MarketDataService
+from app.services.recommendation_service import RecommendationService
 from app.services.regime_analytics_service import RegimeAnalyticsService
 from app.services.research_intelligence_service import ResearchIntelligenceService
 from app.services.signal_validation_service import SignalValidationService
-from app.services.recommendation_service import RecommendationService
 
 
 class DailyBatchService:
@@ -52,6 +55,11 @@ class DailyBatchService:
         DailyBatchPhase.FACTOR_IC: 17.0,
         DailyBatchPhase.RESEARCH_INTELLIGENCE: 9.0,
         DailyBatchPhase.EXIT_RESEARCH: 14.0,
+        DailyBatchPhase.PORTFOLIO_RECOMPUTE: 3.0,
+        DailyBatchPhase.EXIT_MONITOR: 2.0,
+        DailyBatchPhase.PAPER_TRADING: 3.0,
+        DailyBatchPhase.PORTFOLIO_NAV: 2.0,
+        DailyBatchPhase.PORTFOLIO_RECONCILE: 2.0,
     }
 
     def __init__(
@@ -83,7 +91,9 @@ class DailyBatchService:
         self.artifact_repo = artifact_repo or DailyBatchArtifactRepository(db)
         self.recommendation_service = recommendation_service or RecommendationService(db)
 
-    def create_and_execute(self, request: DailyBatchRunCreateRequest) -> DailyBatchRunCreateResponse:
+    def create_and_execute(
+        self, request: DailyBatchRunCreateRequest
+    ) -> DailyBatchRunCreateResponse:
         if request.idempotency_key and not request.force_from_date:
             existing = self.run_repo.get_by_idempotency_key(request.idempotency_key)
             if existing is not None and existing.status == DailyBatchRunStatus.COMPLETED.value:
@@ -207,9 +217,7 @@ class DailyBatchService:
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RANKINGS]
 
             if request.phases.validation and (
-                plan.validation_gap_count > 0
-                or request.force_recompute
-                or request.force_from_date
+                plan.validation_gap_count > 0 or request.force_recompute or request.force_from_date
             ):
                 self._set_phase(run, DailyBatchPhase.VALIDATION, base_pct)
                 result = self.validation_service.backfill(
@@ -256,7 +264,9 @@ class DailyBatchService:
                                 strategy_name=spec.strategy_name,
                                 status=rec_run.status,
                             )
-                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
+                            phase_results["recommendations"].setdefault(
+                                spec.strategy_name, []
+                            ).append(
                                 {
                                     "ranking_run_id": str(rr.id),
                                     "recommendation_run_id": str(rec_run.id),
@@ -264,7 +274,9 @@ class DailyBatchService:
                                 }
                             )
                         except Exception as exc:
-                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
+                            phase_results["recommendations"].setdefault(
+                                spec.strategy_name, []
+                            ).append(
                                 {
                                     "ranking_run_id": str(rr.id),
                                     "status": "failed",
@@ -439,6 +451,80 @@ class DailyBatchService:
                         }
                     base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.EXIT_RESEARCH]
 
+            if request.phases.portfolio and not request.dry_run:
+                pilot = PaperPilotOps(self.db)
+                pf = request.portfolio_phases
+                target_day = plan.target_trading_day
+
+                if pf.recompute:
+                    self._set_phase(run, DailyBatchPhase.PORTFOLIO_RECOMPUTE, base_pct)
+                    phase_results["portfolio_recompute"] = pilot.portfolio_service.recompute()
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PORTFOLIO_RECOMPUTE]
+
+                if pf.exit_monitor:
+                    self._set_phase(run, DailyBatchPhase.EXIT_MONITOR, base_pct)
+                    exit_recs = pilot.exit_monitor.run(target_day)
+                    phase_results["exit_monitor"] = {
+                        "candidates": len(exit_recs),
+                        "ids": [str(r.id) for r in exit_recs],
+                    }
+                    for er in exit_recs:
+                        trace.artifact_repo.add(
+                            daily_batch_run_id=run.id,
+                            artifact_type=DailyBatchArtifactType.EXIT_RECOMMENDATION.value,
+                            artifact_id=er.id,
+                            status=er.status,
+                        )
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.EXIT_MONITOR]
+
+                if pf.paper_trading and request.pilot_auto_execute:
+                    self._set_phase(run, DailyBatchPhase.PAPER_TRADING, base_pct)
+                    pt_result = pilot._execute_pilot_trades(
+                        target_day,
+                        pilot_auto_approve=request.pilot_auto_approve,
+                    )
+                    phase_results["paper_trading"] = pt_result
+                    for tid in pt_result.get("entries", []) + pt_result.get("exits", []):
+                        trace.artifact_repo.add(
+                            daily_batch_run_id=run.id,
+                            artifact_type=DailyBatchArtifactType.PAPER_TRADE.value,
+                            artifact_id=UUID(tid),
+                            status="filled",
+                        )
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PAPER_TRADING]
+
+                if pf.nav_snapshot:
+                    self._set_phase(run, DailyBatchPhase.PORTFOLIO_NAV, base_pct)
+                    nav = pilot.nav_service.snapshot(target_day)
+                    phase_results["portfolio_nav"] = {
+                        "nav_id": str(nav.id),
+                        "total_equity": float(nav.total_equity),
+                    }
+                    trace.artifact_repo.add(
+                        daily_batch_run_id=run.id,
+                        artifact_type=DailyBatchArtifactType.PORTFOLIO_NAV_SNAPSHOT.value,
+                        artifact_id=nav.id,
+                        status="completed",
+                    )
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PORTFOLIO_NAV]
+
+                if pf.reconcile:
+                    self._set_phase(run, DailyBatchPhase.PORTFOLIO_RECONCILE, base_pct)
+                    report = pilot.reconciliation_service.run(target_day)
+                    phase_results["portfolio_reconcile"] = {
+                        "report_id": str(report.id),
+                        "status": report.status,
+                    }
+                    trace.artifact_repo.add(
+                        daily_batch_run_id=run.id,
+                        artifact_type=DailyBatchArtifactType.PORTFOLIO_RECONCILIATION.value,
+                        artifact_id=report.id,
+                        status=report.status,
+                    )
+                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PORTFOLIO_RECONCILE]
+
+                phase_results["portfolio_health"] = pilot.health_snapshot(target_day)
+
             self.run_repo.set_phase_results(run, phase_results)
             duration = time.perf_counter() - started
             self.run_repo.complete(run, duration_seconds=duration)
@@ -473,7 +559,9 @@ class DailyBatchService:
             current_phase=run.current_phase,
             target_trading_day=run.target_trading_day,
             from_date=run.from_date,
-            percent_complete=float(run.percent_complete) if run.percent_complete is not None else None,
+            percent_complete=float(run.percent_complete)
+            if run.percent_complete is not None
+            else None,
             phase_progress=run.phase_results,
             plan_snapshot=run.plan_snapshot,
             phase_results=run.phase_results,
@@ -522,11 +610,16 @@ class DailyBatchService:
                 "ingestion_batch_ids": grouped.get("ingestion_batch", []),
                 "ranking_run_ids": grouped.get("ranking_run", []),
                 "validation_report_ids": grouped.get("validation_report", []),
+                "recommendation_run_ids": grouped.get("recommendation_run", []),
                 "factor_performance_run_ids": grouped.get("factor_performance_run", []),
                 "regime_history_backfill_ids": grouped.get("regime_history_backfill", []),
                 "regime_performance_refresh_ids": grouped.get("regime_performance_refresh", []),
                 "exit_research_run_ids": grouped.get("exit_research_run", []),
                 "research_intelligence_run_ids": grouped.get("research_intelligence_run", []),
+                "paper_trade_ids": grouped.get("paper_trade", []),
+                "portfolio_nav_snapshot_ids": grouped.get("portfolio_nav_snapshot", []),
+                "portfolio_reconciliation_ids": grouped.get("portfolio_reconciliation", []),
+                "exit_recommendation_ids": grouped.get("exit_recommendation", []),
             },
             current_load=run.current_load,
             artifacts=artifacts,
@@ -547,8 +640,16 @@ class DailyBatchService:
         request: DailyBatchRunCreateRequest,
         trace: DailyBatchTraceabilityRecorder,
     ) -> dict:
-        universe = self.backtest_service.universe_repo.list_stocks_in_universe(request.universe_code)
+        universe = self.backtest_service.universe_repo.list_stocks_in_universe(
+            request.universe_code
+        )
         symbols = sorted({s.symbol for s in universe})
+        benchmark_symbols = {request.benchmark_symbol.upper()}
+        if request.phases.portfolio and request.ingest_portfolio_benchmarks:
+            benchmark_symbols.add(PORTFOLIO_TR_BENCHMARK_SYMBOL.upper())
+        for bsym in sorted(benchmark_symbols):
+            if bsym not in symbols:
+                symbols.append(bsym)
         totals = {
             "batches": 0,
             "symbols_succeeded": 0,
@@ -566,7 +667,9 @@ class DailyBatchService:
             since_date = None
         else:
             ingestion_mode = IngestionMode.INCREMENTAL
-            since_date = request.from_date if (request.force_from_date or request.force_ingest) else None
+            since_date = (
+                request.from_date if (request.force_from_date or request.force_ingest) else None
+            )
 
         batch_size = request.ingest_batch_size
         for offset in range(0, len(symbols), batch_size):
@@ -664,7 +767,9 @@ class DailyBatchService:
             status=run.status,
             target_trading_day=run.target_trading_day,
             from_date=run.from_date,
-            already_current=run.plan_snapshot.get("already_current", False) if run.plan_snapshot else False,
+            already_current=run.plan_snapshot.get("already_current", False)
+            if run.plan_snapshot
+            else False,
             plan=plan,
             phases=run.phase_results,
             started_at=run.started_at,

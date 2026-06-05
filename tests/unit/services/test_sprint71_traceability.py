@@ -8,18 +8,18 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import func, select
 
-from app.core.constants import RankingRunStatus
 from app.core.config import Settings
+from app.core.constants import RankingRunStatus
 from app.db.repositories.market_data_repository import MarketDataRepository
+from app.db.repositories.ranking_factor_contribution_repository import (
+    RankingFactorContributionRepository,
+)
 from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
 from app.db.repositories.ranking_result_repository import RankingResultRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
-from app.db.repositories.ranking_factor_contribution_repository import (
-    RankingFactorContributionRepository,
-)
 from app.db.repositories.validation_metrics_repository import ValidationMetricsRepository
 from app.models.platform_traceability import (
     RankingFactorContribution,
@@ -69,7 +69,9 @@ def validation_service(db_session, traceability_service) -> SignalValidationServ
     )
 
 
-def _completed_run(db_session, *, as_of: date | None = None, metadata: dict | None = None) -> RankingRun:
+def _completed_run(
+    db_session, *, as_of: date | None = None, metadata: dict | None = None
+) -> RankingRun:
     run = RankingRun(
         strategy_name="breakout_v1",
         strategy_version="1.0.0",
@@ -170,15 +172,15 @@ def test_ensure_ranking_traceability_is_idempotent(db_session, traceability_serv
 
     assert traceability_service.ensure_ranking_traceability(run) is True
     first_count = db_session.scalar(
-        select(func.count()).select_from(RankingFactorContribution).where(
-            RankingFactorContribution.ranking_run_id == run.id
-        )
+        select(func.count())
+        .select_from(RankingFactorContribution)
+        .where(RankingFactorContribution.ranking_run_id == run.id)
     )
     assert traceability_service.ensure_ranking_traceability(run) is False
     second_count = db_session.scalar(
-        select(func.count()).select_from(RankingFactorContribution).where(
-            RankingFactorContribution.ranking_run_id == run.id
-        )
+        select(func.count())
+        .select_from(RankingFactorContribution)
+        .where(RankingFactorContribution.ranking_run_id == run.id)
     )
     assert first_count == second_count
 
@@ -229,7 +231,9 @@ def test_ranking_reuse_path_invokes_ensure(ranking_service, db_session, monkeypa
     db_session.commit()
 
     ensure_mock = MagicMock(return_value=False)
-    monkeypatch.setattr(ranking_service.traceability_service, "ensure_ranking_traceability", ensure_mock)
+    monkeypatch.setattr(
+        ranking_service.traceability_service, "ensure_ranking_traceability", ensure_mock
+    )
     monkeypatch.setattr(ranking_service, "_resolve_regime_label", lambda *args, **kwargs: None)
 
     from app.ranking.models import RankingOutput
@@ -252,29 +256,32 @@ def test_ranking_reuse_path_invokes_ensure(ranking_service, db_session, monkeypa
 
     filter_config = UniverseFilterConfig(universe_code="NIFTY_500")
 
-    with patch.object(
-        ranking_service.ranking_run_repo,
-        "find_completed_by_inputs_hash",
-        return_value=run,
-    ), patch.object(
-        ranking_service.universe_filter_service,
-        "build_tradable_universe",
-        return_value=TradableUniverse(
-            universe_code="NIFTY_500",
-            as_of_date=date(2025, 6, 1),
-            filter_config=filter_config,
-            filter_config_hash="filter123",
-            included=(),
-            excluded=(),
-            exclusion_summary={},
+    with (
+        patch.object(
+            ranking_service.ranking_run_repo,
+            "find_completed_by_inputs_hash",
+            return_value=run,
         ),
-    ), patch.object(
-        ranking_service.strategy_registry,
-        "get",
-        return_value=MagicMock(name="breakout_v1", version="1.0.0"),
-    ), patch(
-        "app.services.ranking_service.RankingEngine"
-    ) as engine_cls:
+        patch.object(
+            ranking_service.universe_filter_service,
+            "build_tradable_universe",
+            return_value=TradableUniverse(
+                universe_code="NIFTY_500",
+                as_of_date=date(2025, 6, 1),
+                filter_config=filter_config,
+                filter_config_hash="filter123",
+                included=(),
+                excluded=(),
+                exclusion_summary={},
+            ),
+        ),
+        patch.object(
+            ranking_service.strategy_registry,
+            "get",
+            return_value=MagicMock(name="breakout_v1", version="1.0.0"),
+        ),
+        patch("app.services.ranking_service.RankingEngine") as engine_cls,
+    ):
         engine_cls.return_value.run.return_value = fake_output
 
         from app.schemas.ranking import RankingRunRequest
@@ -329,7 +336,7 @@ def test_backfill_ranking_from_script(db_session):
     _add_result(db_session, run)
     db_session.commit()
 
-    from scripts.backfill_sprint7_traceability import backfill_ranking, _build_traceability_service
+    from scripts.backfill_sprint7_traceability import _build_traceability_service, backfill_ranking
 
     service = _build_traceability_service(db_session)
     stats = backfill_ranking(db_session, service, limit=None, dry_run=True)
@@ -346,7 +353,10 @@ def test_backfill_validation_from_script(db_session):
     report = _completed_report(db_session, run)
     db_session.commit()
 
-    from scripts.backfill_sprint7_traceability import backfill_validation, _build_traceability_service
+    from scripts.backfill_sprint7_traceability import (
+        _build_traceability_service,
+        backfill_validation,
+    )
 
     service = _build_traceability_service(db_session)
     stats = backfill_validation(db_session, service, limit=None, dry_run=True)

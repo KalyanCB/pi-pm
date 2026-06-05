@@ -91,7 +91,9 @@ def _fundamentals_present(snapshot: dict[str, Any] | None) -> bool:
         return False
     if snapshot.get("status") == "unavailable":
         return False
-    meaningful = {k: v for k, v in snapshot.items() if k != "status" and v not in (None, "", [], {})}
+    meaningful = {
+        k: v for k, v in snapshot.items() if k != "status" and v not in (None, "", [], {})
+    }
     return bool(meaningful)
 
 

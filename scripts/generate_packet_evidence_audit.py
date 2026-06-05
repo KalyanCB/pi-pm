@@ -22,7 +22,8 @@ from app.args.builders.packet_evidence_coverage import (
     score_packet_evidence,
 )
 from app.db.session import get_session_factory
-from app.models.args import InvestmentReviewPacket as InvestmentReviewPacketModel, ResearchRun
+from app.models.args import InvestmentReviewPacket as InvestmentReviewPacketModel
+from app.models.args import ResearchRun
 from app.models.exit_research import ExitResearchPolicyMetric
 from app.models.factor_analytics import FactorDailyMetric, FactorPerformanceMetric
 from app.models.platform_traceability import StrategyRegimePerformance
@@ -100,9 +101,7 @@ def _sample_packet_summary(pkt) -> dict:
         "regime_rows": len((payload.get("regime") or {}).get("strategy_regime_performance") or []),
         "research_notes": len((payload.get("research_context") or {}).get("notes") or []),
         "historical_validations": len(
-            (payload.get("historical_validation_context") or {}).get(
-                "recent_completed_validations"
-            )
+            (payload.get("historical_validation_context") or {}).get("recent_completed_validations")
             or []
         ),
         "missing": (payload.get("evidence_coverage") or {}).get("missing") or [],
@@ -247,9 +246,7 @@ def _rebuild_sample_packet(db, ranking_run_id: str) -> dict | None:
         result=result,
         stock=stock,
     )
-    return _sample_packet_summary(
-        type("Pkt", (), {"symbol": pkt.symbol, "payload": pkt.payload})()
-    )
+    return _sample_packet_summary(type("Pkt", (), {"symbol": pkt.symbol, "payload": pkt.payload})())
 
 
 def main() -> int:
@@ -299,9 +296,7 @@ def main() -> int:
                 ).all()
             )
         else:
-            latest = db.scalar(
-                select(ResearchRun).order_by(ResearchRun.created_at.desc()).limit(1)
-            )
+            latest = db.scalar(select(ResearchRun).order_by(ResearchRun.created_at.desc()).limit(1))
             if latest is None:
                 packets = []
             else:

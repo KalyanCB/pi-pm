@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Pi-PM",
+    "slug": "pipm-web",
+    "version": "0.0.1",
+    "orientation": "default",
+    "scheme": "pipm",
+    "userInterfaceStyle": "dark",
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

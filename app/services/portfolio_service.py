@@ -2,12 +2,12 @@
 
 All sizing is deterministic (PRD §5). No LLM involvement.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,7 +17,6 @@ from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
 from app.models.stock import Stock
-
 
 # ── Conviction band allocation weights (PRD §5) ───────────────────────────────
 _CONVICTION_WEIGHTS: dict[str, float] = {
@@ -29,10 +28,10 @@ _CONVICTION_WEIGHTS: dict[str, float] = {
 }
 
 _DEFAULT_REGIME_SLOTS: dict[str, dict] = {
-    "risk_on":   {"max_positions": 8, "max_buy_per_day": 2},
-    "neutral":   {"max_positions": 6, "max_buy_per_day": 1},
+    "risk_on": {"max_positions": 8, "max_buy_per_day": 2},
+    "neutral": {"max_positions": 6, "max_buy_per_day": 1},
     "defensive": {"max_positions": 4, "max_buy_per_day": 0},
-    "crisis":    {"max_positions": 2, "max_buy_per_day": 0},
+    "crisis": {"max_positions": 2, "max_buy_per_day": 0},
 }
 
 
@@ -53,9 +52,9 @@ class PortfolioSummary:
 
 @dataclass
 class PositionAllocation:
-    slot_budget: float          # deployable / max_slots
-    position_notional: float    # slot_budget × conviction_weight
-    quantity_estimate: float    # position_notional / last_price
+    slot_budget: float  # deployable / max_slots
+    position_notional: float  # slot_budget × conviction_weight
+    quantity_estimate: float  # position_notional / last_price
     conviction_weight: float
     within_single_name_cap: bool
     within_sector_cap: bool
@@ -78,22 +77,22 @@ class PortfolioService:
         self,
         db: Session,
         *,
+        portfolio_id: UUID | None = None,
         market_data_repo: MarketDataRepository | None = None,
         regime_repo: RegimeAnalyticsRepository | None = None,
     ) -> None:
         self.db = db
+        self.portfolio_id = portfolio_id
         self.market_data_repo = market_data_repo or MarketDataRepository(db)
         self.regime_repo = regime_repo or RegimeAnalyticsRepository(db)
 
     # ── Config ────────────────────────────────────────────────────────────────
 
     def get_config(self) -> PortfolioConfig:
-        cfg = self.db.scalar(
-            select(PortfolioConfig)
-            .where(PortfolioConfig.is_active.is_(True))
-            .order_by(PortfolioConfig.created_at.desc())
-            .limit(1)
-        )
+        stmt = select(PortfolioConfig).where(PortfolioConfig.is_active.is_(True))
+        if self.portfolio_id is not None:
+            stmt = stmt.where(PortfolioConfig.portfolio_id == self.portfolio_id)
+        cfg = self.db.scalar(stmt.order_by(PortfolioConfig.created_at.desc()).limit(1))
         if cfg is None:
             raise ValueError("No active portfolio config. Call POST /portfolio/config first.")
         return cfg
@@ -109,13 +108,15 @@ class PortfolioService:
         notes: str | None = None,
     ) -> PortfolioConfig:
         # Deactivate existing
-        existing = self.db.scalars(
-            select(PortfolioConfig).where(PortfolioConfig.is_active.is_(True))
-        ).all()
+        stmt = select(PortfolioConfig).where(PortfolioConfig.is_active.is_(True))
+        if self.portfolio_id is not None:
+            stmt = stmt.where(PortfolioConfig.portfolio_id == self.portfolio_id)
+        existing = self.db.scalars(stmt).all()
         for cfg in existing:
             cfg.is_active = False
 
         new_cfg = PortfolioConfig(
+            portfolio_id=self.portfolio_id,
             is_active=True,
             total_equity=total_equity,
             deploy_pct=deploy_pct,
@@ -137,8 +138,7 @@ class PortfolioService:
         slots = self._regime_slots(cfg, regime_posture)
 
         market_value = sum(
-            float(p.market_value or p.quantity * (p.avg_cost or 0))
-            for p in positions
+            float(p.market_value or p.quantity * (p.avg_cost or 0)) for p in positions
         )
         unrealized_pnl = sum(float(p.unrealized_pnl or 0) for p in positions)
         deployable = float(cfg.total_equity) * float(cfg.deploy_pct)
@@ -180,18 +180,23 @@ class PortfolioService:
         slots_avail = max(0, max_pos - active_count)
 
         # Count BUYs today (paper trades filled today)
-        from app.models.paper_trade import PaperTrade
-        from app.core.constants import TradeStatus
         from sqlalchemy import func
+
+        from app.core.constants import TradeStatus
+        from app.models.paper_trade import PaperTrade
+
         today = date.today()
-        buys_today = self.db.scalar(
-            select(func.count(PaperTrade.id))
-            .where(
-                PaperTrade.side == "BUY",
-                PaperTrade.status == TradeStatus.FILLED.value,
-                PaperTrade.filled_at >= datetime(today.year, today.month, today.day, tzinfo=UTC),
+        buys_today = (
+            self.db.scalar(
+                select(func.count(PaperTrade.id)).where(
+                    PaperTrade.side == "BUY",
+                    PaperTrade.status == TradeStatus.FILLED.value,
+                    PaperTrade.filled_at
+                    >= datetime(today.year, today.month, today.day, tzinfo=UTC),
+                )
             )
-        ) or 0
+            or 0
+        )
         buys_today = int(buys_today) if buys_today else 0
 
         can_add = slots_avail > 0 and buys_today < max_buy and regime_posture != "defensive"
@@ -228,6 +233,7 @@ class PortfolioService:
 
         # Position sizing version (v1 default; v2 risk-adjusted, feature-flagged)
         from app.portfolio.position_sizing import SizingInputs, size_position
+
         sizing_version = getattr(cfg, "position_sizing_version", "v1") or "v1"
         target_value = slot_budget * _CONVICTION_WEIGHTS.get(conviction_band, 0.0)
         sizing = size_position(
@@ -370,12 +376,13 @@ class PortfolioService:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _current_positions(self) -> list[PortfolioPosition]:
-        return list(self.db.scalars(
-            select(PortfolioPosition).where(
-                PortfolioPosition.is_current.is_(True),
-                PortfolioPosition.position_status == "OPEN",
-            )
-        ).all())
+        stmt = select(PortfolioPosition).where(
+            PortfolioPosition.is_current.is_(True),
+            PortfolioPosition.position_status == "OPEN",
+        )
+        if self.portfolio_id is not None:
+            stmt = stmt.where(PortfolioPosition.portfolio_id == self.portfolio_id)
+        return list(self.db.scalars(stmt).all())
 
     def _resolve_regime_posture(self, as_of_date: date | None = None) -> str:
         try:
@@ -396,7 +403,9 @@ class PortfolioService:
 
     def _regime_slots(self, cfg: PortfolioConfig, posture: str) -> dict:
         slots = cfg.regime_slots or {}
-        return slots.get(posture, _DEFAULT_REGIME_SLOTS.get(posture, {"max_positions": 6, "max_buy_per_day": 1}))
+        return slots.get(
+            posture, _DEFAULT_REGIME_SLOTS.get(posture, {"max_positions": 6, "max_buy_per_day": 1})
+        )
 
     def _recompute_weights(self) -> None:
         cfg = self.get_config()

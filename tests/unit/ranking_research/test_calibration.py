@@ -58,7 +58,10 @@ def test_build_calibration_tables_and_score():
     ]
     tables = build_calibration_tables(observations, benchmarks)
     assert "momentum_v1" in tables.historical_rank_alpha
-    assert tables.historical_rank_alpha["momentum_v1"][1] > tables.historical_rank_alpha["momentum_v1"][15]
+    assert (
+        tables.historical_rank_alpha["momentum_v1"][1]
+        > tables.historical_rank_alpha["momentum_v1"][15]
+    )
 
     score = compute_calibrated_score(
         raw_score=0.5,

@@ -95,8 +95,9 @@ def test_different_symbols_get_different_confidence_with_same_pending_validation
     assert strong["overall_quant_confidence"] != weak["overall_quant_confidence"]
     assert strong["overall_quant_confidence"] > weak["overall_quant_confidence"]
     assert strong["see_assessment"]["quality_score"] > weak["see_assessment"]["quality_score"]
-    assert strong["historical_strategy_assessment"]["quality_score"] == (
-        weak["historical_strategy_assessment"]["quality_score"]
+    assert (
+        strong["historical_strategy_assessment"]["quality_score"]
+        == (weak["historical_strategy_assessment"]["quality_score"])
     )
     assert strong["validation_status"]["pending_neutral"] is True
     assert weak["validation_status"]["pending_neutral"] is True
@@ -117,7 +118,10 @@ def test_qrc_payload_uses_brief_not_raw_factor_rows():
         "TEST.NS",
     )
     assert "quant_research_brief" in payload
-    assert payload["overall_quant_confidence"] == payload["quant_research_brief"]["overall_quant_confidence"]
+    assert (
+        payload["overall_quant_confidence"]
+        == payload["quant_research_brief"]["overall_quant_confidence"]
+    )
     assert "decile_metrics" not in payload
     assert "horizon_metrics" not in payload
     assert "stock_setup_evidence" not in payload

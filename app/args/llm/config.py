@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -54,10 +55,7 @@ class ArgsLlmSettings:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> ArgsLlmSettings:
-        agents = {
-            code: _resolve_agent_config(settings, code)
-            for code in ALL_COMMITTEE_LLM_CODES
-        }
+        agents = {code: _resolve_agent_config(settings, code) for code in ALL_COMMITTEE_LLM_CODES}
         return cls(agents=agents)
 
 

@@ -94,9 +94,7 @@ def _build_qrc_diagnostics(
     if evidence_mode == "sqe_experiment":
         sqe_brief = user_payload.get("qrc_sqe_brief") or {}
         overall = float(
-            sqe_brief.get("sqe_score")
-            or user_payload.get("overall_stock_quality_score")
-            or 0.5
+            sqe_brief.get("sqe_score") or user_payload.get("overall_stock_quality_score") or 0.5
         )
         legacy = sqe_brief.get("legacy_overall_quant_confidence")
         see = (sqe_brief.get("see_evidence") or {}).get("setup_evidence_score")

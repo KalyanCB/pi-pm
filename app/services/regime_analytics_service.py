@@ -7,9 +7,8 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.backtest.trading_calendar import TradingCalendar
-from app.core.constants import MARKET_DATA_SOURCE_YAHOO
-
 from app.core.config import Settings
+from app.core.constants import MARKET_DATA_SOURCE_YAHOO
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.db.repositories.stock_repository import StockRepository

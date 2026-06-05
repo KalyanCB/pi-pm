@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date
 from uuid import uuid4
 
-import pytest
-
 from app.outcome_attribution.models import RunBenchmark
 from app.ranking_research.models import EnrichedStockObservation
 from app.ranking_research.rank_reliability import (

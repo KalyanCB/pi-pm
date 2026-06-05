@@ -1,9 +1,9 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+from app.factor_analytics.weight_resolver import resolve_factor_weights
 from app.models.ranking_run import RankingRun
 from app.ranking.registry import RankingStrategyRegistry
-from app.factor_analytics.weight_resolver import resolve_factor_weights
 
 
 def _run(metadata: dict | None = None) -> RankingRun:

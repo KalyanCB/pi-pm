@@ -7,8 +7,8 @@ import argparse
 import sys
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory
 from app.db.repositories.regime_policy_config_repository import RegimePolicyConfigRepository
+from app.db.session import get_session_factory
 from app.services.regime_policy_service import RegimePolicyPresetService
 
 

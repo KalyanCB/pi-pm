@@ -1,7 +1,6 @@
 import pytest
 
 from app.args.llm.config import ArgsLlmSettings
-from app.args.llm.port import LlmPort
 from app.args.llm.providers.factory import build_llm_port, register_llm_provider
 from app.args.llm.registry import CommitteeLlmRegistry
 from app.core.config import Settings

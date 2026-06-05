@@ -1,4 +1,5 @@
 """Position sizing v1/v2 tests — WS5."""
+
 import pytest
 
 from app.portfolio.position_sizing import SizingInputs, size_position
@@ -6,8 +7,12 @@ from app.portfolio.position_sizing import SizingInputs, size_position
 
 def test_v1_ignores_risk_factors():
     inputs = SizingInputs(
-        conviction_band="HIGH", slot_budget=100_000, last_price=1000,
-        atr_pct=8.0, avg_daily_value=10_000, regime_posture="defensive",
+        conviction_band="HIGH",
+        slot_budget=100_000,
+        last_price=1000,
+        atr_pct=8.0,
+        avg_daily_value=10_000,
+        regime_posture="defensive",
         target_position_value=100_000,
     )
     r = size_position(inputs, version="v1")
@@ -27,8 +32,11 @@ def test_v1_conviction_weight():
 def test_v2_applies_volatility_factor():
     # High ATR (8%) → 0.60 vol factor
     inputs = SizingInputs(
-        conviction_band="HIGH", slot_budget=100_000, last_price=1000,
-        atr_pct=8.0, regime_posture="neutral",
+        conviction_band="HIGH",
+        slot_budget=100_000,
+        last_price=1000,
+        atr_pct=8.0,
+        regime_posture="neutral",
     )
     r = size_position(inputs, version="v2")
     assert r.volatility_factor == 0.60
@@ -37,8 +45,11 @@ def test_v2_applies_volatility_factor():
 
 def test_v2_regime_scales_down_defensive():
     inputs = SizingInputs(
-        conviction_band="HIGH", slot_budget=100_000, last_price=1000,
-        atr_pct=3.0, regime_posture="defensive",
+        conviction_band="HIGH",
+        slot_budget=100_000,
+        last_price=1000,
+        atr_pct=3.0,
+        regime_posture="defensive",
     )
     r = size_position(inputs, version="v2")
     assert r.regime_factor == 0.60
@@ -48,8 +59,12 @@ def test_v2_regime_scales_down_defensive():
 
 def test_v2_liquidity_scales_down_thin():
     inputs = SizingInputs(
-        conviction_band="HIGH", slot_budget=100_000, last_price=1000,
-        atr_pct=3.0, avg_daily_value=400_000, regime_posture="neutral",
+        conviction_band="HIGH",
+        slot_budget=100_000,
+        last_price=1000,
+        atr_pct=3.0,
+        avg_daily_value=400_000,
+        regime_posture="neutral",
         target_position_value=100_000,  # 25% participation → 0.40
     )
     r = size_position(inputs, version="v2")
@@ -58,8 +73,12 @@ def test_v2_liquidity_scales_down_thin():
 
 def test_v2_calm_liquid_risk_on_sizes_up():
     inputs = SizingInputs(
-        conviction_band="HIGH", slot_budget=100_000, last_price=1000,
-        atr_pct=1.0, avg_daily_value=100_000_000, regime_posture="risk_on",
+        conviction_band="HIGH",
+        slot_budget=100_000,
+        last_price=1000,
+        atr_pct=1.0,
+        avg_daily_value=100_000_000,
+        regime_posture="risk_on",
         target_position_value=100_000,
     )
     r = size_position(inputs, version="v2")
@@ -76,8 +95,12 @@ def test_low_conviction_zero_regardless_of_version():
 
 def test_deterministic():
     inputs = SizingInputs(
-        conviction_band="EXCEPTIONAL", slot_budget=120_000, last_price=500,
-        atr_pct=2.5, avg_daily_value=5_000_000, regime_posture="neutral",
+        conviction_band="EXCEPTIONAL",
+        slot_budget=120_000,
+        last_price=500,
+        atr_pct=2.5,
+        avg_daily_value=5_000_000,
+        regime_posture="neutral",
         target_position_value=120_000,
     )
     r1 = size_position(inputs, version="v2")
