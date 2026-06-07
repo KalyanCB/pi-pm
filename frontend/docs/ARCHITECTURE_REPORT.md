@@ -1,14 +1,17 @@
-# Pi-PM Frontend — Track F Architecture Report
+# Pi-PM Frontend — Architecture Report
 
 **Date:** 2026-06-05  
-**Track:** F — Frontend Monorepo Foundation  
+**Tracks:** F (foundation) + F2 (feature integration)  
 **ADR:** [ADR-026](../../docs/architecture/ADR-026-Frontend-Architecture.md)
+
+**Live integration detail:** [`FEATURE_INTEGRATION_REPORT.md`](./FEATURE_INTEGRATION_REPORT.md)  
+**Audit:** [`docs/audit/FRONTEND_AUDIT_REPORT.md`](../../docs/audit/FRONTEND_AUDIT_REPORT.md)
 
 ---
 
 ## 1. Summary
 
-Track F implemented the **frontend monorepo foundation** per ADR-026. No business features or live API integration were added. The codebase is a single TypeScript monorepo using React Native + React Native Web, pnpm workspaces, and Turborepo.
+The frontend is a **React Native + React Native Web monorepo** with **live backend API integration** across auth, dashboard, recommendations, portfolio, committee, and copilot. Eight screens are wired on both web and mobile; two spec screens (`/exits`, `/analytics`) are not yet implemented.
 
 ---
 
@@ -17,35 +20,34 @@ Track F implemented the **frontend monorepo foundation** per ADR-026. No busines
 ```
 frontend/
 ├── apps/
-│   ├── web/          @pipm/web   — Expo Web (primary)
-│   └── mobile/       @pipm/mobile — Expo native shell
+│   ├── web/          @pipm/web   — Expo Web
+│   └── mobile/       @pipm/mobile — Expo native
 ├── packages/
 │   ├── types/        @pipm/types
 │   ├── theme/        @pipm/theme
-│   ├── api/          @pipm/api
-│   ├── hooks/        @pipm/hooks
+│   ├── api/          @pipm/api    — auth, portfolio, recommendations, pilot, …
+│   ├── hooks/        @pipm/hooks  — AuthProvider, TanStack Query hooks
 │   ├── navigation/   @pipm/navigation
-│   └── ui/           @pipm/ui
+│   └── ui/           @pipm/ui     — screens + components
 ├── metro.config.base.js
 ├── package.json
-├── pnpm-workspace.yaml
 └── turbo.json
 ```
 
 ---
 
-## 3. Technology Stack (Implemented)
+## 3. Technology Stack
 
 | Layer | Package | Status |
 |-------|---------|--------|
 | Types | `@pipm/types` | ✅ API + component prop types |
 | Theme | `@pipm/theme` | ✅ Dark terminal palette, breakpoints |
-| API | `@pipm/api` | ✅ Typed clients, errors, retry helpers |
-| Hooks | `@pipm/hooks` | ✅ Zustand stores, TanStack Query, providers |
-| Navigation | `@pipm/navigation` | ✅ Sidebar, TabBar, AppShell, routes |
-| UI | `@pipm/ui` | ✅ 10 components + 6 screen shells |
-| Web app | `@pipm/web` | ✅ Expo Router, responsive shell |
-| Mobile app | `@pipm/mobile` | ✅ Expo native, mirrored routes |
+| API | `@pipm/api` | ✅ Typed clients incl. auth, pilot |
+| Hooks | `@pipm/hooks` | ✅ Auth, queries, mutations, stores |
+| Navigation | `@pipm/navigation` | ✅ Sidebar, TabBar, AppShell, master-detail |
+| UI | `@pipm/ui` | ✅ Screens + dashboard/portfolio molecules |
+| Web app | `@pipm/web` | ✅ 8 routes + login |
+| Mobile app | `@pipm/mobile` | ✅ Mirrored routes |
 
 ---
 
@@ -53,118 +55,81 @@ frontend/
 
 | Concern | Implementation |
 |---------|----------------|
-| Server state | TanStack Query v5 via `createQueryClient()` |
-| Auth (stub) | `useAuthStore` — dev owner session |
+| Server state | TanStack Query v5 — all feature hooks **enabled** |
+| Auth | `AuthProvider` + `AuthGate` + `sessionStorage` |
 | UI filters | `useUiStore` |
 | Copilot session | `useCopilotStore` |
-| API access | `AppProviders` + `useApi()` |
-
-Query hooks (`useDashboardQuery`, `useDailyRecommendationsQuery`) are **disabled by default** until Phase 2.
+| API access | `AppProviders` + `useApi()` with 401 refresh |
 
 ---
 
-## 5. Navigation
+## 5. Routes (implemented)
+
+| Route | Screen | API integration |
+|-------|--------|-----------------|
+| `/login` | LoginScreen | `POST /auth/login`, `GET /auth/me` |
+| `/` | DashboardScreen | dashboard, trust, pilot health, nav-history |
+| `/recommendations` | RecommendationsScreen | daily, committee overlay, stocks list |
+| `/recommendations/:symbol` | RecommendationDetailScreen | stock result, approve/reject |
+| `/portfolio` | PortfolioScreen | summary, positions, performance, attribution |
+| `/committee` | CommitteeScreen | latest, packets, report |
+| `/copilot` | CopilotScreen | `POST /copilot/ask` |
+| `/settings` | SettingsScreen | portfolio picker, logout |
+
+**Not yet implemented:** `/exits` (Exit Approval Queue), `/analytics` (Performance Analytics), `/committee/:symbol`.
+
+---
+
+## 6. Auth
+
+Full JWT flow — see [`docs/frontend/AUTHENTICATION_PREPARATION.md`](../../docs/frontend/AUTHENTICATION_PREPARATION.md).
+
+- `AuthGate` protects all routes except `/login`
+- `X-Portfolio-Id` on every API call
+- `EXPO_PUBLIC_AUTH_BYPASS=true` for local dev without login UI
+
+---
+
+## 6. Responsive layout
 
 | Breakpoint | Chrome |
 |------------|--------|
-| `< 1024px` | Bottom `TabBar` (5 tabs) |
-| `≥ 1024px` | Fixed `Sidebar` (240px) |
+| `< 1024px` | Bottom `TabBar` (5 primary tabs) |
+| `≥ 1024px` | Sidebar 240px + optional Copilot side panel 400px |
 
-`AppShell` in `@pipm/navigation` switches layout via `useBreakpoint()`.
-
-Routes: `/`, `/recommendations`, `/portfolio`, `/committee`, `/copilot`, `/settings`
+`MasterDetailLayout` on desktop recommendations; mobile pushes to `[symbol]` route.
 
 ---
 
-## 6. Components Delivered
-
-| Component | Package | Tests |
-|-----------|---------|-------|
-| RecommendationCard | ui | ✅ |
-| PortfolioPositionCard | ui | — |
-| ConvictionBadge | ui | ✅ |
-| RiskIndicator | ui | — |
-| TrustScoreCard | ui | — |
-| CommitteeAdvisoryCard | ui | — |
-| HighConcernBanner | ui | — |
-| CopilotMessage | ui | — |
-| CitationPanel | ui | — |
-| RecommendationReasonList | ui | — |
-
----
-
-## 7. Screen Shells (Empty)
-
-| Screen | Route | Status |
-|--------|-------|--------|
-| Dashboard | `/` | Placeholder |
-| Recommendations | `/recommendations` | Placeholder |
-| Portfolio | `/portfolio` | Placeholder |
-| Committee | `/committee` | Placeholder |
-| Copilot | `/copilot` | Static sample message |
-| Settings | `/settings` | Placeholder |
-
----
-
-## 8. API Layer (Foundation Only)
-
-- `createPipmApi()` aggregates domain clients
-- Endpoints typed for recommendations, portfolio, committee, copilot, analytics
-- `ApiError`, `ReconciliationGateError`, `shouldRetry`, `retryDelay`
-- **No screens call live APIs** — hooks use `enabled: false`
-
----
-
-## 9. Commands
+## 7. Commands
 
 ```bash
 cd frontend
 pnpm install
-pnpm dev:web          # Start web dev server
-pnpm dev:mobile       # Start Expo native
-pnpm typecheck        # TypeScript all packages
-pnpm test             # Unit tests (api, navigation, ui)
-pnpm build            # Export web + mobile bundles
+pnpm dev:web
+pnpm dev:mobile
+pnpm typecheck
+pnpm test
 ```
 
-**Note:** `.npmrc` uses `node-linker=hoisted` for Expo Metro compatibility with pnpm workspaces.
+---
 
-## 9.1 Build validation (2026-06-05)
+## 8. Known gaps
 
-| Target | Command | Result |
-|--------|---------|--------|
-| Web | `pnpm --filter @pipm/web build` | ✅ `apps/web/dist` |
-| Mobile | `pnpm --filter @pipm/mobile build` | ✅ iOS + Android + web bundles |
-| Typecheck | `pnpm typecheck` | ✅ 14/14 packages |
-| API tests | 6 passed | ✅ |
-| Navigation tests | 5 passed | ✅ |
-| UI tests | 4 passed | ✅ |
+| Gap | Spec reference |
+|-----|----------------|
+| Exit Approval Queue screen | SCREEN_SPECIFICATIONS §4 |
+| Analytics screen | SCREEN_SPEC §7 |
+| HITL queue modal (`getQueue`) | APPROVAL_WORKFLOW_UX |
+| Citation deep links in Copilot | COPILOT_UX |
+| Pull-to-refresh | RESPONSIVE_LAYOUT_GUIDE |
+| Settings not in mobile TabBar | — |
 
 ---
 
-## 10. Acceptance Criteria
-
-| Criterion | Status |
-|-----------|--------|
-| Single codebase | ✅ |
-| Web builds | ✅ `pnpm --filter @pipm/web build` |
-| Mobile builds | ✅ `pnpm --filter @pipm/mobile build` |
-| Shared components operational | ✅ + unit tests |
-| No backend changes | ✅ |
-
----
-
-## 11. Next Phase (Phase 2)
-
-1. Enable `useDashboard` composite hook with live API
-2. Wire Recommendations list with committee join
-3. Portfolio 409 gate handling
-4. Playwright E2E for web
-
----
-
-## 12. Revision History
+## 9. Revision History
 
 | Version | Date | Change |
 |---------|------|--------|
-| 1.0 | 2026-06-05 | Track F foundation complete |
+| 1.0 | 2026-06-05 | Track F foundation (placeholders) |
+| 2.0 | 2026-06-05 | Track F2 live API integration; auth shipped |

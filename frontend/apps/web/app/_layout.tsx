@@ -3,12 +3,13 @@ import { View, StyleSheet } from 'react-native';
 import { Slot, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider } from '@pipm/theme';
-import { AppProviders } from '@pipm/hooks';
+import { AppProviders, AuthGate } from '@pipm/hooks';
 import { AppShell } from '@pipm/navigation';
 
 export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
+  const isLogin = pathname === '/login';
 
   const handleNavigate = (href: string) => {
     router.push(href as '/');
@@ -17,12 +18,18 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <AppProviders>
-        <View style={styles.root}>
-          <StatusBar style="light" />
-          <AppShell activePath={pathname} onNavigate={handleNavigate}>
-            <Slot />
-          </AppShell>
-        </View>
+        <AuthGate>
+          <View style={styles.root}>
+            <StatusBar style="light" />
+            {isLogin ? (
+              <Slot />
+            ) : (
+              <AppShell activePath={pathname} onNavigate={handleNavigate}>
+                <Slot />
+              </AppShell>
+            )}
+          </View>
+        </AuthGate>
       </AppProviders>
     </ThemeProvider>
   );

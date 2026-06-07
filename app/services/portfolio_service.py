@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.constants import DEFAULT_BENCHMARK_SYMBOL
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
+from app.models.portfolio_analytics import PortfolioNavHistory
 from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
 from app.models.stock import Stock
 
@@ -137,20 +138,30 @@ class PortfolioService:
         regime_posture = self._resolve_regime_posture(as_of_date)
         slots = self._regime_slots(cfg, regime_posture)
 
-        market_value = sum(
-            float(p.market_value or p.quantity * (p.avg_cost or 0)) for p in positions
-        )
-        unrealized_pnl = sum(float(p.unrealized_pnl or 0) for p in positions)
-        deployable = float(cfg.total_equity) * float(cfg.deploy_pct)
-        cash_available = max(0.0, float(cfg.total_equity) - market_value)
-        cash_pct = cash_available / float(cfg.total_equity) if cfg.total_equity else 0
+        nav_row = self._latest_nav(as_of_date)
+        if nav_row is not None:
+            total_equity = float(nav_row.total_equity)
+            market_value = float(nav_row.market_value or 0)
+            unrealized_pnl = float(nav_row.unrealized_pnl or 0)
+            cash_available = float(nav_row.cash_balance or 0)
+            cash_pct = float(nav_row.cash_pct or 0)
+        else:
+            market_value = sum(
+                float(p.market_value or p.quantity * (p.avg_cost or 0)) for p in positions
+            )
+            unrealized_pnl = sum(float(p.unrealized_pnl or 0) for p in positions)
+            total_equity = float(cfg.total_equity)
+            cash_available = max(0.0, total_equity - market_value)
+            cash_pct = cash_available / total_equity if total_equity else 0
+
+        deployable = total_equity * float(cfg.deploy_pct)
 
         active_count = len(positions)
         max_positions = slots["max_positions"]
         slots_available = max(0, max_positions - active_count)
 
         return PortfolioSummary(
-            total_equity=float(cfg.total_equity),
+            total_equity=total_equity,
             deployable_capital=deployable,
             cash_available=cash_available,
             cash_pct=round(cash_pct, 4),
@@ -163,10 +174,27 @@ class PortfolioService:
             max_buy_per_day=slots["max_buy_per_day"],
         )
 
+    def _latest_nav(self, as_of_date: date | None = None) -> PortfolioNavHistory | None:
+        as_of = as_of_date or date.today()
+        return self.db.scalar(
+            select(PortfolioNavHistory)
+            .where(PortfolioNavHistory.as_of_date <= as_of)
+            .order_by(PortfolioNavHistory.as_of_date.desc())
+            .limit(1)
+        )
+
     # ── Positions ─────────────────────────────────────────────────────────────
 
-    def get_positions(self) -> list[PortfolioPosition]:
-        return self._current_positions()
+    def get_positions(self, include_closed: bool = False) -> list[PortfolioPosition]:
+        if not include_closed:
+            return self._current_positions()
+        stmt = (
+            select(PortfolioPosition)
+            .order_by(PortfolioPosition.exit_date.desc().nulls_first(), PortfolioPosition.entry_date.desc())
+        )
+        if self.portfolio_id is not None:
+            stmt = stmt.where(PortfolioPosition.portfolio_id == self.portfolio_id)
+        return list(self.db.scalars(stmt).all())
 
     def get_limits(self, as_of_date: date | None = None) -> RegimeLimits:
         cfg = self.get_config()
@@ -185,24 +213,26 @@ class PortfolioService:
         from app.core.constants import TradeStatus
         from app.models.paper_trade import PaperTrade
 
-        today = date.today()
+        eval_date = as_of_date or date.today()
+        day_start = datetime(eval_date.year, eval_date.month, eval_date.day, tzinfo=UTC)
+        day_end = datetime(eval_date.year, eval_date.month, eval_date.day, 23, 59, 59, tzinfo=UTC)
         buys_today = (
             self.db.scalar(
                 select(func.count(PaperTrade.id)).where(
                     PaperTrade.side == "BUY",
                     PaperTrade.status == TradeStatus.FILLED.value,
-                    PaperTrade.filled_at
-                    >= datetime(today.year, today.month, today.day, tzinfo=UTC),
+                    PaperTrade.filled_at >= day_start,
+                    PaperTrade.filled_at <= day_end,
                 )
             )
             or 0
         )
         buys_today = int(buys_today) if buys_today else 0
 
-        can_add = slots_avail > 0 and buys_today < max_buy and regime_posture != "defensive"
+        can_add = slots_avail > 0 and buys_today < max_buy
         block_reason = None
-        if regime_posture == "defensive":
-            block_reason = "REGIME_BLOCK: defensive posture — no new BUYs"
+        if max_buy == 0:
+            block_reason = f"REGIME_BLOCK: {regime_posture} posture — no new BUYs"
         elif slots_avail == 0:
             block_reason = f"PORTFOLIO_FULL: {active_count}/{max_pos} slots used"
         elif buys_today >= max_buy:
@@ -299,6 +329,7 @@ class PortfolioService:
 
         market_value = quantity * fill_price
         pos = PortfolioPosition(
+            portfolio_id=self.portfolio_id,
             stock_id=stock_id,
             recommendation_result_id=recommendation_result_id,
             quantity=quantity,

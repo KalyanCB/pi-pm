@@ -65,7 +65,7 @@ export function Sidebar({ activePath, onNavigate, collapsed = false }: SidebarPr
         </Text>
         {!collapsed && (
           <Text style={[styles.brandSub, { color: theme.colors.textMuted }]}>
-            Portfolio Console
+            Investment Workstation
           </Text>
         )}
       </View>

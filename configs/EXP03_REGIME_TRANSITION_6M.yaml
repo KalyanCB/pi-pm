@@ -1,0 +1,14 @@
+experiment_id: EXP03_REGIME_TRANSITION_6M
+name: "Regime Transition - 6 Month"
+description: "Covers Jan-Jun 2026: BULL_LOW_VOL BUYs -> BEAR_LOW_VOL WATCH"
+mode: AUTONOMOUS_RCEE
+start_date: "2025-12-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1]
+capital:
+  initial_cash: 1000000
+  monthly_contribution: 100000
+  contribution_day: FIRST_TRADING_DAY
+portfolio:
+  max_positions: 10
+  max_buy_slots: 5

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.auth_deps import CurrentUser, OwnerUser
 from app.api.deps import get_db
 from app.auth.constants import UserRole
+from app.core.config import Settings, get_settings
 from app.services.copilot_service import CopilotService
 
 router = APIRouter()
@@ -77,13 +78,16 @@ class AuditLogRead(BaseModel):
 def ask(
     payload: AskRequest,
     user: CurrentUser,
+    settings: Settings = Depends(get_settings),
     service: CopilotService = Depends(get_copilot_service),
 ) -> AskResponse:
     """Ask a question about Pi-PM data — rankings, conviction, validation, ARGS, ops."""
+    # Dev auth bypass uses a synthetic user id that is not persisted in `users`.
+    audit_user_id = user.user_id if settings.auth_enabled else None
     result = service.ask(
         payload.question,
         session_id=payload.session_id,
-        user_id=user.user_id,
+        user_id=audit_user_id,
     )
     lineage_raw = result.get("lineage")
     lineage = LineageSummary(**lineage_raw) if lineage_raw else None

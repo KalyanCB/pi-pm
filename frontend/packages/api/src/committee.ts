@@ -1,12 +1,20 @@
 import type { CommitteePacket, CommitteeReviewSummary } from '@pipm/types';
+import { ApiError } from './errors';
 import type { ApiClient } from './client';
 
 export function createCommitteeApi(client: ApiClient) {
   return {
-    getLatest(universeCode = 'NIFTY_500') {
-      return client.get<CommitteeReviewSummary>('/investment-committee/latest', {
-        params: { universe_code: universeCode },
-      });
+    async getLatest(universeCode = 'NIFTY_500'): Promise<CommitteeReviewSummary | null> {
+      try {
+        return await client.get<CommitteeReviewSummary>('/investment-committee/latest', {
+          params: { universe_code: universeCode },
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          return null;
+        }
+        throw error;
+      }
     },
     getReview(reviewId: string) {
       return client.get<CommitteeReviewSummary>(`/investment-committee/${reviewId}`);

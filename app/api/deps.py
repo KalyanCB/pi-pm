@@ -634,6 +634,14 @@ def get_recommendation_analytics_service(
     return RecommendationAnalyticsService(db)
 
 
+def get_pilot_command_center_service(
+    db: Session = Depends(get_db),
+):
+    from app.services.pilot_command_center_service import PilotCommandCenterService
+
+    return PilotCommandCenterService(db)
+
+
 def get_args_explainability_service(
     research_run_repo: ResearchRunRepository = Depends(get_research_run_repository),
     packet_repo: InvestmentReviewPacketRepository = Depends(

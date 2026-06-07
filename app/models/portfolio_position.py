@@ -35,6 +35,7 @@ class PortfolioConfig(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     sector_cap_pct: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=0.30)
     slippage_bps: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False, default=5.0)
     fee_per_leg: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=20.0)
+    execution_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="PAPER")
     notes: Mapped[str | None] = mapped_column(String(256))
 
 
@@ -63,6 +64,8 @@ class PortfolioPosition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     exit_price: Mapped[float | None] = mapped_column(Numeric(18, 6))
     entry_date: Mapped[date | None] = mapped_column(Date)
     exit_date: Mapped[date | None] = mapped_column(Date)
+    stop_loss_price: Mapped[float | None] = mapped_column(Numeric(18, 6))
+    # ADR-033: absolute stop price set at entry (entry_price * (1 + advisory_stop_pct/100))
     market_value: Mapped[float | None] = mapped_column(Numeric(18, 2))
     unrealized_pnl: Mapped[float | None] = mapped_column(Numeric(18, 2))
     realized_pnl: Mapped[float | None] = mapped_column(Numeric(18, 2))

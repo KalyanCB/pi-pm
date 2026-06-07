@@ -1,8 +1,9 @@
 # Product Maturity Scorecard
 
-**Date:** 2026-06-05  
+**Date:** 2026-06-05 (rescored post Phase 2)  
 **Scoring:** 0 = absent, 50 = partial/production with known gaps, 100 = production-complete with CI/E2E  
-**Method:** Code paths, test counts, API surface, doc cross-check
+**Method:** Code paths, test counts, API surface, AUDIT-01 verification  
+**Audit scores:** [`docs/audit/PLATFORM_READINESS_SCORECARD.md`](../audit/PLATFORM_READINESS_SCORECARD.md)
 
 ---
 
@@ -23,14 +24,20 @@
 | Research intelligence | **65** | Production API | `app/api/v1/research_intelligence.py`, thin tests |
 | Outcome attribution | **70** | Analytics only | `app/outcome_attribution/`, 11 unit tests |
 | Ranking calibration research | **45** | Research only | `app/ranking_research/`, not in prod registry |
-| Recommendation lifecycle | **25** | Missing | No buy/hold/exit product layer |
-| Portfolio / paper trading | **12** | Stub | Models + migration only |
-| Mobile / consumer UX | **8** | Absent | No mobile codebase |
+| Recommendation lifecycle | **68** | Production (partial) | `app/recommendation/`, 9 API routes, unit tests |
+| Portfolio / paper trading | **58** | Production (partial) | Services + 22 APIs; multi-tenant NAV gaps |
+| Copilot explainability | **74** | Production | `app/copilot/`, refusal + audit |
+| JWT auth | **70** | Production (partial) | ADR-027; default secret risk |
+| Pilot operations | **72** | Production | `/pilot/*` command center |
+| Frontend investor UX | **62** | Partial | `frontend/` 8/10 screens |
+| Live execution + risk | **22** | Stub | Zerodha not connected; AC-RISK absent |
+| Mobile / consumer UX | **62** | Partial | Same monorepo as web (was: absent) |
 | CI / release engineering | **35** | Gap | No `.github/workflows` pytest gate |
 | Documentation | **85** | Strong | `docs/AI/`, PLATFORM-HANDOFF, dailyruns |
 
-**Weighted product readiness (excluding mobile): ~72/100**  
-**End-user investable product (incl. portfolio + mobile): ~38/100**
+**Weighted product readiness (research + Phase 2 backend): ~68/100**  
+**End-user investable product (incl. frontend + live): ~58/100**  
+**Research platform only (G1–G7): ~88/100**
 
 ---
 
@@ -64,28 +71,39 @@
 | Phase 3 independence | ✗ | Not in codebase |
 | Live LLM in CI | ✗ | Mock provider only |
 
-### Portfolio / paper trading — 12
+### Portfolio / paper trading — 58
 
 | Criterion | Met? | Evidence |
 |-----------|------|----------|
-| DB tables | ✓ | `migrations/versions/20260530_0001_initial_schema.py` |
-| ORM models | ✓ | `app/models/paper_trade.py`, `portfolio_position.py` |
-| Services / API | ✗ | `app/portfolio/__init__.py` docstring only |
-| Tests | ✗ | Zero tests |
+| DB tables + migrations | ✓ | 0021–0022, 0026 execution |
+| Services | ✓ | `portfolio_service.py`, `PaperPilotOps`, `ExecutionService` |
+| API | ✓ | 22 `/portfolio/*` + 8 `/execution/*` |
+| Tests | Partial | 7 unit files; no API integration tests |
+| Multi-tenant NAV/cash | ✗ | Global tables — see audit |
 
-### Mobile — 8
+### Recommendation lifecycle — 68
 
 | Criterion | Met? | Evidence |
 |-----------|------|----------|
-| Mobile repo / screens | ✗ | No matches in repo |
-| REST API for consumers | Partial | 60+ endpoints under `/api/v1` |
-| Auth for mobile | ✗ | No auth middleware in `app/main.py` |
+| Conviction engine | ✓ | `conviction_scorer.py` conv_v1.1.0 |
+| Action rules | ✓ | `recommendation/engine.py` |
+| HITL approve/reject | ✓ | `recommendations.py` OwnerUser |
+| API integration tests | ✗ | Unit only |
+
+### Frontend / mobile — 62
+
+| Criterion | Met? | Evidence |
+|-----------|------|----------|
+| Monorepo web + mobile | ✓ | `frontend/apps/web`, `apps/mobile` |
+| Live API wiring | ✓ | `FEATURE_INTEGRATION_REPORT.md` |
+| Auth | ✓ | JWT + AuthGate |
+| All spec screens | ✗ | Missing `/exits`, `/analytics` |
 
 ### CI — 35
 
 | Criterion | Met? | Evidence |
 |-----------|------|----------|
-| Unit/integration tests | ✓ | 312 collected |
+| Unit/integration tests | ✓ | 574 passed |
 | CI workflow | ✗ | Per `docs/AI/09_TESTING/TEST_GAPS.md` |
 | Daily batch E2E test | ✗ | Manual runbook only |
 
@@ -99,9 +117,9 @@
 
 ## Lowest maturity (top 3)
 
-1. **Mobile / consumer UX — 8** — No client application.
-2. **Portfolio / paper trading — 12** — Schema-only stub.
-3. **Recommendation lifecycle — 25** — Rankings exist; no conviction/signal product.
+1. **Live execution + risk — 22** — Zerodha stub; no AC-RISK gates.
+2. **CI / release engineering — 35** — No automated pytest gate in CI.
+3. **Frontend investor UX — 62** — Missing exit queue and analytics screens.
 
 ---
 
@@ -109,8 +127,9 @@
 
 | Doc claim | Code truth | Notes |
 |-----------|------------|-------|
-| "312 passed" | ✓ Confirmed via collect | Run date 2026-06-05 |
-| "Paper trading stub" | ✓ Confirmed | No services beyond models |
+| "574 passed" | ✓ Executed 2026-06-05 | `pytest tests/ -q` |
+| "Paper trading stub" | ✗ Stale (Jun 4 handoff) | `PaperPilotOps` + ExecutionService shipped |
+| "No auth" in API catalog | ✗ Stale | JWT on all domain routes since migration 0025 |
 | "Committee Phase 3 not started" | ✓ No Phase 3 modules | Design docs only |
 
 See individual gap analyses for detail.

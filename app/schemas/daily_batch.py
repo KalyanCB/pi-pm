@@ -10,6 +10,8 @@ from app.core.constants import (
     RANKING_STRATEGY_BREAKOUT_V1_VERSION,
     RANKING_STRATEGY_MOMENTUM_V1,
     RANKING_STRATEGY_MOMENTUM_V1_VERSION,
+    RANKING_STRATEGY_REVERSAL_V1,
+    RANKING_STRATEGY_REVERSAL_V1_VERSION,
     UNIVERSE_NIFTY_500,
 )
 from app.factor_analytics.constants import DEFAULT_HOLDOUT_START_DATE
@@ -55,6 +57,10 @@ class DailyBatchRunCreateRequest(BaseModel):
             DailyBatchStrategySpec(
                 strategy_name=RANKING_STRATEGY_MOMENTUM_V1,
                 strategy_version=RANKING_STRATEGY_MOMENTUM_V1_VERSION,
+            ),
+            DailyBatchStrategySpec(
+                strategy_name=RANKING_STRATEGY_REVERSAL_V1,
+                strategy_version=RANKING_STRATEGY_REVERSAL_V1_VERSION,
             ),
         ]
     )

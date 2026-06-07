@@ -11,8 +11,10 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@pipm/hooks": "workspace:*",
     "@pipm/theme": "workspace:*",
-    "@pipm/types": "workspace:*"
+    "@pipm/types": "workspace:*",
+    "@pipm/ui": "workspace:*"
   },
   "peerDependencies": {
     "expo-router": "*",

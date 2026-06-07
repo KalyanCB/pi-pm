@@ -87,8 +87,8 @@ class PaperTradeService:
             status=TradeStatus.FILLED.value,
             ranking_run_id=ranking_run_id,
             idempotency_key=idem_key,
-            requested_at=datetime.now(UTC),
-            filled_at=datetime.now(UTC),
+            requested_at=datetime(fill_date.year, fill_date.month, fill_date.day, 15, 0, tzinfo=UTC),
+            filled_at=datetime(fill_date.year, fill_date.month, fill_date.day, 15, 0, tzinfo=UTC),
             metadata_={
                 "recommendation_result_id": str(recommendation_result_id),
                 "recommendation_run_id": str(result.recommendation_run_id),
@@ -223,8 +223,8 @@ class PaperTradeService:
             status=TradeStatus.FILLED.value,
             ranking_run_id=ranking_run_id,
             idempotency_key=idem_key,
-            requested_at=datetime.now(UTC),
-            filled_at=datetime.now(UTC),
+            requested_at=datetime(fill_date.year, fill_date.month, fill_date.day, 15, 0, tzinfo=UTC),
+            filled_at=datetime(fill_date.year, fill_date.month, fill_date.day, 15, 0, tzinfo=UTC),
             metadata_={
                 "recommendation_result_id": str(recommendation_result_id),
                 "recommendation_run_id": str(result.recommendation_run_id),
@@ -298,12 +298,136 @@ class PaperTradeService:
         self.db.flush()
         return trade
 
+    def execute_position_exit(
+        self,
+        *,
+        stock_id: UUID,
+        as_of_date: date,
+        exit_triggers: list[str] | None = None,
+        portfolio_exit_recommendation_id: UUID | None = None,
+        idempotency_key: str | None = None,
+    ) -> PaperTrade:
+        """Simulate SELL fill for backtest/paper pilot from exit-monitor (no EXIT_APPROVED rec)."""
+        from app.models.portfolio_position import PortfolioPosition
+
+        idem_key = idempotency_key or (
+            f"exit-monitor:{portfolio_exit_recommendation_id}"
+            if portfolio_exit_recommendation_id
+            else self._make_idem_key("exit-pos", stock_id)
+        )
+        existing = self.db.scalar(select(PaperTrade).where(PaperTrade.idempotency_key == idem_key))
+        if existing:
+            return existing
+
+        pos = self.db.scalar(
+            select(PortfolioPosition).where(
+                PortfolioPosition.stock_id == stock_id,
+                PortfolioPosition.is_current.is_(True),
+                PortfolioPosition.position_status == "OPEN",
+            )
+        )
+        if pos is None:
+            raise ValueError(f"No open position for stock {stock_id}")
+
+        fill_date = as_of_date
+        fill_price, last_close = self._fill_price(stock_id, fill_date, side="SELL")
+        quantity = float(pos.quantity)
+
+        trade = PaperTrade(
+            stock_id=stock_id,
+            side=TradeSide.SELL.value,
+            quantity=quantity,
+            limit_price=None,
+            fill_price=fill_price,
+            fill_quantity=quantity,
+            status=TradeStatus.FILLED.value,
+            ranking_run_id=None,
+            idempotency_key=idem_key,
+            requested_at=datetime(fill_date.year, fill_date.month, fill_date.day, 15, 0, tzinfo=UTC),
+            filled_at=datetime(fill_date.year, fill_date.month, fill_date.day, 15, 0, tzinfo=UTC),
+            metadata_={
+                "portfolio_exit_recommendation_id": (
+                    str(portfolio_exit_recommendation_id) if portfolio_exit_recommendation_id else None
+                ),
+                "exit_triggers": exit_triggers or [],
+                "recommendation_result_id": (
+                    str(pos.recommendation_result_id) if pos.recommendation_result_id else None
+                ),
+                "last_close": last_close,
+                "slippage_bps": 5.0,
+            },
+        )
+        self.db.add(trade)
+        self.db.flush()
+
+        self.portfolio_service.close_position(stock_id, exit_price=fill_price, exit_date=fill_date)
+
+        proceeds = quantity * fill_price
+        fee = self._fee()
+        self.nav_service.record_cash_entry(
+            entry_type="TRADE_SELL",
+            amount=proceeds,
+            as_of_date=fill_date,
+            reference_id=trade.id,
+            reference_type="paper_trade",
+            description=f"SELL {quantity} @ {fill_price}",
+        )
+        if fee:
+            self.nav_service.record_cash_entry(
+                entry_type="FEE",
+                amount=-fee,
+                as_of_date=fill_date,
+                reference_id=trade.id,
+                reference_type="paper_trade",
+                description="Exit fee",
+            )
+
+        if pos.recommendation_result_id:
+            result = self.db.get(RecommendationResult, pos.recommendation_result_id)
+            outcome = self.db.scalar(
+                select(RecommendationOutcome).where(
+                    RecommendationOutcome.recommendation_result_id == pos.recommendation_result_id
+                )
+            )
+            if outcome:
+                entry = (
+                    float(outcome.entry_price)
+                    if outcome.entry_price
+                    else float(pos.avg_cost)
+                )
+                benchmark_return = self._holding_benchmark_return(outcome.entry_date, fill_date)
+                pnl_pct = ((fill_price - entry) / entry * 100) if entry else 0
+                days = (fill_date - outcome.entry_date).days if outcome.entry_date else 0
+                outcome.exit_date = fill_date
+                outcome.exit_price = fill_price
+                outcome.days_held = days
+                outcome.pnl_pct = round(pnl_pct, 4)
+                outcome.benchmark_return_pct = (
+                    round(benchmark_return, 4) if benchmark_return is not None else None
+                )
+                outcome.alpha_pct = (
+                    round(pnl_pct - benchmark_return, 4)
+                    if benchmark_return is not None
+                    else None
+                )
+                outcome.exit_reason_codes = exit_triggers or []
+                outcome.outcome_status = (
+                    "WIN" if pnl_pct > 0 else ("LOSS" if pnl_pct < 0 else "BREAKEVEN")
+                )
+            if result:
+                result.lifecycle_state = "CLOSED"
+
+        self.db.flush()
+        return trade
+
     def _fill_price(self, stock_id: UUID, fill_date: date, side: str) -> tuple[float, float]:
-        """Return (fill_price_with_slippage, last_close)."""
-        latest = self.market_data_repo.get_latest_market_data(stock_id)
-        if latest is None:
-            raise ValueError(f"No market data for stock {stock_id}")
-        last_close = float(latest.close)
+        """Return (fill_price_with_slippage, last_close) on or before fill_date."""
+        bars = self.market_data_repo.get_by_stock_and_date_range(
+            stock_id, end_date=fill_date, limit=1
+        )
+        if not bars:
+            raise ValueError(f"No market data for stock {stock_id} on or before {fill_date}")
+        last_close = float(bars[0].close)
         slippage_factor = 1.0005 if side == "BUY" else 0.9995  # 5 bps
         return round(last_close * slippage_factor, 4), last_close
 

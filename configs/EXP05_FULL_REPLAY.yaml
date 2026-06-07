@@ -1,0 +1,14 @@
+experiment_id: EXP05_FULL_REPLAY
+name: "Full Historical Replay"
+description: "Complete replay from 2022-01-01 to present"
+mode: AUTONOMOUS_RCEE
+start_date: "2022-01-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1]
+capital:
+  initial_cash: 1000000
+  monthly_contribution: 100000
+  contribution_day: FIRST_TRADING_DAY
+portfolio:
+  max_positions: 10
+  max_buy_slots: 5

@@ -1,13 +1,17 @@
 # Recommendation Engine Gap Analysis
 
-**Date:** 2026-06-05  
+> **⚠️ STALE (2026-06-05):** Phase 2 recommendation engine is **shipped** (`app/recommendation/`, `/api/v1/recommendations/*`).  
+> **Current truth:** [`docs/IMPLEMENTATION_SUMMARY.md`](../IMPLEMENTATION_SUMMARY.md), [`docs/audit/REQUIREMENTS_TRACEABILITY_MATRIX.md`](../audit/REQUIREMENTS_TRACEABILITY_MATRIX.md).  
+> Remaining gaps: API integration tests, formal lifecycle state machine, multi-tenant scoping.
+
+**Date:** 2026-06-05 (snapshot before Phase 2 completion)  
 **Scope:** Buy/hold/exit signals, conviction, lifecycle — what exists vs a consumer recommendation product
 
 ---
 
-## Executive summary
+## Executive summary (historical)
 
-Pi-PM has a **ranking engine** (deterministic top-N scores) and **validation analytics** (forward-return evidence), plus **ARGS research labels** (supportive/neutral/cautious). It does **not** have a unified **recommendation engine** that emits buy/hold/exit actions with conviction scores and lifecycle state.
+Pi-PM has a **ranking engine** (deterministic top-N scores) and **validation analytics** (forward-return evidence), plus **ARGS research labels** (supportive/neutral/cautious). At time of writing it did **not** have a unified recommendation engine — **this is now implemented**.
 
 | Capability | Status |
 |------------|--------|

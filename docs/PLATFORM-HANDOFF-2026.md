@@ -1,6 +1,6 @@
 # Pi-PM Platform Handoff — June 2026
 
-**Last updated:** 2026-06-04  
+**Last updated:** 2026-06-05  
 **Audience:** AI engineers, Product Owners, new contributors  
 **Purpose:** Single entry point to continue Pi-PM work without chat context.
 
@@ -16,8 +16,9 @@
 | Remote | `https://github.com/KalyanCB/pi-pm.git` |
 | **Active branch** | `feature/see-v2` |
 | Base branch | `main` |
-| **Migration head** | `20260609_0018` (SEE v2 metrics) |
-| **Tests** | **312 passed** (`pytest tests/ -q`) |
+| **Migration head** | `20260610_0026` (unified execution) |
+| **Tests** | **574 passed** (`pytest tests/ -q`) |
+| **Auth** | JWT on all domain routes (`app/api/router.py`); health + login public |
 | API | FastAPI @ `/api/v1` |
 | DB | PostgreSQL 16 (`pipm` / `pipm`) |
 
@@ -92,7 +93,15 @@ flowchart TB
 | Outcome attribution | **Production analytics** | Read-only; `app/outcome_attribution/` |
 | Ranking calibration research | **Research only** | Non-monotonic ranks; no ranking v2 in prod |
 | Committee Phase 3 | **Not started** | Design TBD after Phase 2 results |
-| Paper trading / portfolio | **Stub** | Tables exist; services not implemented |
+| Recommendation engine (Phase 2) | **Production** | `app/recommendation/`, `/api/v1/recommendations/*` (9 routes) |
+| Portfolio engine | **Production (partial)** | `app/services/portfolio_service.py`, 22 `/portfolio/*` routes; NAV/cash/recon not multi-tenant |
+| Paper execution | **Production** | `ExecutionService` + `PaperExecutionAdapter`; live Zerodha **stub** |
+| Pilot command center | **Production** | `/api/v1/pilot/*` (10 read-only routes) |
+| JWT auth + multi-tenant | **Production (partial)** | migration `20260610_0025`; analytics routes global |
+| Frontend (web + mobile) | **Partial** | `frontend/` — 8 screens live; missing Exit Queue + Analytics |
+| Risk controls (AC-RISK) | **Not started** | No pre-trade gates |
+
+**Audit package:** [`docs/audit/Executive_Summary.md`](./audit/Executive_Summary.md) (AUDIT-01, 2026-06-05).
 
 ---
 
@@ -101,21 +110,29 @@ flowchart TB
 ```
 pi-pm/
 ├── app/
-│   ├── api/v1/              # HTTP routes (rankings, validation, research, daily-batch, …)
+│   ├── api/v1/              # HTTP routes (~130 endpoints; see audit/API_AUDIT_REPORT.md)
 │   ├── args/                # ARGS committees, graph, LLM plugins, packet views
-│   ├── core/config.py       # Settings + env vars (incl. ARGS_QRC_USE_SQE)
-│   ├── ops/daily_batch/     # Planner, trading-day resolver, traceability
+│   ├── auth/                # JWT helpers, RBAC constants
+│   ├── copilot/             # Intent, retriever, citations (explain-only)
+│   ├── execution/           # ExecutionService, paper + Zerodha adapters, state machine
+│   ├── ops/daily_batch/     # Planner, paper_pilot_ops, traceability
+│   ├── ops/pilot/           # Alerting, reporting serializers
+│   ├── portfolio/           # Exit monitor, reconciliation, analytics
+│   ├── recommendation/      # Engine + conviction scorer (conv_v1.1.0)
+│   ├── core/config.py       # Settings + env vars (incl. ARGS_QRC_USE_SQE, JWT)
 │   ├── outcome_attribution/ # Rank → forward return attribution (read-only)
 │   ├── ranking/             # Deterministic ranking engine (frozen)
 │   ├── ranking_research/    # Rank reliability, score compression reports
 │   ├── stock_setup_evidence/ # SEE v2 engine
 │   ├── validation/          # Forward-return validation (frozen)
-│   └── services/            # Orchestration (daily batch, ARGS, market data, …)
+│   └── services/            # Orchestration (daily batch, portfolio, auth, pilot, …)
+├── frontend/                # RN + RN Web monorepo (apps/web, apps/mobile, packages/*)
 ├── docs/                    # All operational + research markdown
+│   ├── audit/               # AUDIT-01 implementation verification (2026-06-05)
 │   └── dailyruns/           # Dated operational run logs (see §10)
-├── migrations/versions/     # Alembic (head: 20260609_0018)
+├── migrations/versions/     # Alembic (head: 20260610_0026)
 ├── scripts/                 # CLI wrappers (batch, ARGS, report generators)
-└── tests/                   # 312 tests
+└── tests/                   # 574 tests
 ```
 
 **Data model pointers:** [`DATABASE_SCHEMA.md`](./DATABASE_SCHEMA.md) · [`architecture.md`](./architecture.md) / [`ARCHITECTURE.md`](./ARCHITECTURE.md) · [`API_REFERENCE.md`](./API_REFERENCE.md)
@@ -133,7 +150,7 @@ pip install -e ".[dev]"
 cp .env.example .env   # edit DATABASE_URL if needed
 
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
-alembic upgrade head   # → 20260609_0018
+alembic upgrade head   # → 20260610_0026
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -181,6 +198,14 @@ Full settings: `app/core/config.py` · example: `.env.example`
 | Outcome attribution | `app/outcome_attribution/` | Rank bucket → forward alpha | Production analytics |
 | Ranking research | `app/ranking_research/` | Non-monotonic rank analysis | Research |
 | Committee effectiveness | `app/args/analytics/committee_effectiveness.py` | Independence metrics | Research tooling |
+| Recommendation engine | `app/recommendation/engine.py`, `conviction_scorer.py` | BUY/WATCH/HOLD/EXIT rules | Production |
+| Recommendation service | `app/services/recommendation_service.py` | Run, approve, reject | Production |
+| Portfolio service | `app/services/portfolio_service.py` | Positions, cash, recompute | Production (partial tenant) |
+| Paper pilot ops | `app/ops/daily_batch/paper_pilot_ops.py` | Auto-approve/execute flags | Production |
+| Execution service | `app/execution/services/execution_service.py` | Unified paper + live stub | Production (paper) |
+| Auth service | `app/services/auth_service.py` | JWT, refresh rotation, RBAC | Production |
+| Pilot command center | `app/services/pilot_command_center_service.py` | Dashboards, alerts, KPIs | Production |
+| Copilot service | `app/services/copilot_service.py` | Explain-only Q&A | Production |
 
 ---
 
@@ -204,7 +229,7 @@ Full settings: `app/core/config.py` · example: `.env.example`
 | Exit research backfill | `python scripts/backfill_sprint83_exit_research.py …` | Historical exit simulation |
 | Research intelligence | `python scripts/generate_sprint85_research_intelligence.py …` | Executive report pack |
 | Regime presets | `python scripts/init_regime_policy_presets.py` | Load E1–E4 policy configs |
-| Tests | `pytest tests/ -q` | Full suite (312 tests) |
+| Tests | `pytest tests/ -q` | Full suite (574 tests) |
 | ARGS unit tests | `pytest tests/unit/args tests/integration/args -q` | ARGS-only |
 
 ---
@@ -413,8 +438,8 @@ Operational runs are logged under **`docs/dailyruns/<DD-mon-YYYY>/`**:
 
 ```bash
 git checkout feature/see-v2 && git pull
-alembic upgrade head                    # → 20260609_0018
-pytest tests/ -q                        # expect 312 passed
+alembic upgrade head                    # → 20260610_0026
+pytest tests/ -q                        # expect 574 passed
 curl http://127.0.0.1:8000/api/v1/health
 ```
 
@@ -524,8 +549,8 @@ Full index with one-line descriptions: [`docs/README.md`](./README.md)
 
 ## 19. Takeover checklist
 
-- [ ] On branch `feature/see-v2`, migration `20260609_0018`
-- [ ] `pytest` → 312 passed
+- [ ] On branch `feature/see-v2`, migration `20260610_0026`
+- [ ] `pytest` → 574 passed
 - [ ] Docker + API health OK
 - [ ] Read this doc + [`daily-nifty500-batch-runbook.md`](./daily-nifty500-batch-runbook.md)
 - [ ] Review latest daily run: [`dailyruns/04-jun-2026/`](./dailyruns/04-jun-2026/)

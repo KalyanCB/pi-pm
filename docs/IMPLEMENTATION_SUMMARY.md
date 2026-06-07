@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-05  
 **Branch:** `feature/see-v2`  
-**Tests:** 386 passing, 0 failures  
+**Tests:** 574 passing, 0 failures  
 **API version:** 0.4.1
 
 ---
@@ -464,7 +464,7 @@ GET  /api/v1/stocks/{symbol}/market-data
 | `trust metrics` | 11 | Calibration ρ, stability churn, reliability, composite score |
 | `portfolio service` | 15 | AC-PE-01..04, regime slots, allocation weights |
 | **Total new** | **74** | |
-| **Total suite** | **386** | 0 failures |
+| **Total suite** | **574** | 0 failures |
 
 ---
 

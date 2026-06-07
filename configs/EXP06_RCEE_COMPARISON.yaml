@@ -1,0 +1,9 @@
+experiment_id: EXP06_RCEE_COMPARISON
+name: "RCEE vs Legacy Gate Comparison"
+description: "Compare AUTONOMOUS_RCEE vs AUTONOMOUS_FORCE_EDGE to measure RCEE impact"
+mode: AUTONOMOUS_FORCE_EDGE
+start_date: "2024-01-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1]
+capital:
+  initial_cash: 1000000

@@ -8,7 +8,7 @@
 
 **Evidence base:** [`docs/po-discovery/`](../po-discovery/INDEX.md), [`docs/AI/`](../AI/README.md), application code (`app/`, `tests/`).
 
-**Scope of this pack:** Product documents only — no implementation code, migrations, or service changes.
+**Scope of this pack:** Product definition (PRDs, ADRs). **Implementation status:** see [`IMPLEMENTATION_SUMMARY.md`](../IMPLEMENTATION_SUMMARY.md) and [`audit/Executive_Summary.md`](../audit/Executive_Summary.md).
 
 ---
 
@@ -76,6 +76,13 @@
 | 16b | [16_RECOMMENDATION_PERFORMANCE_PRD.md](./16_RECOMMENDATION_PERFORMANCE_PRD.md) | Win rate, conviction/regime/committee effectiveness |
 | 17 | [17_TRUST_DASHBOARD_VISION.md](./17_TRUST_DASHBOARD_VISION.md) | Future trust metrics UI |
 | — | [ADR-021](../architecture/ADR-021-Recommendation-Platform-Architecture.md) | Governing Phase 2 architecture |
+| 18 | [18_HUMAN_IN_LOOP_LIVE_INVESTING_PRD.md](./18_HUMAN_IN_LOOP_LIVE_INVESTING_PRD.md) | Track I — live HITL workflows |
+| 19 | [19_BROKER_ADAPTER_PRD.md](./19_BROKER_ADAPTER_PRD.md) | BrokerAdapter contract (design only) |
+| 20 | [20_RISK_CONTROL_PRD.md](./20_RISK_CONTROL_PRD.md) | Pre-trade risk gates |
+| 21 | [21_EXECUTION_WORKFLOW_PRD.md](./21_EXECUTION_WORKFLOW_PRD.md) | End-to-end execution workflows |
+| — | [ADR-030](../architecture/ADR-030-Live-Investing-Architecture.md) | Live investing architecture |
+| — | [ADR-032](../architecture/ADR-032-Live-Entry-Timing-Validation-Gate.md) | Entry timing & validation gate (proposed) |
+| — | [ADR-033](../architecture/ADR-033-Intraday-Exit-Monitor-And-Stop-Override.md) | Intraday exit monitor & stop override (proposed) |
 
 ---
 
@@ -92,7 +99,7 @@ flowchart LR
   REC --> OUT[RecommendationOutcome]
 ```
 
-**Today:** REC, PORT, PAPER, OUT product layers are missing ([maturity scorecard](../po-discovery/PRODUCT_MATURITY_SCORECARD.md): recommendation ~25, portfolio ~12).
+**Implementation status (2026-06-05):** P1–P3 + M2 **shipped** (recommendation engine, portfolio, paper execution, outcomes schema). P6 mobile + P7 copilot **partial** (frontend 8/10 screens). AC-RISK + live broker **not started**. Scores: [maturity scorecard](../po-discovery/PRODUCT_MATURITY_SCORECARD.md) (rescored), [audit scorecard](../audit/PLATFORM_READINESS_SCORECARD.md).
 
 ---
 
@@ -112,10 +119,12 @@ Detail: [13_PO_BACKLOG.md](./13_PO_BACKLOG.md).
 
 ---
 
-## Cross-references (discovery)
+## Cross-references
 
-- [10_RECOMMENDATION_ENGINE_GAP_ANALYSIS.md](../po-discovery/10_RECOMMENDATION_ENGINE_GAP_ANALYSIS.md)
-- [11_PORTFOLIO_ENGINE_GAP_ANALYSIS.md](../po-discovery/11_PORTFOLIO_ENGINE_GAP_ANALYSIS.md)
-- [12_MOBILE_READINESS_ASSESSMENT.md](../po-discovery/12_MOBILE_READINESS_ASSESSMENT.md)
+- [IMPLEMENTATION_SUMMARY.md](../IMPLEMENTATION_SUMMARY.md) — what was built
+- [audit/Executive_Summary.md](../audit/Executive_Summary.md) — independent verification
+- [10_RECOMMENDATION_ENGINE_GAP_ANALYSIS.md](../po-discovery/10_RECOMMENDATION_ENGINE_GAP_ANALYSIS.md) — **stale** (pre-Phase 2)
+- [11_PORTFOLIO_ENGINE_GAP_ANALYSIS.md](../po-discovery/11_PORTFOLIO_ENGINE_GAP_ANALYSIS.md) — **stale**
+- [12_MOBILE_READINESS_ASSESSMENT.md](../po-discovery/12_MOBILE_READINESS_ASSESSMENT.md) — **stale**
 - [15_EXECUTIVE_SUMMARY.md](../po-discovery/15_EXECUTIVE_SUMMARY.md)
 - [PRODUCT_MATURITY_SCORECARD.md](../po-discovery/PRODUCT_MATURITY_SCORECARD.md)

@@ -16,6 +16,7 @@ export function RecommendationCard({
   reasonCodes,
   committeeAdvisory,
   layout = 'card',
+  embedded = false,
   onPress,
 }: RecommendationCardProps) {
   const theme = useTheme();
@@ -26,11 +27,16 @@ export function RecommendationCard({
       style={[
         styles.card,
         isRow ? styles.row : styles.column,
+        embedded && styles.embedded,
         {
-          backgroundColor: theme.colors.backgroundElevated,
-          borderColor: committeeAdvisory?.high_concern
-            ? theme.colors.highConcern
-            : theme.colors.border,
+          backgroundColor: embedded
+            ? 'transparent'
+            : theme.colors.backgroundElevated,
+          borderColor: embedded
+            ? 'transparent'
+            : committeeAdvisory?.high_concern
+              ? theme.colors.highConcern
+              : theme.colors.border,
         },
       ]}
     >
@@ -85,6 +91,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 12,
     gap: 8,
+  },
+  embedded: {
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   column: {},
   row: {

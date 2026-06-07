@@ -1,0 +1,21 @@
+experiment_id: EXP05_FULL_REPLAY_NOSIP
+name: "Full Historical Replay - No SIP"
+description: "Complete replay 2022-01-01 to 2026-06-05, Rs 10L initial, no SIP contributions"
+mode: AUTONOMOUS_RCEE
+start_date: "2022-01-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1]
+capital:
+  initial_cash: 1000000
+  monthly_contribution: 0
+portfolio:
+  max_positions: 10
+  max_buy_slots: 5
+  deploy_pct: 0.85
+  cash_floor_pct: 0.15
+outputs:
+  generate_nav_curve: true
+  generate_trade_report: true
+  generate_regime_report: true
+  generate_strategy_report: true
+  output_dir: "docs/experiments/results"

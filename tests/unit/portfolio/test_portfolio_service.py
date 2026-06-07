@@ -31,12 +31,13 @@ def _mock_config(
     return cfg
 
 
-def _make_svc(positions=None, config=None, regime="neutral"):
+def _make_svc(positions=None, config=None, regime="neutral", nav_row=None):
     db = MagicMock()
     svc = PortfolioService(db)
     svc.get_config = MagicMock(return_value=config or _mock_config())
     svc._current_positions = MagicMock(return_value=positions or [])
     svc._resolve_regime_posture = MagicMock(return_value=regime)
+    svc._latest_nav = MagicMock(return_value=nav_row)
     return svc
 
 
@@ -51,6 +52,22 @@ def test_conviction_weights_ordering():
 
 
 # ── Capital math (AC-PE-01) ───────────────────────────────────────────────────
+
+
+def test_summary_uses_latest_nav_when_available():
+    nav = MagicMock()
+    nav.total_equity = 286_793.66
+    nav.market_value = 0.0
+    nav.unrealized_pnl = 0.0
+    nav.cash_balance = 286_793.66
+    nav.cash_pct = 1.0
+
+    svc = _make_svc(nav_row=nav)
+    summary = svc.get_summary()
+
+    assert summary.total_equity == pytest.approx(286_793.66)
+    assert summary.cash_available == pytest.approx(286_793.66)
+    assert summary.deployable_capital == pytest.approx(286_793.66 * 0.85)
 
 
 def test_summary_no_positions():

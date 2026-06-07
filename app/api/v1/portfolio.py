@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field
 
 from app.api.auth_deps import OwnerUser, PortfolioScope
 from app.api.deps import get_db
+from app.models.portfolio_analytics import ExitRecommendation
 from app.portfolio.exit_monitor.service import ExitMonitorService
 from app.portfolio.reconciliation.service import ReconciliationService
+from app.execution.services.execution_service import ExecutionService
 from app.services.paper_trade_service import PaperTradeService
 from app.services.portfolio_analytics_service import (
     PortfolioAnalyticsService,
@@ -33,6 +35,10 @@ def _pt_svc(db=Depends(get_db), portfolio_id: PortfolioScope = ...) -> PaperTrad
     return PaperTradeService(
         db, portfolio_service=PortfolioService(db, portfolio_id=portfolio_id)
     )
+
+
+def _exec_svc(db=Depends(get_db), portfolio_id: PortfolioScope = ...) -> ExecutionService:
+    return ExecutionService(db, portfolio_id=portfolio_id)
 
 
 def _an_svc(db=Depends(get_db)) -> PortfolioAnalyticsService:
@@ -70,12 +76,14 @@ class PortfolioConfigRequest(BaseModel):
 
 class EntryRequest(BaseModel):
     recommendation_result_id: UUID
+    approval_id: UUID | None = None
     as_of_date: date | None = None
     idempotency_key: str | None = None
 
 
 class ExitRequest(BaseModel):
     recommendation_result_id: UUID
+    approval_id: UUID | None = None
     as_of_date: date | None = None
     idempotency_key: str | None = None
 
@@ -96,9 +104,12 @@ def get_summary(
 
 
 @router.get("/positions")
-def get_positions(svc: PortfolioService = Depends(_svc)) -> list[dict]:
-    """Current open positions with P&L."""
-    positions = svc.get_positions()
+def get_positions(
+    include_closed: bool = False,
+    svc: PortfolioService = Depends(_svc),
+) -> list[dict]:
+    """Positions with P&L. Pass include_closed=true to include exited positions."""
+    positions = svc.get_positions(include_closed=include_closed)
     out = []
     for p in positions:
         stock = p.stock
@@ -117,6 +128,9 @@ def get_positions(svc: PortfolioService = Depends(_svc)) -> list[dict]:
                 "strategy_name": p.strategy_name,
                 "sector": p.sector,
                 "position_status": p.position_status,
+                "exit_price": float(p.exit_price) if p.exit_price else None,
+                "exit_date": p.exit_date.isoformat() if p.exit_date else None,
+                "realized_pnl": float(p.realized_pnl) if p.realized_pnl else None,
             }
         )
     return out
@@ -183,48 +197,62 @@ def recompute(_owner: OwnerUser, svc: PortfolioService = Depends(_svc)) -> dict:
 @router.post("/trades/entry", status_code=201)
 def execute_entry(
     payload: EntryRequest,
-    _owner: OwnerUser,
-    svc: PaperTradeService = Depends(_pt_svc),
+    owner: OwnerUser,
+    svc: ExecutionService = Depends(_exec_svc),
 ) -> dict:
-    """Simulate BUY fill for an approved recommendation."""
+    """Submit BUY execution for an approved recommendation (unified execution path)."""
     try:
-        trade = svc.execute_entry(
-            recommendation_result_id=payload.recommendation_result_id,
+        order = svc.submit_from_recommendation(
+            recommendation_id=payload.recommendation_result_id,
+            approval_id=payload.approval_id,
+            requested_by=owner.user_id,
             as_of_date=payload.as_of_date,
             idempotency_key=payload.idempotency_key,
         )
         svc.db.commit()
         return {
-            "trade_id": str(trade.id),
-            "status": trade.status,
-            "fill_price": float(trade.fill_price),
-            "quantity": float(trade.fill_quantity),
-            "side": trade.side,
+            "execution_order_id": str(order.id),
+            "trade_id": str(order.paper_trade_id) if order.paper_trade_id else None,
+            "status": order.status,
+            "fill_price": float(order.avg_fill_price) if order.avg_fill_price else None,
+            "quantity": float(order.filled_quantity) if order.filled_quantity else float(order.quantity),
+            "side": order.side,
+            "broker_order_id": order.broker_order_id,
         }
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        from app.execution.services.execution_service import ExecutionValidationError
+
+        if isinstance(e, ExecutionValidationError):
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        raise
 
 
 @router.post("/trades/exit", status_code=201)
 def execute_exit(
     payload: ExitRequest,
-    _owner: OwnerUser,
-    svc: PaperTradeService = Depends(_pt_svc),
+    owner: OwnerUser,
+    svc: ExecutionService = Depends(_exec_svc),
 ) -> dict:
-    """Simulate SELL fill for a confirmed EXIT_APPROVED."""
+    """Submit SELL execution for a confirmed EXIT_APPROVED recommendation."""
     try:
-        trade = svc.execute_exit(
-            recommendation_result_id=payload.recommendation_result_id,
+        order = svc.submit_from_recommendation(
+            recommendation_id=payload.recommendation_result_id,
+            approval_id=payload.approval_id,
+            requested_by=owner.user_id,
             as_of_date=payload.as_of_date,
             idempotency_key=payload.idempotency_key,
         )
         svc.db.commit()
         return {
-            "trade_id": str(trade.id),
-            "status": trade.status,
-            "fill_price": float(trade.fill_price),
-            "quantity": float(trade.fill_quantity),
-            "side": trade.side,
+            "execution_order_id": str(order.id),
+            "trade_id": str(order.paper_trade_id) if order.paper_trade_id else None,
+            "status": order.status,
+            "fill_price": float(order.avg_fill_price) if order.avg_fill_price else None,
+            "quantity": float(order.filled_quantity) if order.filled_quantity else float(order.quantity),
+            "side": order.side,
+            "broker_order_id": order.broker_order_id,
         }
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -380,10 +408,14 @@ def run_reconciliation(
 @router.get("/exits")
 def get_exits(
     as_of_date: date | None = None,
+    include_resolved: bool = False,
     svc: ExitMonitorService = Depends(_exit_svc),
 ) -> list[dict]:
-    """Pending exit recommendations awaiting human confirmation."""
-    recs = svc.get_pending(as_of_date)
+    """Exit monitor candidates. Default: PENDING only. Historical day: pass include_resolved."""
+    if include_resolved and as_of_date is not None:
+        recs = svc.list_for_date(as_of_date)
+    else:
+        recs = svc.get_pending(as_of_date)
     out = []
     for r in recs:
         stock = r.position.stock if r.position else None
@@ -419,14 +451,37 @@ def run_exit_monitor(
 
 
 @router.post("/exits/{exit_id}/confirm")
-def confirm_exit(_owner: OwnerUser, exit_id: UUID, svc: ExitMonitorService = Depends(_exit_svc)) -> dict:
-    """Human confirms an exit recommendation (does not execute trade)."""
+def confirm_exit(
+    _owner: OwnerUser,
+    exit_id: UUID,
+    svc: ExitMonitorService = Depends(_exit_svc),
+    pt_svc: PaperTradeService = Depends(_pt_svc),
+) -> dict:
+    """Human confirms exit monitor candidate and executes paper SELL (same path as daily pilot)."""
     try:
+        rec = svc.db.get(ExitRecommendation, exit_id)
+        if rec is None:
+            raise ValueError(f"ExitRecommendation {exit_id} not found")
+        if rec.status != "PENDING":
+            raise ValueError(f"Exit recommendation {exit_id} is already {rec.status}")
+
+        trade = pt_svc.execute_position_exit(
+            stock_id=rec.stock_id,
+            as_of_date=rec.as_of_date,
+            exit_triggers=list(rec.triggers or []),
+            portfolio_exit_recommendation_id=rec.id,
+            idempotency_key=f"exit-monitor:{rec.id}",
+        )
         rec = svc.confirm(exit_id)
         svc.db.commit()
-        return {"id": str(rec.id), "status": rec.status}
+        return {
+            "id": str(rec.id),
+            "status": rec.status,
+            "trade_id": str(trade.id),
+            "fill_price": float(trade.fill_price),
+        }
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.post("/exits/{exit_id}/reject")

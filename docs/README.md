@@ -4,7 +4,17 @@
 
 Legacy onboarding: [`HANDOFF.md`](./HANDOFF.md) · AI context: [`AI_CONTEXT.md`](./AI_CONTEXT.md)
 
-**Branch:** `feature/see-v2` · **Migration head:** `20260609_0018` · **Tests:** 312
+**Branch:** `feature/see-v2` · **Migration head:** `20260610_0026` · **Tests:** 574 passed
+
+---
+
+## Implementation audit (June 2026)
+
+| Document | Purpose |
+|----------|---------|
+| [**audit/Executive_Summary.md**](./audit/Executive_Summary.md) | AUDIT-01 — claimed vs actual completion, risks, next tracks |
+| [audit/REQUIREMENTS_TRACEABILITY_MATRIX.md](./audit/REQUIREMENTS_TRACEABILITY_MATRIX.md) | Per-requirement implementation status |
+| [audit/API_AUDIT_REPORT.md](./audit/API_AUDIT_REPORT.md) | ~130 endpoints, auth, gaps |
 
 ---
 

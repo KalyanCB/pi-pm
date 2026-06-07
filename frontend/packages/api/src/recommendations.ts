@@ -1,12 +1,18 @@
 import type {
   ApproveRequest,
   DailyRecommendationsRead,
+  RecommendationDatesRead,
   RecommendationResultRead,
 } from '@pipm/types';
 import type { ApiClient } from './client';
 
 export function createRecommendationsApi(client: ApiClient) {
   return {
+    getDates(strategyName?: string) {
+      return client.get<RecommendationDatesRead>('/recommendations/dates', {
+        params: strategyName ? { strategy_name: strategyName } : undefined,
+      });
+    },
     getDaily(params: { asOfDate: string; action?: string }) {
       return client.get<DailyRecommendationsRead>('/recommendations/daily', {
         params: { as_of_date: params.asOfDate, action: params.action },

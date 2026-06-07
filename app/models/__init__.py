@@ -19,6 +19,7 @@ from app.models.auth import (
     UserPreference,
 )
 from app.models.copilot import CopilotQueryLog
+from app.models.execution import ExecutionAudit, ExecutionConfig, ExecutionEvent, ExecutionOrder
 from app.models.daily_batch import DailyBatchRun, DailyBatchRunArtifact
 from app.models.exit_research import (
     ExitResearchAlphaDecayPoint,
@@ -141,6 +142,10 @@ __all__ = [
     "RecommendationApproval",
     "RecommendationOutcome",
     "CopilotQueryLog",
+    "ExecutionOrder",
+    "ExecutionEvent",
+    "ExecutionConfig",
+    "ExecutionAudit",
     "User",
     "Role",
     "PermissionRecord",

@@ -3,6 +3,7 @@ import { normalizeError } from './errors';
 export interface ApiClientConfig {
   baseUrl: string;
   getAccessToken?: () => string | null;
+  getPortfolioId?: () => string | null;
   onUnauthorized?: () => Promise<boolean>;
 }
 
@@ -44,10 +45,12 @@ export class ApiClient {
     isRetry = false,
   ): Promise<T> {
     const token = this.config.getAccessToken?.();
+    const portfolioId = this.config.getPortfolioId?.();
     const headers: Record<string, string> = {
       Accept: 'application/json',
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(portfolioId ? { 'X-Portfolio-Id': portfolioId } : {}),
     };
 
     const response = await fetch(this.buildUrl(path, options?.params), {

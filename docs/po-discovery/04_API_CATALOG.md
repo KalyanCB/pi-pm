@@ -1,9 +1,10 @@
 # API Catalog
 
-**Date:** 2026-06-05  
-**Base URL:** `/api/v1` (`app/main.py:67`)  
+**Date:** 2026-06-05 (updated post Phase 2 + auth)  
+**Base URL:** `/api/v1` (`app/main.py`)  
 **Router:** `app/api/router.py`  
-**OpenAPI:** Auto-generated at `/docs` (FastAPI default)
+**OpenAPI:** Auto-generated at `/docs` (FastAPI default)  
+**Full audit:** [`docs/audit/API_AUDIT_REPORT.md`](../audit/API_AUDIT_REPORT.md)
 
 ---
 
@@ -11,24 +12,45 @@
 
 | Tag / group | Prefix | Endpoints | Router file |
 |-------------|--------|-----------|-------------|
-| health | `/` | 1 | `app/api/v1/health.py` |
-| stocks | `/stocks` | 3 | `app/api/v1/stocks.py` |
-| market-data | `/market-data` | 1 | `app/api/v1/market_data.py` |
+| health | `/health` | 3 | `app/api/v1/health.py` |
+| auth | `/auth` | 6 | `app/api/v1/auth.py` |
+| stocks | `/stocks` | 4 | `app/api/v1/stocks.py` |
+| market-data | `/market-data` | 2 | `app/api/v1/market_data.py` |
 | rankings | `/rankings` | 4 | `app/api/v1/rankings.py` |
 | backtest | `/backtest` | 2 | `app/api/v1/backtest.py` |
 | validation | `/validation` | 8 | `app/api/v1/validation.py` |
-| observability | `/observability` | 12 | `app/api/v1/observability.py` |
-| regime-policy | `/regime-policy` | 7 | `app/api/v1/regime_policy.py` |
+| observability | `/observability` | 13 | `app/api/v1/observability.py` |
+| regime-policy | `/regime-policy` | 8 | `app/api/v1/regime_policy.py` |
 | factor-analytics | `/analytics/factors` | 7 | `app/api/v1/factor_analytics.py` |
-| exit-analytics | `/analytics/exit` | 7 | `app/api/v1/exit_analytics.py` |
-| research-intelligence | `/analytics/research-intelligence` | 4 | `app/api/v1/research_intelligence.py` |
-| research | `/research` | 5 | `app/api/v1/research.py` |
+| exit-analytics | `/analytics/exit` | 8 | `app/api/v1/exit_analytics.py` |
+| research-intelligence | `/analytics/research-intelligence` | 5 | `app/api/v1/research_intelligence.py` |
+| research (**deprecated**) | `/research` | 6 | `app/api/v1/research.py` |
+| investment-committee | `/investment-committee` | 7 | `app/api/v1/investment_committee.py` |
 | research-stock-setup | `/research/stock-setup` | 2 | `app/api/v1/stock_setup_research.py` |
 | ops-daily-batch | `/ops/daily-batch` | 4 | `app/api/v1/daily_batch.py` |
+| pilot-command-center | `/pilot` | 10 | `app/api/v1/pilot_ops.py` |
+| recommendations | `/recommendations` | 9 | `app/api/v1/recommendations.py` |
+| recommendation-analytics | `/analytics/recommendations` | 6 | `app/api/v1/recommendation_analytics.py` |
+| portfolio | `/portfolio` | 22 | `app/api/v1/portfolio.py` |
+| execution | `/execution` | 8 | `app/api/v1/execution.py` |
+| copilot | `/copilot` | 2 | `app/api/v1/copilot.py` |
 
-**Total HTTP routes:** ~67 (grep `@router.(get|post|put|patch|delete)` in `app/api/v1/`)
+**Total HTTP routes:** ~130 (`grep '@router.(get|post|put|patch|delete)' app/api/v1/`)
 
-**Auth:** None — no middleware in `app/main.py` (**assumption:** trusted deployment).
+### Authentication
+
+All domain routers require JWT except **health** and **auth login/refresh/register/logout**.
+
+| Layer | Enforcement | Routes |
+|-------|-------------|--------|
+| `get_current_user` | Bearer JWT | stocks, rankings, validation, portfolio read, pilot, copilot ask, … |
+| `require_owner` | OWNER or ADMIN role | daily-batch mutations, recommendation approve/reject, portfolio mutations |
+| `PortfolioScope` | `X-Portfolio-Id` + membership check | portfolio summary/positions, execution orders |
+| `require_permission` | Fine-grained RBAC | execution read/write only |
+
+**Dev bypass:** `auth_enabled=false` or `auth_bypass_for_tests=true` injects a fixed dev owner (`app/api/auth_deps.py`).
+
+**Note:** `scripts/run_daily_nifty500_batch.py` POSTs without Authorization — use a service-account token or invoke `DailyBatchService` directly for unattended cron.
 
 ---
 

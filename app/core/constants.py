@@ -130,11 +130,6 @@ class DailyBatchPhase(StrEnum):
     FACTOR_IC = "factor_ic"
     RESEARCH_INTELLIGENCE = "research_intelligence"
     EXIT_RESEARCH = "exit_research"
-    PORTFOLIO_RECOMPUTE = "portfolio_recompute"
-    EXIT_MONITOR = "exit_monitor"
-    PAPER_TRADING = "paper_trading"
-    PORTFOLIO_NAV = "portfolio_nav"
-    PORTFOLIO_RECONCILE = "portfolio_reconcile"
     FINALIZING = "finalizing"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -150,10 +145,6 @@ class DailyBatchArtifactType(StrEnum):
     REGIME_PERFORMANCE_REFRESH = "regime_performance_refresh"
     EXIT_RESEARCH_RUN = "exit_research_run"
     RESEARCH_INTELLIGENCE_RUN = "research_intelligence_run"
-    PORTFOLIO_NAV_SNAPSHOT = "portfolio_nav_snapshot"
-    PORTFOLIO_RECONCILIATION = "portfolio_reconciliation"
-    PAPER_TRADE = "paper_trade"
-    EXIT_RECOMMENDATION = "exit_recommendation"
 
 
 class PolicyAction(StrEnum):
@@ -312,6 +303,20 @@ REC_REASON_EXIT_RISK = "EXIT_RISK"
 REC_REASON_INSUFFICIENT_LIQUIDITY = "INSUFFICIENT_LIQUIDITY"
 REC_REASON_STALE_CANDIDATE = "STALE_CANDIDATE"
 REC_REASON_RANK_POOL_TOP20 = "RANK_POOL_TOP20"
+REC_REASON_CROSS_STRATEGY_DUPLICATE = "CROSS_STRATEGY_DUPLICATE"
+# ADR-032
+REC_REASON_REGIME_NO_EDGE = "REGIME_NO_EDGE"
+REC_REASON_LOW_EXPECTANCY = "LOW_EXPECTANCY"
+REC_REASON_STALE_AGE = "STALE_AGE"
+REC_REASON_RANK_EXITED_POOL = "RANK_EXITED_POOL"
+REC_REASON_REGIME_EDGE_LOST = "REGIME_EDGE_LOST"
+
+
+class RecommendationConfidence(StrEnum):
+    EARLY = "EARLY"
+    VALIDATED = "VALIDATED"
+    HIGH_CONFIDENCE = "HIGH_CONFIDENCE"
+    UNKNOWN = "UNKNOWN"
 
 # Conviction config
 CONVICTION_ENGINE_VERSION = "rec_v1.0.0"
@@ -337,15 +342,21 @@ RANKING_STRATEGY_MOMENTUM_V1_VERSION = "1.0.0"
 RANKING_STRATEGY_BREAKOUT_V1 = "breakout_v1"
 RANKING_STRATEGY_BREAKOUT_V1_VERSION = "1.0.0"
 
-BENCHMARK_DEPENDENT_FACTORS = frozenset({"relative_strength", "relative_strength_acceleration"})
+RANKING_STRATEGY_LOW_VOL_V1 = "low_vol_v1"
+RANKING_STRATEGY_LOW_VOL_V1_VERSION = "1.0.0"
+
+RANKING_STRATEGY_REVERSAL_V1 = "reversal_v1"
+RANKING_STRATEGY_REVERSAL_V1_VERSION = "1.0.0"
+
+BENCHMARK_DEPENDENT_FACTORS = frozenset(
+    {"relative_strength", "relative_strength_acceleration"}
+)
 
 DEFAULT_MIN_HISTORY_DAYS = 63
 DEFAULT_MIN_AVG_DAILY_TRADED_VALUE = 10_000_000
 DEFAULT_MIN_STOCK_PRICE = 50
 
 DEFAULT_BENCHMARK_SYMBOL = "^NSEI"
-# NIFTY 500 total-return index (Yahoo) — portfolio performance comparison
-PORTFOLIO_TR_BENCHMARK_SYMBOL = "^CRSLDX"
 
 UNIVERSE_NIFTY_500 = "NIFTY_500"
 UNIVERSE_NIFTY_1000 = "NIFTY_1000"

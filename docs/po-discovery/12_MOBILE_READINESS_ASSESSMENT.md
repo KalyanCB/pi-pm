@@ -1,9 +1,11 @@
 # Mobile Readiness Assessment
 
-**Date:** 2026-06-05  
-**Finding:** **No mobile application codebase exists** in `/Users/kalyancb/pi-pm`.
+> **⚠️ STALE (2026-06-05):** Mobile app exists at `frontend/apps/mobile/` (Expo, shared packages with web).  
+> **Current truth:** [`frontend/docs/FEATURE_INTEGRATION_REPORT.md`](../../frontend/docs/FEATURE_INTEGRATION_REPORT.md), [`docs/audit/FRONTEND_AUDIT_REPORT.md`](../audit/FRONTEND_AUDIT_REPORT.md).  
+> Remaining gaps: `/exits`, `/analytics` screens; HITL queue UX.
 
-Repo scan for `mobile`, `react-native`, `flutter`, `ios`, `android` in application paths returned **no client app** (only unrelated CSV company names in `data/nifty500_constituents.csv`).
+**Date:** 2026-06-05 (snapshot before frontend integration)  
+**Finding (historical):** No mobile application codebase existed at audit time — **now implemented**.
 
 ---
 

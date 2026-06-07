@@ -6,12 +6,14 @@ from app.api.v1 import (
     backtest,
     copilot,
     daily_batch,
+    execution,
     exit_analytics,
     factor_analytics,
     health,
     investment_committee,
     market_data,
     observability,
+    pilot_ops,
     portfolio,
     rankings,
     recommendation_analytics,
@@ -86,6 +88,12 @@ api_router.include_router(
     dependencies=_owner_mutations,
 )
 api_router.include_router(
+    pilot_ops.router,
+    prefix="/pilot",
+    tags=["pilot-command-center"],
+    dependencies=_authenticated,
+)
+api_router.include_router(
     recommendations.router,
     prefix="/recommendations",
     tags=["recommendations"],
@@ -101,6 +109,12 @@ api_router.include_router(
     portfolio.router,
     prefix="/portfolio",
     tags=["portfolio"],
+    dependencies=_authenticated,
+)
+api_router.include_router(
+    execution.router,
+    prefix="/execution",
+    tags=["execution"],
     dependencies=_authenticated,
 )
 api_router.include_router(

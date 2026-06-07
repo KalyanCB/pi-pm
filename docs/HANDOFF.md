@@ -1,6 +1,6 @@
 # Pi-PM — Developer & AI Handoff Guide
 
-**Last updated:** 2026-06-04  
+**Last updated:** 2026-06-05  
 **Purpose:** Enable any developer, AI assistant, or LLM to take over Pi-PM without prior chat context.
 
 ---
@@ -17,8 +17,8 @@ This file retains Sprint 8.x operational detail and gotchas not duplicated there
 |------|-------|
 | Repo | `/Users/kalyancb/pi-pm` |
 | **Active branch** | `feature/see-v2` |
-| **Migration head** | `20260609_0018` |
-| **Tests** | **312 passed** (`pytest`) |
+| **Migration head** | `20260610_0026` (unified execution) |
+| **Tests** | **574 passed** (`pytest tests/ -q`) |
 
 ---
 
@@ -59,6 +59,9 @@ Market Data Ingest (Yahoo)
 | 6.1–8.6 (validation, traceability, regime, factor, exit, daily batch) | **Complete** |
 | ARGS Phase 1 + committee Phase 2 | **Complete** on `feature/see-v2` |
 | SEE v2, SQE Phase 2, outcome attribution, ranking research | **Complete** (analytics / observability) |
+| Phase 2 recommendation engine, portfolio, paper execution, auth, pilot ops | **Shipped** (see `IMPLEMENTATION_SUMMARY.md`) |
+| Frontend investor app (web + mobile) | **Partial** — 8/10 screens; missing `/exits`, `/analytics` |
+| Live broker + risk controls (AC-RISK) | **Not started** — Zerodha adapter stub |
 | Ranking v2 calibration, QRC SQE default, committee Phase 3 | **PO decisions pending** |
 
 Details: [`PLATFORM-HANDOFF-2026.md`](./PLATFORM-HANDOFF-2026.md) §2, §14, §17.
@@ -167,6 +170,6 @@ Replay now falls back to precomputed `validation_horizon_metrics` when snapshot 
 
 - [ ] Read [`PLATFORM-HANDOFF-2026.md`](./PLATFORM-HANDOFF-2026.md)
 - [ ] `git checkout feature/see-v2` · `alembic upgrade head` → `20260609_0018`
-- [ ] `pytest` → 312 passed
+- [ ] `pytest` → 574 passed
 - [ ] Review [`dailyruns/04-jun-2026/`](./dailyruns/04-jun-2026/)
 - [ ] Read [`DECISION_LOG.md`](./DECISION_LOG.md) before policy/ARGS changes

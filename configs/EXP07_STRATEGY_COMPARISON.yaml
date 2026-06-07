@@ -1,0 +1,12 @@
+experiment_id: EXP07_STRATEGY_COMPARISON
+name: "Strategy Comparison - breakout vs momentum"
+description: "Run breakout_v1 only vs momentum_v1 only to isolate strategy alpha"
+mode: AUTONOMOUS_RCEE
+start_date: "2024-01-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1]
+capital:
+  initial_cash: 1000000
+portfolio:
+  max_positions: 5
+  max_buy_slots: 5

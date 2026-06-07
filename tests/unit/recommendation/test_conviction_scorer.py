@@ -1,5 +1,4 @@
 """Golden-fixture tests for conviction scorer (AC-CS-01 through AC-CS-07)."""
-
 import pytest
 
 from app.core.constants import CONVICTION_CONFIG_VERSION, ConvictionBand
@@ -93,6 +92,7 @@ def test_rank_inversion_guard_lifted_when_promoted():
 def test_components_five_keys_no_committee():
     result = score(_inputs())
     keys = set(result.components.keys())
+    # ADR-032: added 'validation_scorer_used' and 'regime_fit_edge_state' to components
     expected = {
         "rank_quality",
         "validation",
@@ -101,6 +101,10 @@ def test_components_five_keys_no_committee():
         "exit_health",
         "weights",
         "config_version",
+        "validation_scorer_used",
+        "regime_fit_edge_state",
+        "strategy_regime_ic",
+        "ic_source",
     }
     assert keys == expected
     # AC-CS-07: no committee keys
@@ -110,9 +114,7 @@ def test_components_five_keys_no_committee():
 
 # AC-CS-05 (lint): no OpenAI/LLM import — checked via static inspection
 def test_no_llm_imports_in_module():
-    import ast
-    import pathlib
-
+    import importlib, ast, pathlib
     src = pathlib.Path(__file__).parents[3] / "app" / "recommendation" / "conviction_scorer.py"
     tree = ast.parse(src.read_text())
     for node in ast.walk(tree):
@@ -134,22 +136,16 @@ def test_committee_text_does_not_affect_score():
 
 
 # Band boundary tests
-@pytest.mark.parametrize(
-    "regime,expected_band_min",
-    [
-        ("defensive", ConvictionBand.BLOCKED),
-        ("neutral", ConvictionBand.LOW),
-        ("risk_on", ConvictionBand.MEDIUM),
-    ],
-)
+@pytest.mark.parametrize("regime,expected_band_min", [
+    ("defensive", ConvictionBand.BLOCKED),
+    ("neutral", ConvictionBand.LOW),
+    ("risk_on", ConvictionBand.MEDIUM),
+])
 def test_regime_influence_on_band(regime, expected_band_min):
     result = score(_inputs(regime_posture=regime))
     bands_ordered = [
-        ConvictionBand.BLOCKED,
-        ConvictionBand.LOW,
-        ConvictionBand.MEDIUM,
-        ConvictionBand.HIGH,
-        ConvictionBand.EXCEPTIONAL,
+        ConvictionBand.BLOCKED, ConvictionBand.LOW,
+        ConvictionBand.MEDIUM, ConvictionBand.HIGH, ConvictionBand.EXCEPTIONAL,
     ]
     assert bands_ordered.index(result.band) >= bands_ordered.index(expected_band_min)
 
@@ -164,3 +160,56 @@ def test_rank_outside_pool_depressed_rank_quality():
 def test_score_clamped_0_100():
     result = score(_inputs(validation_ic_20d=-0.5, regime_posture="defensive", rank=50))
     assert 0 <= result.score <= 100
+
+
+# ADR-032 Phase 4: regime_fit tests
+
+
+def test_regime_fit_edge_present_raises_conviction():
+    """regime_fit_edge_state='EDGE_PRESENT' (S=85) yields higher score than
+    insufficient_data (S=35) with same other inputs."""
+    insufficient = score(
+        _inputs(
+            validation_status="insufficient_data",
+            validation_ic_20d=None,
+            regime_fit_edge_state=None,
+        )
+    )
+    with_edge = score(
+        _inputs(
+            validation_status="insufficient_data",
+            validation_ic_20d=None,
+            regime_fit_edge_state="EDGE_PRESENT",
+        )
+    )
+    assert with_edge.score > insufficient.score
+    assert with_edge.components["validation"] == 85.0
+    assert with_edge.components["validation_scorer_used"] == "regime_fit"
+
+
+def test_regime_fit_no_edge_lowers_conviction():
+    """regime_fit_edge_state='NO_EDGE' (S=15) yields lower score than
+    legacy insufficient_data (S=35)."""
+    insufficient = score(
+        _inputs(
+            validation_status="insufficient_data",
+            validation_ic_20d=None,
+            regime_fit_edge_state=None,
+        )
+    )
+    no_edge = score(
+        _inputs(
+            validation_status="insufficient_data",
+            validation_ic_20d=None,
+            regime_fit_edge_state="NO_EDGE",
+        )
+    )
+    assert no_edge.score < insufficient.score
+    assert no_edge.components["validation"] == 15.0
+
+
+def test_legacy_path_unchanged_when_no_regime_fit():
+    """regime_fit_edge_state=None → legacy S_validation is used, scorer='legacy_validation'."""
+    result = score(_inputs(regime_fit_edge_state=None))
+    assert result.components["validation_scorer_used"] == "legacy_validation"
+    assert result.components["regime_fit_edge_state"] is None

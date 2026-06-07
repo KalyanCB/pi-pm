@@ -5,9 +5,13 @@ Business rules from PRD §6 (01_RECOMMENDATION_ENGINE_PRD.md):
   R-HOLD-01       hold for active positions
   R-EXIT-01..04   exit trigger logic
 
+ADR-032:
+  R-ENTRY-02-RCE  regime-conditional edge gate (replaces R-ENTRY-02 when regime_fit available)
+  R-EXIT-05       edge degraded exit advisory
+
 Why-not evaluation order (16_WHY_NOT_RECOMMENDED_FRAMEWORK.md §4):
   1. RANK_OUTSIDE_POOL
-  2. VALIDATION_PENDING / VALIDATION_WEAK
+  2. REGIME_NO_EDGE / VALIDATION_PENDING (R-ENTRY-02-RCE or legacy R-ENTRY-02)
   3. REGIME_BLOCK
   4. Conviction scoring
   5. CONVICTION_LOW / PORTFOLIO_FULL → WATCH or BUY
@@ -17,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -25,16 +29,20 @@ from app.core.constants import (
     CONVICTION_TOP_POOL_SIZE,
     REC_REASON_CONVICTION_LOW,
     REC_REASON_EXIT_RISK,
+    REC_REASON_LOW_EXPECTANCY,
     REC_REASON_PORTFOLIO_FULL,
     REC_REASON_RANK_OUTSIDE_POOL,
     REC_REASON_RANK_POOL_TOP20,
     REC_REASON_REGIME_BLOCK,
+    REC_REASON_REGIME_NO_EDGE,
     REC_REASON_VALIDATION_PENDING,
     ConvictionBand,
     RecommendationAction,
+    RecommendationConfidence,
     RecommendationLifecycleState,
 )
 from app.recommendation.conviction_scorer import ConvictionInputs, ConvictionResult, score
+from app.recommendation.regime_edge_engine import EdgeState, RegimeFit
 
 
 @dataclass
@@ -60,6 +68,7 @@ class ExitSignal:
     alpha_decayed: bool = False  # R-EXIT-02: alpha decay curve breached
     holding_days: int = 0  # R-EXIT-04: time stop
     regime_turned_defensive: bool = False  # R-EXIT-03: regime transition
+    edge_degraded: bool = False  # R-EXIT-05 (ADR-032): regime edge deteriorated since entry
 
 
 @dataclass
@@ -74,6 +83,16 @@ class EngineConfig:
     exceptional_daily_cap: int = 3
     rank_deterioration_threshold: int = 40  # rank > this → exit signal
     max_holding_days: int = 30  # R-EXIT-04 time stop
+    # ADR-032: RCEE regime fit (None → fallback to legacy R-ENTRY-02)
+    regime_fit: RegimeFit | None = None
+
+
+@dataclass
+class FreshnessCheck:
+    """Result of approval-time freshness validation (Phase 5)."""
+
+    is_fresh: bool
+    stale_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -87,6 +106,7 @@ class RecommendationRow:
     conviction_band: str
     conviction_components: dict[str, Any]
     reason_codes: list[str]
+    recommendation_confidence: str | None = None  # ADR-032
 
 
 def _compute_input_hash(
@@ -94,6 +114,7 @@ def _compute_input_hash(
     config_version: str,
     regime_posture: str,
     validation_status: str,
+    edge_state: str | None = None,
 ) -> str:
     canonical = json.dumps(
         {
@@ -101,6 +122,7 @@ def _compute_input_hash(
             "config_version": config_version,
             "regime_posture": regime_posture,
             "validation_status": validation_status,
+            "edge_state": edge_state,
         },
         sort_keys=True,
     )
@@ -123,8 +145,14 @@ def run(
     """
     active_positions = active_position_stock_ids or set()
     exit_signals = exit_signals or {}
+
+    edge_state = config.regime_fit.edge_state.value if config.regime_fit else None
     input_hash = _compute_input_hash(
-        ranking_run_id, config.config_version, config.regime_posture, validation.status
+        ranking_run_id,
+        config.config_version,
+        config.regime_posture,
+        validation.status,
+        edge_state,
     )
 
     top20_scores = [r.composite_score for r in ranking_results if r.rank <= config.top_pool_size]
@@ -140,7 +168,7 @@ def run(
         is_active = rr.stock_id in active_positions
         exit_signal = exit_signals.get(rr.stock_id, ExitSignal()) if is_active else ExitSignal()
 
-        action, lifecycle, reason_codes, conviction = _evaluate(
+        action, lifecycle, reason_codes, conviction, confidence = _evaluate(
             rr=rr,
             validation=validation,
             config=config,
@@ -167,6 +195,7 @@ def run(
                 conviction_band=conviction.band.value,
                 conviction_components=conviction.components,
                 reason_codes=reason_codes,
+                recommendation_confidence=confidence.value if confidence else None,
             )
         )
 
@@ -183,10 +212,10 @@ def _evaluate(
     exit_signal: ExitSignal,
     buy_count: int,
     exceptional_count: int,
-) -> tuple[str, str | None, list[str], ConvictionResult]:
+) -> tuple[str, str | None, list[str], ConvictionResult, RecommendationConfidence | None]:
     reason_codes: list[str] = []
 
-    # ── Active position path (R-HOLD-01, R-EXIT-01..04) ──────────────────────
+    # ── Active position path (R-HOLD-01, R-EXIT-01..05) ──────────────────────
     if is_active_position:
         position_state, exit_reasons = _resolve_position_state(rr, exit_signal, config)
         conviction = _conviction_for(rr, validation, config, top20_scores, position_state)
@@ -198,6 +227,7 @@ def _evaluate(
                 RecommendationLifecycleState.EXIT_APPROVED,
                 exit_reasons,
                 conviction,
+                None,
             )
 
         # R-HOLD-01: no trigger → HOLD
@@ -206,6 +236,7 @@ def _evaluate(
             RecommendationLifecycleState.ACTIVE,
             [],
             conviction,
+            None,
         )
 
     # ── Entry path ────────────────────────────────────────────────────────────
@@ -213,44 +244,78 @@ def _evaluate(
     # R-ENTRY-01: pool gate
     if rr.rank > config.top_pool_size:
         conviction = _conviction_for(rr, validation, config, top20_scores, "none")
-        return RecommendationAction.REJECT, None, [REC_REASON_RANK_OUTSIDE_POOL], conviction
+        return RecommendationAction.REJECT, None, [REC_REASON_RANK_OUTSIDE_POOL], conviction, None
 
     reason_codes.append(REC_REASON_RANK_POOL_TOP20)
 
-    # R-ENTRY-02: validation gate
-    if validation.status == "insufficient_data":
-        conviction = _conviction_for(rr, validation, config, top20_scores, "none")
-        reason_codes.append(REC_REASON_VALIDATION_PENDING)
-        return RecommendationAction.WATCH, None, reason_codes, conviction
+    # R-ENTRY-02-RCE: regime-conditional edge gate (ADR-032)
+    if config.regime_fit is not None:
+        if config.regime_fit.edge_state == EdgeState.NO_EDGE:
+            conviction = _conviction_for(rr, validation, config, top20_scores, "none")
+            reason_codes.append(REC_REASON_REGIME_NO_EDGE)
+            return (
+                RecommendationAction.WATCH,
+                None,
+                reason_codes,
+                conviction,
+                RecommendationConfidence.UNKNOWN,
+            )
+        if config.regime_fit.edge_state == EdgeState.EDGE_WEAK:
+            conviction = _conviction_for(rr, validation, config, top20_scores, "none")
+            reason_codes.append(REC_REASON_LOW_EXPECTANCY)
+            return (
+                RecommendationAction.WATCH,
+                None,
+                reason_codes,
+                conviction,
+                RecommendationConfidence.EARLY,
+            )
+    else:
+        # Fallback: legacy R-ENTRY-02 when RCEE not available (regime_fit=None)
+        if validation.status == "insufficient_data":
+            conviction = _conviction_for(rr, validation, config, top20_scores, "none")
+            reason_codes.append(REC_REASON_VALIDATION_PENDING)
+            return RecommendationAction.WATCH, None, reason_codes, conviction, None
 
     conviction = _conviction_for(rr, validation, config, top20_scores, "none")
 
     # R-ENTRY-03: BLOCKED conviction → REJECT
     if conviction.band == ConvictionBand.BLOCKED:
         reason_codes.append(REC_REASON_CONVICTION_LOW)
-        return RecommendationAction.REJECT, None, reason_codes, conviction
+        return RecommendationAction.REJECT, None, reason_codes, conviction, None
 
     # R-ENTRY-05a: LOW conviction → WATCH
     if conviction.band == ConvictionBand.LOW:
         reason_codes.append(REC_REASON_CONVICTION_LOW)
-        return RecommendationAction.WATCH, None, reason_codes, conviction
+        return RecommendationAction.WATCH, None, reason_codes, conviction, None
 
     # Regime gate (R-ENTRY-04)
-    if config.regime_posture == "defensive":
+    # Skip when RCEE has confirmed EDGE_PRESENT for this strategy in this regime.
+    # EDGE_PRESENT already encodes that the strategy has statistically proven edge
+    # here — e.g. reversal_v1 in BEAR_LOW_VOL. The posture gate is redundant and
+    # would incorrectly block strategies deliberately designed for "defensive" regimes.
+    _rcee_confirmed = (
+        config.regime_fit is not None
+        and config.regime_fit.edge_state == EdgeState.EDGE_PRESENT
+    )
+    if config.regime_posture == "defensive" and not _rcee_confirmed:
         reason_codes.append(REC_REASON_REGIME_BLOCK)
-        return RecommendationAction.WATCH, None, reason_codes, conviction
+        return RecommendationAction.WATCH, None, reason_codes, conviction, None
 
     # Slot limit (R-ENTRY-05b)
     if buy_count >= config.max_buy_slots:
         reason_codes.append(REC_REASON_PORTFOLIO_FULL)
-        return RecommendationAction.WATCH, None, reason_codes, conviction
+        return RecommendationAction.WATCH, None, reason_codes, conviction, None
 
     # Exceptional daily cap
     if (
         conviction.band == ConvictionBand.EXCEPTIONAL
         and exceptional_count >= config.exceptional_daily_cap
     ):
-        return RecommendationAction.WATCH, None, reason_codes, conviction
+        return RecommendationAction.WATCH, None, reason_codes, conviction, None
+
+    # Derive confidence for BUY path
+    confidence = _derive_buy_confidence(config)
 
     # R-ENTRY-04: MEDIUM+ conviction, regime allows, slots available → BUY
     return (
@@ -258,7 +323,20 @@ def _evaluate(
         RecommendationLifecycleState.CANDIDATE,
         reason_codes,
         conviction,
+        confidence,
     )
+
+
+def _derive_buy_confidence(config: EngineConfig) -> RecommendationConfidence:
+    """Derive recommendation confidence for BUY path based on RCEE evidence."""
+    if config.regime_fit and config.regime_fit.edge_state == EdgeState.EDGE_PRESENT:
+        if config.regime_fit.sample_days >= 200:
+            return RecommendationConfidence.HIGH_CONFIDENCE
+        elif config.regime_fit.sample_days >= 60:
+            return RecommendationConfidence.VALIDATED
+        else:
+            return RecommendationConfidence.EARLY
+    return RecommendationConfidence.UNKNOWN
 
 
 def _resolve_position_state(
@@ -268,7 +346,7 @@ def _resolve_position_state(
 ) -> tuple[str, list[str]]:
     """Return (position_state_for_conviction, exit_reason_codes).
 
-    Evaluates R-EXIT-01..04 in priority order.
+    Evaluates R-EXIT-01..05 in priority order.
     Multiple triggers can fire simultaneously — all reason codes are returned.
     """
     exit_reasons: list[str] = []
@@ -289,6 +367,10 @@ def _resolve_position_state(
     if exit_signal.holding_days >= config.max_holding_days:
         exit_reasons.append("TIME_STOP")
 
+    # R-EXIT-05: edge degraded (ADR-032) — advisory, surfaces as EXIT_APPROVED for HITL review
+    if exit_signal.edge_degraded:
+        exit_reasons.append("EDGE_DEGRADED")
+
     if exit_reasons:
         position_state = "active_deteriorating" if exit_signal.rank_deteriorated else "active_decay"
     else:
@@ -304,6 +386,14 @@ def _conviction_for(
     top20_scores: list[float],
     position_state: str,
 ) -> ConvictionResult:
+    edge_state = config.regime_fit.edge_state.value if config.regime_fit else None
+    # Strategy-level IC from RCEE — used instead of per-factor median for strategies
+    # whose factors are not in factor_daily_metrics (e.g. reversal_v1, low_vol_v1).
+    strategy_regime_ic = (
+        float(config.regime_fit.avg_ic)
+        if config.regime_fit and config.regime_fit.avg_ic is not None
+        else None
+    )
     return score(
         ConvictionInputs(
             rank=rr.rank,
@@ -317,5 +407,41 @@ def _conviction_for(
             position_state=position_state,
             rank_v2_promoted=config.rank_v2_promoted,
             config_version=config.conviction_config_version,
+            regime_fit_edge_state=edge_state,
+            strategy_regime_ic=strategy_regime_ic,
         )
     )
+
+
+def check_recommendation_freshness(
+    *,
+    result: RecommendationRow,
+    current_ranking_rows: list[RankingResultRow],
+    regime_fit: RegimeFit | None,
+    recommendation_age_days: int,
+    max_age_days: int = 3,
+) -> FreshnessCheck:
+    """Approval-time freshness validation. Returns STALE_BREACH reasons if stale."""
+    from app.core.constants import (
+        REC_REASON_RANK_EXITED_POOL,
+        REC_REASON_REGIME_EDGE_LOST,
+        REC_REASON_STALE_AGE,
+    )
+
+    stale_reasons: list[str] = []
+
+    # Check 1: age
+    if recommendation_age_days > max_age_days:
+        stale_reasons.append(REC_REASON_STALE_AGE)
+
+    # Check 2: still in top pool
+    current_ranks = {r.stock_id: r.rank for r in current_ranking_rows}
+    current_rank = current_ranks.get(result.stock_id)
+    if current_rank is None or current_rank > CONVICTION_TOP_POOL_SIZE:
+        stale_reasons.append(REC_REASON_RANK_EXITED_POOL)
+
+    # Check 3: edge still valid (regime may have changed)
+    if regime_fit and regime_fit.edge_state == EdgeState.NO_EDGE:
+        stale_reasons.append(REC_REASON_REGIME_EDGE_LOST)
+
+    return FreshnessCheck(is_fresh=len(stale_reasons) == 0, stale_reasons=stale_reasons)
