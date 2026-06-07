@@ -177,12 +177,19 @@ class RecommendationAnalyticsService:
         )
         window = self._make_window(rows, strategy_name, from_date, to_date)
 
-        # Stability: action history from result records (not just outcomes)
-        raw_history = self.outcome_repo.list_action_history(
+        # Stability: query directly from recommendation_results — no closed outcomes needed.
+        # Falls back to outcome-linked history if direct query returns nothing (shouldn't happen).
+        raw_history = self.outcome_repo.list_action_history_from_results(
             strategy_name=strategy_name,
             from_date=from_date,
             to_date=to_date,
         )
+        if not raw_history:
+            raw_history = self.outcome_repo.list_action_history(
+                strategy_name=strategy_name,
+                from_date=from_date,
+                to_date=to_date,
+            )
         # Group by symbol
         by_symbol: dict[str, list] = defaultdict(list)
         for row in raw_history:
@@ -191,12 +198,19 @@ class RecommendationAnalyticsService:
             _ActionHistory(symbol=sym, dates_actions=sorted(seq)) for sym, seq in by_symbol.items()
         ]
 
-        # Reliability: validation completeness
-        val_counts = self.outcome_repo.count_by_validation_status(
+        # Reliability: query directly from recommendation_results — no closed outcomes needed.
+        val_counts = self.outcome_repo.count_by_validation_status_from_results(
             strategy_name=strategy_name,
             from_date=from_date,
             to_date=to_date,
         )
+        if val_counts["completed"] == 0 and val_counts["insufficient_data"] == 0:
+            # Fallback to outcome-linked counts if direct query has no data
+            val_counts = self.outcome_repo.count_by_validation_status(
+                strategy_name=strategy_name,
+                from_date=from_date,
+                to_date=to_date,
+            )
         total = val_counts["completed"] + val_counts["insufficient_data"]
 
         return compute_trust_metrics(

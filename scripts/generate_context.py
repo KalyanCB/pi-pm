@@ -60,7 +60,8 @@ ARCHIVE_LINK_PREFIXES = (
     "ARGS_DESIGN",
     "COMMITTEE_DESIGN",
     "SERVICE_MAP",
-    "DATABASE_SCHEMA.md",
+    # NOTE: do NOT add bare "DATABASE_SCHEMA.md" here — it substring-matches the real
+    # generated link ../generated/DATABASE_SCHEMA.md. The legacy AI doc is caught by "../AI/".
     "DOMAIN_MODEL",
 )
 
@@ -422,7 +423,8 @@ stale_after_hours: 24
 ```
 Market Data → Ranking → Validation → Recommendation Engine → HITL → Execution (Paper/Live)
                                       ↓
-                              Exit Monitor (daily; ADR-033 intraday PROPOSED)
+                Exit Monitor — T2 daily + T1 intraday scaffold (ADR-033;
+                live auto-exec gated OFF, scheduler/broker-stop pending)
                                       ↓
                               ARGS / Committee (advisory)
 ```
@@ -836,7 +838,7 @@ generator: scripts/generate_context.py
 
 - **Ranking/Validation** never call LLM for scores.
 - **Recommendation engine** sets `action`; committee cannot mutate it.
-- **Exit monitor** creates recommendations; human confirms (except paper auto / ADR-033 proposed).
+- **Exit monitor** creates recommendations; human confirms (except paper auto, or ADR-033 critical-stop auto-exec when `AUTO_EXIT_ON_CRITICAL_STOP=true` — OFF by default).
 - **ExecutionService** is the only path from APPROVED → position change.
 
 ## Canonical decisions
@@ -860,7 +862,8 @@ def render_agents(
     ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     test_line = str(tests) if tests is not None else "unknown"
 
-    proposed = [r for r in rows if r["status"] in ("PROPOSED", "NOT_STARTED")]
+    proposed = [r for r in rows if r["status"] == "PROPOSED"]
+    not_started = [r for r in rows if r["status"] == "NOT_STARTED"]
     partial = [r for r in rows if r["status"] == "PARTIALLY_IMPLEMENTED"]
 
     snap_lines = []
@@ -886,7 +889,7 @@ Personal Intelligence Portfolio Manager — deterministic **ingest → rank → 
 1. Deterministic ranking is sacred — same inputs → same outputs.
 2. Validation tail is sacred — do not fake `completed` status.
 3. LLMs **must not** influence ranking, conviction, sizing, or trade approval.
-4. Human approves entries and exits (ADR-033 critical stop override is **PROPOSED** only).
+4. Human approves entries and exits — ADR-033 critical-stop **auto-override is gated OFF by default** (`AUTO_EXIT_ON_CRITICAL_STOP=false`); needs PO sign-off (A–G) before any live auto-exec.
 5. ARGS / committee is **advisory** — cannot change `action`.
 
 ## 3. Session bootstrap (load in order)
@@ -920,6 +923,7 @@ uv run python scripts/generate_context.py
 | migration_head | `{head}` |
 | tests_collected | {test_line} |
 | proposed_items | {len(proposed)} |
+| not_started_items | {len(not_started)} |
 | partial_items | {len(partial)} |
 
 | ID | Capability | Status |

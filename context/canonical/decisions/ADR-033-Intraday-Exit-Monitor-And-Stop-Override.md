@@ -1,6 +1,6 @@
 # ADR-033: Intraday Exit Monitor, Stop Override & Notifications
 
-**Status:** Proposed  
+**Status:** Proposed (decision) — **scaffolding implemented ahead of sign-off** (see addendum)  
 **Date:** 2026-06-05  
 **Deciders:** Product Owner (required), Principal Quant Platform Engineer, Risk Owner  
 **Supersedes:** N/A — extends and qualifies ADR-028, ADR-030, ADR-031  
@@ -169,7 +169,34 @@ Paper (S0) may simulate broker stops without real orders.
 
 ---
 
-## Current implementation gaps (as-is, 2026-06-05)
+## Implementation status (addendum — 2026-06-07)
+
+**The original "as-is, 2026-06-05" gap table below is superseded.** Core scaffolding for the
+two-tier monitor landed ahead of PO sign-off (migration
+`20260611_0027_adr033_exit_monitor.py`). Authoritative status: RTM id `ADR-033`
+(`PARTIALLY_IMPLEMENTED`) in [`../../generated/REQUIREMENTS.rtm.yaml`](../../generated/REQUIREMENTS.rtm.yaml).
+
+**Done:**
+- T2 daily swing monitor — `app/portfolio/exit_monitor/service.py` (`monitor_tier=DAILY`).
+- T1 intraday price monitor — `app/portfolio/exit_monitor/intraday_service.py`
+  (`monitor_tier=INTRADAY`; `EXIT_STOP_LOSS`/`EXIT_TRAILING_STOP` only) with injected
+  `QuoteProvider` (`quote_provider.py`).
+- Settings-driven thresholds: `ADVISORY_STOP_PCT` (−8), `CRITICAL_STOP_PCT` (−10),
+  `AUTO_EXIT_ON_CRITICAL_STOP` (default **false**), `INTRADAY_EXIT_MONITOR_ENABLED`,
+  `INTRADAY_INTERVAL_SEC` — see `app/core/config.py`.
+- Critical-stop auto-exec path with `AUTO_EXIT_RISK_OVERRIDE` audit + session-aware dedup
+  `(position_id, trigger, session_date)`.
+- Notification builder — `app/portfolio/exit_monitor/notification.py`.
+- Tests — `tests/unit/portfolio/test_intraday_exit_monitor.py`.
+
+**Still open (blocks live):** PO sign-off (A–G below); live Kite `QuoteProvider`; intraday
+scheduler/worker for the NSE session; notification **delivery** channels (builder only today);
+broker GTC stop at entry; `stop_loss_price` exposure on position API/UI; enabling
+`AUTO_EXIT_ON_CRITICAL_STOP` for any live path.
+
+---
+
+## Current implementation gaps (original, 2026-06-05 — see addendum above)
 
 | Gap | Location |
 |-----|----------|
@@ -179,8 +206,6 @@ Paper (S0) may simulate broker stops without real orders.
 | `stop_loss_price` on DB model; not exposed on position API/UI | `portfolio_positions` schema |
 | No notification service | Alerts framework pilot-only (`app/ops/pilot/alerting.py`) |
 | Dedup one PENDING per position **per calendar day** | May block legitimate intraday re-alert — needs session-aware dedup |
-
-**No code change required** until PO accepts this ADR.
 
 ---
 
@@ -219,7 +244,8 @@ Paper (S0) may simulate broker stops without real orders.
 
 ## References
 
-- `app/portfolio/exit_monitor/service.py` — daily monitor, −8% hardcoded
+- `app/portfolio/exit_monitor/service.py` — T2 daily monitor (stop from `Settings.advisory_stop_pct`, default −8%)
+- `app/portfolio/exit_monitor/intraday_service.py` — T1 intraday price monitor + critical auto-exec
 - `app/portfolio/exit_monitor/triggers.py` — `EXIT_STOP_LOSS`, `EXIT_TRAILING_STOP`
 - `app/ops/daily_batch/paper_pilot_ops.py` — batch invocation
 - `app/ops/hitl/gate.py` — `should_execute_paper_trades`

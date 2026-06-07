@@ -131,6 +131,7 @@ def get_positions(
                 "exit_price": float(p.exit_price) if p.exit_price else None,
                 "exit_date": p.exit_date.isoformat() if p.exit_date else None,
                 "realized_pnl": float(p.realized_pnl) if p.realized_pnl else None,
+                "exit_reason": p.exit_reason,
             }
         )
     return out

@@ -20,9 +20,16 @@ Regenerate status from code: `uv run python scripts/generate_context.py`
 | ADR-029 | Accepted | [ADR-029-Pilot-Operations.md](decisions/ADR-029-Pilot-Operations.md) |
 | ADR-030 | Accepted | [ADR-030-Live-Investing-Architecture.md](decisions/ADR-030-Live-Investing-Architecture.md) |
 | ADR-031 | Accepted | [ADR-031-Unified-Execution-Architecture.md](decisions/ADR-031-Unified-Execution-Architecture.md) |
-| ADR-032 | **Proposed** | [ADR-032-Live-Entry-Timing-Validation-Gate.md](decisions/ADR-032-Live-Entry-Timing-Validation-Gate.md) |
-| ADR-033 | **Proposed** | [ADR-033-Intraday-Exit-Monitor-And-Stop-Override.md](decisions/ADR-033-Intraday-Exit-Monitor-And-Stop-Override.md) |
+| ADR-032 | **Proposed** (decision) | [ADR-032-Live-Entry-Timing-Validation-Gate.md](decisions/ADR-032-Live-Entry-Timing-Validation-Gate.md) |
+| ADR-033 | **Proposed** (decision); T1/T2 scaffold **implemented** — see RTM | [ADR-033-Intraday-Exit-Monitor-And-Stop-Override.md](decisions/ADR-033-Intraday-Exit-Monitor-And-Stop-Override.md) |
 | ADR-032 impl notes | Reference | [ADR-032-IMPLEMENTATION.md](decisions/ADR-032-IMPLEMENTATION.md) |
+
+> **Decision status ≠ implementation status.** The **Status** column above is the ADR's
+> *decision* state (Proposed/Accepted). Code reality (designed/partial/implemented) lives in
+> [`../generated/IMPLEMENTATION_STATUS.md`](../generated/IMPLEMENTATION_STATUS.md) and
+> [`../generated/REQUIREMENTS.rtm.yaml`](../generated/REQUIREMENTS.rtm.yaml). e.g. ADR-033's
+> intraday (T1) + daily (T2) monitor scaffolding has landed (`PARTIALLY_IMPLEMENTED`) even
+> though the PO sign-off (A–G) and live auto-exec path are still open.
 
 ---
 
@@ -114,12 +121,18 @@ Regenerate status from code: `uv run python scripts/generate_context.py`
 | File | Role |
 |------|------|
 | [../generated/PLATFORM_STATE.md](../generated/PLATFORM_STATE.md) | Live repo state |
-| [../generated/IMPLEMENTATION_STATUS.md](../generated/IMPLEMENTATION_STATUS.md) | 70 requirements status |
-| [../generated/REQUIREMENTS.rtm.yaml](../generated/REQUIREMENTS.rtm.yaml) | Machine RTM |
+| [../generated/IMPLEMENTATION_STATUS.md](../generated/IMPLEMENTATION_STATUS.md) | Requirements status (designed/planned/done) |
+| [../generated/REQUIREMENTS.rtm.yaml](../generated/REQUIREMENTS.rtm.yaml) | Machine RTM (YAML) |
+| [../generated/REQUIREMENTS.rtm.md](../generated/REQUIREMENTS.rtm.md) | Human-readable RTM |
 | [../generated/GAPS_AND_DEBT.md](../generated/GAPS_AND_DEBT.md) | Deferred work |
+| [../generated/ARCHITECTURE_MAP.md](../generated/ARCHITECTURE_MAP.md) | Module/domain map |
+| [../generated/API_SURFACE.md](../generated/API_SURFACE.md) | Route handler index |
+| [../generated/API_SCHEMAS.md](../generated/API_SCHEMAS.md) | API schemas (markdown) |
 | [../generated/API_SCHEMAS.json](../generated/API_SCHEMAS.json) | OpenAPI export |
 | [../generated/DATABASE_SCHEMA.md](../generated/DATABASE_SCHEMA.md) | Schema detail |
 | [../generated/ENV_CATALOG.md](../generated/ENV_CATALOG.md) | All env flags |
+| [../generated/RANKING_STRATEGIES.md](../generated/RANKING_STRATEGIES.md) | Registered ranking strategies |
+| [../generated/FRONTEND_SURFACE.md](../generated/FRONTEND_SURFACE.md) | Frontend screens/routes/hooks |
 | [../generated/OPS_SCRIPTS.md](../generated/OPS_SCRIPTS.md) | Scripts index |
 | [../generated/TEST_MAP.md](../generated/TEST_MAP.md) | Tests by module |
 | [../generated/CANONICAL_LINK_CHECK.md](../generated/CANONICAL_LINK_CHECK.md) | Broken link audit |

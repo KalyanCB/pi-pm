@@ -1,6 +1,6 @@
 ---
-generated_at: 2026-06-07T03:43:13Z
-git_sha: c8171f3
+generated_at: 2026-06-07T04:48:08Z
+git_sha: 9916aed
 git_branch: feature/copilot-ai
 generator: scripts/generate_context.py
 stale_after_hours: 24
@@ -12,7 +12,7 @@ stale_after_hours: 24
 
 | Field | Value |
 |-------|-------|
-| Git SHA | `c8171f3` |
+| Git SHA | `9916aed` |
 | Branch | `feature/copilot-ai` |
 | Migration head (latest file) | `20260611` |
 | Tests collected | 689 |
@@ -24,7 +24,8 @@ stale_after_hours: 24
 ```
 Market Data → Ranking → Validation → Recommendation Engine → HITL → Execution (Paper/Live)
                                       ↓
-                              Exit Monitor (daily; ADR-033 intraday PROPOSED)
+                Exit Monitor — T2 daily + T1 intraday scaffold (ADR-033;
+                live auto-exec gated OFF, scheduler/broker-stop pending)
                                       ↓
                               ARGS / Committee (advisory)
 ```

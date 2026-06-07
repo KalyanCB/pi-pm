@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.recommendation import RecommendationOutcome, RecommendationResult, RecommendationRun
+from app.models.stock import Stock
 
 
 class RecommendationOutcomeRepository:
@@ -126,6 +127,73 @@ class RecommendationOutcomeRepository:
         q = q.order_by(RecommendationOutcome.symbol, RecommendationOutcome.entry_date)
         rows = self.db.execute(q).all()
         return [{"symbol": r[0], "date": r[1], "action": r[2]} for r in rows]
+
+    def list_action_history_from_results(
+        self,
+        *,
+        strategy_name: str | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> list[dict]:
+        """Return (symbol, as_of_date, action) from recommendation_results directly.
+
+        Does NOT require closed outcomes — works from day 1 of paper trading.
+        Used for stability computation.
+        """
+        q = (
+            select(
+                Stock.symbol,
+                RecommendationRun.as_of_date,
+                RecommendationResult.action,
+            )
+            .join(RecommendationRun, RecommendationRun.id == RecommendationResult.recommendation_run_id)
+            .join(Stock, Stock.id == RecommendationResult.stock_id)
+        )
+        if strategy_name:
+            q = q.where(RecommendationRun.strategy_name == strategy_name)
+        if from_date:
+            q = q.where(RecommendationRun.as_of_date >= from_date)
+        if to_date:
+            q = q.where(RecommendationRun.as_of_date <= to_date)
+        q = q.where(RecommendationRun.status == "completed")
+        q = q.order_by(Stock.symbol, RecommendationRun.as_of_date)
+        rows = self.db.execute(q).all()
+        return [{"symbol": r[0], "date": r[1], "action": r[2]} for r in rows]
+
+    def count_by_validation_status_from_results(
+        self,
+        *,
+        strategy_name: str | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
+    ) -> dict[str, int]:
+        """Reliability: count completed vs insufficient_data from recommendation_results directly.
+
+        Does NOT require closed outcomes — works from day 1 of paper trading.
+        """
+        q = select(RecommendationResult.conviction_components).join(
+            RecommendationRun, RecommendationRun.id == RecommendationResult.recommendation_run_id
+        )
+        if strategy_name:
+            q = q.where(RecommendationRun.strategy_name == strategy_name)
+        if from_date:
+            q = q.where(RecommendationRun.as_of_date >= from_date)
+        if to_date:
+            q = q.where(RecommendationRun.as_of_date <= to_date)
+        q = q.where(RecommendationRun.status == "completed")
+        rows = self.db.execute(q).all()
+        completed = 0
+        insufficient = 0
+        for (components,) in rows:
+            if not components:
+                insufficient += 1
+                continue
+            val_status = components.get("validation_status", "")
+            if val_status == "insufficient_data":
+                insufficient += 1
+            else:
+                completed += 1
+        return {"completed": completed, "insufficient_data": insufficient}
 
     def list_results_for_symbol(
         self, symbol: str, strategy_name: str | None = None

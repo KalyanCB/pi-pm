@@ -30,6 +30,7 @@ export interface PortfolioPosition {
   exit_price: number | null;
   exit_date: string | null;
   realized_pnl: number | null;
+  exit_reason: string | null;
 }
 
 export interface PortfolioSummary {

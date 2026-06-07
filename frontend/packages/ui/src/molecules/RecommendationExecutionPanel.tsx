@@ -80,6 +80,7 @@ export function RecommendationExecutionPanel({
           symbol={position.symbol ?? symbol}
           quantity={position.quantity}
           avgCost={position.avg_cost}
+          entryPrice={position.entry_price}
           marketValue={position.market_value}
           unrealizedPnl={position.unrealized_pnl}
           weightPct={position.weight_pct}
@@ -91,6 +92,7 @@ export function RecommendationExecutionPanel({
           realizedPnl={position.realized_pnl}
           entryDate={position.entry_date}
           strategyName={position.strategy_name}
+          exitReason={outcome?.exit_reason ?? null}
         />
       )}
     </View>

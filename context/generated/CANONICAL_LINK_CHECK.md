@@ -1,17 +1,16 @@
 ---
-generated_at: 2026-06-07T03:43:13Z
+generated_at: 2026-06-07T04:48:08Z
 generator: scripts/generate_context.py
 ---
 
 # Canonical Link Check
 
-> **OK:** 325 resolved links | **Broken:** 0 | **Archived refs:** 79
+> **OK:** 335 resolved links | **Broken:** 0 | **Archived refs:** 78
 
 **No broken internal links.** Safe for `docs/` archive from link perspective.
 
 ## Archived external refs (intentional — legacy not copied)
 
-- `../generated/DATABASE_SCHEMA.md`
 - `../AI/03_DESIGN/GOVERNANCE_DESIGN.md`
 - `../../sprint42-implementation-plan.md`
 - `../../sprint61-full-universe-validation-report.md`

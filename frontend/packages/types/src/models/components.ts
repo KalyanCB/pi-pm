@@ -32,7 +32,9 @@ export interface PortfolioPositionCardProps {
   exitDate?: string | null;
   realizedPnl?: number | null;
   entryDate?: string | null;
+  entryPrice?: number | null;
   strategyName?: string | null;
+  exitReason?: string | null;
 }
 
 export interface TrustScoreCardProps {

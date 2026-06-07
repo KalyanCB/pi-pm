@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput } from 'react-native';
 import { useTheme } from '@pipm/theme';
 import { usePortfolioScreen, useNavHistory, useUiStore } from '@pipm/hooks';
 import { InvestorScreenShell } from '../layout/InvestorScreenShell';
@@ -14,10 +14,33 @@ import { Button } from '../atoms/Button';
 
 const TABS = ['Overview', 'Positions', 'Allocation', 'Performance', 'Attribution'] as const;
 
+const EXIT_REASONS = ['STOP_LOSS', 'TIME_STOP', 'RANK_DROP', 'FORCE_CLOSE'] as const;
+
 export function PortfolioScreen() {
   const theme = useTheme();
   const [section, setSection] = useState<(typeof TABS)[number]>('Overview');
   const [showClosed, setShowClosed] = useState(false);
+
+  // Filter state — Open tab
+  const [filterStrategy, setFilterStrategy] = useState<string | null>(null);
+  const [filterSector, setFilterSector] = useState<string | null>(null);
+
+  // Filter state — Closed tab
+  const [filterClosedStrategy, setFilterClosedStrategy] = useState<string | null>(null);
+  const [filterClosedSector, setFilterClosedSector] = useState<string | null>(null);
+  const [filterExitReason, setFilterExitReason] = useState<string | null>(null);
+  const [filterPnlDir, setFilterPnlDir] = useState<'All' | 'Winners' | 'Losers'>('All');
+
+  // Search state — Open tab
+  const [searchOpen, setSearchOpen] = useState('');
+  const [openFromDate, setOpenFromDate] = useState('');
+  const [openToDate, setOpenToDate] = useState('');
+
+  // Search state — Closed tab
+  const [searchClosed, setSearchClosed] = useState('');
+  const [closedFromDate, setClosedFromDate] = useState('');
+  const [closedToDate, setClosedToDate] = useState('');
+
   const toggleCopilot = useUiStore((s) => s.toggleCopilotPanel);
   const {
     summary,
@@ -31,6 +54,38 @@ export function PortfolioScreen() {
     refetch,
   } = usePortfolioScreen(showClosed);
   const { returnSeries, navSeries } = useNavHistory();
+
+  // Derive unique filter options from loaded positions
+  const openPositions = positions.filter((p) => p.position_status === 'OPEN');
+  const closedPositions = positions.filter((p) => p.position_status === 'CLOSED');
+
+  const openStrategies = [...new Set(openPositions.map((p) => p.strategy_name).filter(Boolean))];
+  const openSectors = [...new Set(openPositions.map((p) => p.sector).filter(Boolean))];
+  const closedStrategies = [...new Set(closedPositions.map((p) => p.strategy_name).filter(Boolean))];
+  const closedSectors = [...new Set(closedPositions.map((p) => p.sector).filter(Boolean))];
+
+  const filteredOpen = openPositions.filter((p) => {
+    if (filterStrategy && p.strategy_name !== filterStrategy) return false;
+    if (filterSector && p.sector !== filterSector) return false;
+    if (searchOpen && !(p.symbol ?? '').toLowerCase().includes(searchOpen.toLowerCase())) return false;
+    const entryD = p.entry_date ? p.entry_date.slice(0, 10) : '';
+    if (openFromDate && entryD < openFromDate) return false;
+    if (openToDate && entryD > openToDate) return false;
+    return true;
+  });
+
+  const filteredClosed = closedPositions.filter((p) => {
+    if (filterClosedStrategy && p.strategy_name !== filterClosedStrategy) return false;
+    if (filterClosedSector && p.sector !== filterClosedSector) return false;
+    if (filterExitReason && p.exit_reason !== filterExitReason) return false;
+    if (filterPnlDir === 'Winners' && (p.realized_pnl ?? 0) <= 0) return false;
+    if (filterPnlDir === 'Losers' && (p.realized_pnl ?? 0) >= 0) return false;
+    if (searchClosed && !(p.symbol ?? '').toLowerCase().includes(searchClosed.toLowerCase())) return false;
+    const exitD = p.exit_date ? p.exit_date.slice(0, 10) : '';
+    if (closedFromDate && exitD < closedFromDate) return false;
+    if (closedToDate && exitD > closedToDate) return false;
+    return true;
+  });
 
   const allocation = positions
     .filter((p) => (p.weight_pct ?? 0) > 0)
@@ -118,7 +173,7 @@ export function PortfolioScreen() {
               ]}
             >
               <Text style={[styles.toggleText, { color: !showClosed ? '#fff' : theme.colors.textMuted }]}>
-                Open ({positions.filter((p) => p.position_status === 'OPEN').length})
+                Open ({openPositions.length})
               </Text>
             </Pressable>
             <Pressable
@@ -132,36 +187,242 @@ export function PortfolioScreen() {
               ]}
             >
               <Text style={[styles.toggleText, { color: showClosed ? '#fff' : theme.colors.textMuted }]}>
-                Exited ({positions.filter((p) => p.position_status === 'CLOSED').length})
+                Exited ({closedPositions.length})
               </Text>
             </Pressable>
           </View>
 
-          {positions
-            .filter((p) => showClosed ? p.position_status === 'CLOSED' : p.position_status === 'OPEN')
-            .map((p) => (
-              <PortfolioPositionCard
-                key={p.id}
-                symbol={p.symbol}
-                quantity={p.quantity}
-                avgCost={p.avg_cost}
-                marketValue={p.market_value}
-                unrealizedPnl={p.unrealized_pnl}
-                weightPct={p.weight_pct}
-                convictionBand={p.conviction_band}
-                sector={p.sector}
-                positionStatus={p.position_status}
-                exitPrice={p.exit_price}
-                exitDate={p.exit_date}
-                realizedPnl={p.realized_pnl}
-                entryDate={p.entry_date}
-                strategyName={p.strategy_name}
+          {/* ── Search bar for Open positions ── */}
+          {!showClosed && (
+            <View style={styles.searchSection}>
+              <TextInput
+                style={[styles.searchInput, { backgroundColor: theme.colors.backgroundPanel, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                placeholder="Search symbol…"
+                placeholderTextColor={theme.colors.textMuted}
+                value={searchOpen}
+                onChangeText={setSearchOpen}
+                autoCapitalize="characters"
+                autoCorrect={false}
               />
-            ))}
+              <View style={styles.dateRow}>
+                <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Entry</Text>
+                <TextInput
+                  style={[styles.dateInput, { backgroundColor: theme.colors.backgroundPanel, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                  placeholder="From YYYY-MM-DD"
+                  placeholderTextColor={theme.colors.textMuted}
+                  value={openFromDate}
+                  onChangeText={setOpenFromDate}
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={[styles.dateInput, { backgroundColor: theme.colors.backgroundPanel, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                  placeholder="To YYYY-MM-DD"
+                  placeholderTextColor={theme.colors.textMuted}
+                  value={openToDate}
+                  onChangeText={setOpenToDate}
+                  autoCorrect={false}
+                />
+                {(searchOpen || openFromDate || openToDate) && (
+                  <Pressable onPress={() => { setSearchOpen(''); setOpenFromDate(''); setOpenToDate(''); }}>
+                    <Text style={[styles.clearBtn, { color: theme.colors.accent }]}>Clear</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
 
-          {positions.filter((p) => showClosed ? p.position_status === 'CLOSED' : p.position_status === 'OPEN').length === 0 && (
+          {/* ── Filters for Open positions ── */}
+          {!showClosed && (openStrategies.length > 0 || openSectors.length > 0) && (
+            <View style={styles.filterSection}>
+              {openStrategies.length > 0 && (
+                <View style={styles.filterRow}>
+                  <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Strategy</Text>
+                  <Pressable
+                    onPress={() => setFilterStrategy(null)}
+                    style={[styles.chip, { backgroundColor: filterStrategy === null ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: filterStrategy === null ? '#fff' : theme.colors.textMuted }]}>All</Text>
+                  </Pressable>
+                  {openStrategies.map((s) => (
+                    <Pressable
+                      key={s}
+                      onPress={() => setFilterStrategy(filterStrategy === s ? null : s)}
+                      style={[styles.chip, { backgroundColor: filterStrategy === s ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                    >
+                      <Text style={[styles.chipText, { color: filterStrategy === s ? '#fff' : theme.colors.textMuted }]}>
+                        {(s ?? '').replace('_v1', '')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              {openSectors.length > 0 && (
+                <View style={styles.filterRow}>
+                  <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Sector</Text>
+                  <Pressable
+                    onPress={() => setFilterSector(null)}
+                    style={[styles.chip, { backgroundColor: filterSector === null ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: filterSector === null ? '#fff' : theme.colors.textMuted }]}>All</Text>
+                  </Pressable>
+                  {openSectors.map((s) => (
+                    <Pressable
+                      key={s}
+                      onPress={() => setFilterSector(filterSector === s ? null : s)}
+                      style={[styles.chip, { backgroundColor: filterSector === s ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                    >
+                      <Text style={[styles.chipText, { color: filterSector === s ? '#fff' : theme.colors.textMuted }]}>{s}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* ── Search bar for Closed positions ── */}
+          {showClosed && (
+            <View style={styles.searchSection}>
+              <TextInput
+                style={[styles.searchInput, { backgroundColor: theme.colors.backgroundPanel, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                placeholder="Search symbol…"
+                placeholderTextColor={theme.colors.textMuted}
+                value={searchClosed}
+                onChangeText={setSearchClosed}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+              <View style={styles.dateRow}>
+                <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Exit</Text>
+                <TextInput
+                  style={[styles.dateInput, { backgroundColor: theme.colors.backgroundPanel, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                  placeholder="From YYYY-MM-DD"
+                  placeholderTextColor={theme.colors.textMuted}
+                  value={closedFromDate}
+                  onChangeText={setClosedFromDate}
+                  autoCorrect={false}
+                />
+                <TextInput
+                  style={[styles.dateInput, { backgroundColor: theme.colors.backgroundPanel, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                  placeholder="To YYYY-MM-DD"
+                  placeholderTextColor={theme.colors.textMuted}
+                  value={closedToDate}
+                  onChangeText={setClosedToDate}
+                  autoCorrect={false}
+                />
+                {(searchClosed || closedFromDate || closedToDate) && (
+                  <Pressable onPress={() => { setSearchClosed(''); setClosedFromDate(''); setClosedToDate(''); }}>
+                    <Text style={[styles.clearBtn, { color: theme.colors.accent }]}>Clear</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* ── Filters for Closed positions ── */}
+          {showClosed && (
+            <View style={styles.filterSection}>
+              {closedStrategies.length > 0 && (
+                <View style={styles.filterRow}>
+                  <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Strategy</Text>
+                  <Pressable
+                    onPress={() => setFilterClosedStrategy(null)}
+                    style={[styles.chip, { backgroundColor: filterClosedStrategy === null ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: filterClosedStrategy === null ? '#fff' : theme.colors.textMuted }]}>All</Text>
+                  </Pressable>
+                  {closedStrategies.map((s) => (
+                    <Pressable
+                      key={s}
+                      onPress={() => setFilterClosedStrategy(filterClosedStrategy === s ? null : s)}
+                      style={[styles.chip, { backgroundColor: filterClosedStrategy === s ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                    >
+                      <Text style={[styles.chipText, { color: filterClosedStrategy === s ? '#fff' : theme.colors.textMuted }]}>
+                        {(s ?? '').replace('_v1', '')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              {closedSectors.length > 0 && (
+                <View style={styles.filterRow}>
+                  <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Sector</Text>
+                  <Pressable
+                    onPress={() => setFilterClosedSector(null)}
+                    style={[styles.chip, { backgroundColor: filterClosedSector === null ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: filterClosedSector === null ? '#fff' : theme.colors.textMuted }]}>All</Text>
+                  </Pressable>
+                  {closedSectors.map((s) => (
+                    <Pressable
+                      key={s}
+                      onPress={() => setFilterClosedSector(filterClosedSector === s ? null : s)}
+                      style={[styles.chip, { backgroundColor: filterClosedSector === s ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                    >
+                      <Text style={[styles.chipText, { color: filterClosedSector === s ? '#fff' : theme.colors.textMuted }]}>{s}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              <View style={styles.filterRow}>
+                <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Exit Reason</Text>
+                <Pressable
+                  onPress={() => setFilterExitReason(null)}
+                  style={[styles.chip, { backgroundColor: filterExitReason === null ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                >
+                  <Text style={[styles.chipText, { color: filterExitReason === null ? '#fff' : theme.colors.textMuted }]}>All</Text>
+                </Pressable>
+                {EXIT_REASONS.map((r) => (
+                  <Pressable
+                    key={r}
+                    onPress={() => setFilterExitReason(filterExitReason === r ? null : r)}
+                    style={[styles.chip, { backgroundColor: filterExitReason === r ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: filterExitReason === r ? '#fff' : theme.colors.textMuted }]}>
+                      {r.replace('_', ' ')}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.filterRow}>
+                <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>P&L</Text>
+                {(['All', 'Winners', 'Losers'] as const).map((d) => (
+                  <Pressable
+                    key={d}
+                    onPress={() => setFilterPnlDir(d)}
+                    style={[styles.chip, { backgroundColor: filterPnlDir === d ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: filterPnlDir === d ? '#fff' : theme.colors.textMuted }]}>{d}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {(showClosed ? filteredClosed : filteredOpen).map((p) => (
+            <PortfolioPositionCard
+              key={p.id}
+              symbol={p.symbol}
+              quantity={p.quantity}
+              avgCost={p.avg_cost}
+              marketValue={p.market_value}
+              unrealizedPnl={p.unrealized_pnl}
+              weightPct={p.weight_pct}
+              convictionBand={p.conviction_band}
+              sector={p.sector}
+              positionStatus={p.position_status}
+              exitPrice={p.exit_price}
+              exitDate={p.exit_date}
+              realizedPnl={p.realized_pnl}
+              entryDate={p.entry_date}
+              entryPrice={p.entry_price}
+              strategyName={p.strategy_name}
+              exitReason={p.exit_reason}
+            />
+          ))}
+
+          {(showClosed ? filteredClosed : filteredOpen).length === 0 && (
             <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
-              {showClosed ? 'No exited positions yet.' : 'No open positions.'}
+              {showClosed ? 'No exited positions match filters.' : 'No open positions match filters.'}
             </Text>
           )}
         </View>
@@ -266,6 +527,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 24,
   },
+  filterSection: {
+    gap: 6,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginRight: 2,
+    minWidth: 60,
+  },
+  chip: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
   chartBox: {
     borderWidth: 1,
     borderRadius: 6,
@@ -293,5 +581,35 @@ const styles = StyleSheet.create({
   gate: {
     fontSize: 13,
     padding: 12,
+  },
+  searchSection: {
+    gap: 6,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 13,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 12,
+    flex: 1,
+    minWidth: 120,
+  },
+  clearBtn: {
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 4,
   },
 });

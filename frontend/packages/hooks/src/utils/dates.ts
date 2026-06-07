@@ -3,7 +3,7 @@ export function todayIsoDate(): string {
 }
 
 export function defaultStrategyName(): string {
-  return process.env.EXPO_PUBLIC_DEFAULT_STRATEGY ?? 'momentum_v1';
+  return process.env.EXPO_PUBLIC_DEFAULT_STRATEGY ?? 'reversal_v1';
 }
 
 // Re-export for UI convenience

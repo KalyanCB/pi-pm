@@ -25,12 +25,29 @@ Exit monitor API (`POST /portfolio/exits/run`) always works manually regardless.
 
 ## Exit monitor scope & cadence
 
-- Evaluates **OPEN** positions only (`position_status=OPEN`, `is_current=true`).
-- Default cadence: **once daily** post-close using **EOD close** price.
-- Stop loss: **−8%** hardcoded in `exit_monitor/service.py` (ADR-033 proposes −8% advisory / −10% auto).
-- `stop_loss_price` column exists on `portfolio_positions` (DB) but is **not exposed** on position API or UI yet.
-- `confirm_exit` executes paper SELL when paper mode active.
-- Rank/regime/time exits are **T2 daily** — not intraday (ADR-033 PROPOSED).
+- Evaluates **OPEN** positions only (`position_status=OPEN`, `is_current=true`). Some API
+  descriptions say "ACTIVE" loosely — the canonical status string is **`OPEN`**.
+- **Two-tier monitor (ADR-033, scaffolding IMPLEMENTED):**
+  - **T2 daily swing** — `exit_monitor/service.py` (`ExitMonitorService`), `monitor_tier=DAILY`.
+    Once daily post-close on **EOD close**. Triggers: rank drop, alpha decay, regime, time,
+    stop loss, trailing, concentration, liquidity. **Never auto-executes.**
+  - **T1 intraday price monitor** — `exit_monitor/intraday_service.py`
+    (`IntradayExitMonitorService`), `monitor_tier=INTRADAY`. Price triggers only
+    (`EXIT_STOP_LOSS`, `EXIT_TRAILING_STOP`) via an injected `QuoteProvider`
+    (`LastCloseQuoteProvider` default; Kite live = TODO).
+- **Stop loss is NOT hardcoded** anymore. Sourced from `Settings`:
+  `ADVISORY_STOP_PCT` (default **−8%**) and `CRITICAL_STOP_PCT` (default **−10%**). PRD-07
+  cites −6% — code/config default is −8%; PO confirms one value at ADR-033 sign-off.
+- **Critical-stop auto-exec is OFF by default** (`AUTO_EXIT_ON_CRITICAL_STOP=false`). When on,
+  T1 auto-sells via `PaperTradeService` with audit `actor_id=system`,
+  `reason=AUTO_EXIT_RISK_OVERRIDE`. Entries are **never** auto-bypassed.
+- Still pending for ADR-033 (see RTM `ADR-033`): live Kite `QuoteProvider`, intraday scheduler
+  (1–5 min NSE session), notification delivery wiring, broker GTC stop at entry, and **PO
+  sign-off (A–G)**.
+- `stop_loss_price` column exists on `portfolio_positions` (DB) but is **not exposed** on
+  position API or UI yet.
+- `confirm_exit` (`POST /portfolio/exits/{exit_id}/confirm`) executes paper SELL when paper
+  mode active.
 
 ---
 

@@ -392,6 +392,30 @@ class RecommendationService:
         except Exception:
             return None
 
+    def _load_regime_fit(self, ranking_run: RankingRun):
+        """Load RCEE RegimeFit for the strategy × regime combination.
+
+        Returns None (graceful fallback) if regime_label is missing or the
+        regime_edge_engine import fails — the engine treats None as UNKNOWN
+        and falls back to the legacy R-ENTRY-02 gate.
+        """
+        try:
+            from app.recommendation.regime_edge_engine import RCEEConfig, load_regime_fit
+            regime_label = (ranking_run.regime_label or "").upper() or None
+            if not regime_label:
+                return None
+            config = RCEEConfig()
+            return load_regime_fit(
+                db=self.db,
+                strategy_name=ranking_run.strategy_name,
+                strategy_version=getattr(ranking_run, "strategy_version", "v1"),
+                regime_label=regime_label,
+                horizon=20,
+                config=config,
+            )
+        except Exception:
+            return None
+
     def _load_validation(self, ranking_run_id: UUID) -> ValidationSummary:
         report = self.validation_repo.get_by_ranking_run_id(ranking_run_id)
         if report is None:

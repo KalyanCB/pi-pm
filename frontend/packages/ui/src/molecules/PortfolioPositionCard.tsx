@@ -21,7 +21,9 @@ export function PortfolioPositionCard({
   exitDate,
   realizedPnl,
   entryDate,
+  entryPrice,
   strategyName,
+  exitReason,
 }: PortfolioPositionCardProps) {
   const theme = useTheme();
   const isClosed = positionStatus === 'CLOSED';
@@ -63,9 +65,13 @@ export function PortfolioPositionCard({
         // ── Closed position: show entry → exit P&L ──────────────────────────
         <View style={styles.metrics}>
           <View style={styles.metric}>
+            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Qty</Text>
+            <MetricValue value={quantity} format="number" size="sm" />
+          </View>
+          <View style={styles.metric}>
             <Text style={[styles.label, { color: theme.colors.textMuted }]}>Entry</Text>
             <Text style={[styles.mono, { color: theme.colors.textSecondary }]}>
-              {Number(avgCost).toFixed(2)}
+              {entryPrice != null ? Number(entryPrice).toFixed(2) : '—'}
             </Text>
           </View>
           <Text style={[styles.arrow, { color: theme.colors.textMuted }]}>→</Text>
@@ -79,15 +85,23 @@ export function PortfolioPositionCard({
             <Text style={[styles.label, { color: theme.colors.textMuted }]}>Realized P&L</Text>
             <MetricValue value={realizedPnl} format="currency" colorize size="sm" />
           </View>
-          {realizedPnl != null && avgCost > 0 && quantity > 0 && (
+          {entryPrice != null && exitPrice != null && (
             <View style={styles.metric}>
               <Text style={[styles.label, { color: theme.colors.textMuted }]}>Return</Text>
               <MetricValue
-                value={((realizedPnl) / (avgCost * quantity)) * 100}
+                value={((exitPrice - entryPrice) / entryPrice) * 100}
                 format="percent"
                 colorize
                 size="sm"
               />
+            </View>
+          )}
+          {exitReason && (
+            <View style={styles.metric}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Exit</Text>
+              <Text style={[styles.mono, { color: theme.colors.textMuted, fontSize: 11 }]}>
+                {exitReason.replace(/_/g, ' ')}
+              </Text>
             </View>
           )}
         </View>
@@ -116,7 +130,7 @@ export function PortfolioPositionCard({
       <Text style={[styles.dates, { color: theme.colors.textMuted }]}>
         {entryDate ?? ''}
         {isClosed && exitDate ? ` → ${exitDate}` : ''}
-        {!isClosed ? `  ·  avg ₹${Number(avgCost).toFixed(2)}` : ''}
+        {!isClosed ? `  ·  entry ₹${entryPrice != null ? Number(entryPrice).toFixed(2) : '—'}` : ''}
       </Text>
     </View>
   );

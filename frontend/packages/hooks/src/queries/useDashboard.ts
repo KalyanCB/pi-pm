@@ -15,14 +15,15 @@ export function useDashboardQuery() {
   });
 }
 
-export function useTrustQuery() {
+export function useTrustQuery(strategyName?: string) {
   const api = useApi();
   const isAuthenticated = useAuthStore((s) => s.status === 'authenticated');
   const portfolioId = useAuthStore((s) => s.activePortfolioId);
+  const strategy = strategyName ?? 'reversal_v1';
 
   return useQuery({
-    queryKey: queryKeys.trust(undefined, portfolioId),
-    queryFn: () => api.analytics.getTrustMetrics(),
+    queryKey: queryKeys.trust(strategy, portfolioId),
+    queryFn: () => api.analytics.getTrustMetrics({ strategyName: strategy }),
     enabled: isAuthenticated,
   });
 }

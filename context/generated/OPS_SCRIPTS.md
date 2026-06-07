@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-07T03:43:13Z
+generated_at: 2026-06-07T04:48:08Z
 generator: scripts/generate_context.py
 ---
 
@@ -20,6 +20,7 @@ generator: scripts/generate_context.py
 | `scripts/backfill_sprint7_traceability.py` | Sprint 7.1 — backfill traceability tables from persisted ranking/valid... |
 | `scripts/backfill_sprint82_factor_analytics.py` | Sprint 8.2 — backfill factor predictive power analytics from ranking t... |
 | `scripts/backfill_sprint83_exit_research.py` | Sprint 8.3 — backfill exit research metrics from validated ranking sig... |
+| `scripts/backtest_inmemory.py` | Pi-PM In-Memory Backtest — no DB writes, pure simulation. |
 | `scripts/backtest_reversal_v1.py` | Backtest: reversal_v1 strategy — Jan 2022 to Jun 2026 |
 | `scripts/export_args_research_run.py` | Export a full ARGS research run to markdown (packets, committees, gove... |
 | `scripts/fix_canonical_links.py` | Rewrite stale cross-references in context/canonical/ for self-containe... |
@@ -37,6 +38,7 @@ generator: scripts/generate_context.py
 | `scripts/pipm_service_factory.py` | Shared service wiring for CLI scripts and batch orchestration. |
 | `scripts/prune_stale_ranking_runs.py` | Remove duplicate ranking runs, keeping the newest per (universe, strat... |
 | `scripts/qrc_sqe_ab_experiment.py` | A/B experiment: legacy QRC brief vs SQE condensation (deterministic me... |
+| `scripts/recover_recommendation_results.py` | Recovery script: regenerate recommendation_results from existing ranki... |
 | `scripts/recover_universe.py` | Sprint 5.1A — recover NIFTY 500 universe via batched Yahoo OHLCV inges... |
 | `scripts/reingest_symbols_since.py` | Re-ingest Yahoo bars from since_date for symbols listed in a file (one... |
 | `scripts/resume_rebuild_from_validation.py` | Resume rebuild from validation onward after pruning stale ranking runs... |
@@ -45,8 +47,6 @@ generator: scripts/generate_context.py
 | `scripts/run_full_rebuild_from_date.py` | Re-ingest market data from a start date and run the full daily-batch r... |
 | `scripts/run_recovery_batch.py` | Run recovery phases (regime, factor IC, research intelligence) and pri... |
 | `scripts/run_research_platform_recovery.py` | One-shot deterministic research platform recovery (regime, factor IC, ... |
-| `scripts/simulate_5month_backtest.py` | 5-Month Pi-PM System Backtest Simulation — Jan 2026 to Jun 5 2026. |
-| `scripts/sprint51_nifty500_pipeline.py` | Sprint 5.1 — NIFTY 500 universe expansion and breakout_v1 validation p... |
 
 ## Experiment configs (`configs/`)
 

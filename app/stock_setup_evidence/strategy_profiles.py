@@ -5,10 +5,17 @@ from datetime import date
 from decimal import Decimal
 from typing import Protocol
 
-from app.core.constants import RANKING_STRATEGY_BREAKOUT_V1, RANKING_STRATEGY_MOMENTUM_V1
+from app.core.constants import (
+    RANKING_STRATEGY_BREAKOUT_V1,
+    RANKING_STRATEGY_LOW_VOL_V1,
+    RANKING_STRATEGY_MOMENTUM_V1,
+    RANKING_STRATEGY_REVERSAL_V1,
+)
 from app.ranking.math_utils import PriceBar
 from app.ranking.strategies.breakout_v1 import BreakoutV1Strategy
+from app.ranking.strategies.low_vol_v1 import LowVolV1Strategy
 from app.ranking.strategies.momentum_v1 import MomentumV1Strategy
+from app.ranking.strategies.reversal_v1 import ReversalV1Strategy
 from app.universe.models import StockSnapshot
 
 
@@ -33,6 +40,8 @@ class SeeStrategyConfig:
 
 _BREAKOUT = BreakoutV1Strategy()
 _MOMENTUM = MomentumV1Strategy()
+_REVERSAL = ReversalV1Strategy()
+_LOW_VOL = LowVolV1Strategy()
 
 _STRATEGY_BY_NAME: dict[str, SeeStrategyConfig] = {
     RANKING_STRATEGY_BREAKOUT_V1: SeeStrategyConfig(
@@ -44,6 +53,16 @@ _STRATEGY_BY_NAME: dict[str, SeeStrategyConfig] = {
         RANKING_STRATEGY_MOMENTUM_V1,
         _MOMENTUM.factor_names(),
         _MOMENTUM,
+    ),
+    RANKING_STRATEGY_REVERSAL_V1: SeeStrategyConfig(
+        RANKING_STRATEGY_REVERSAL_V1,
+        _REVERSAL.factor_names(),
+        _REVERSAL,
+    ),
+    RANKING_STRATEGY_LOW_VOL_V1: SeeStrategyConfig(
+        RANKING_STRATEGY_LOW_VOL_V1,
+        _LOW_VOL.factor_names(),
+        _LOW_VOL,
     ),
 }
 

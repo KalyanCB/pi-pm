@@ -77,6 +77,8 @@ class PortfolioPosition(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     position_status: Mapped[str] = mapped_column(String(16), nullable=False, default="OPEN")
     # OPEN | CLOSED
+    exit_reason: Mapped[str | None] = mapped_column(String(32))
+    # STOP_LOSS | TIME_STOP | RANK_DROP | FORCE_CLOSE
 
     stock: Mapped[Stock] = relationship("Stock")
 

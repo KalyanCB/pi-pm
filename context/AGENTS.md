@@ -1,6 +1,6 @@
 ---
-generated_at: 2026-06-07T03:43:13Z
-git_sha: c8171f3
+generated_at: 2026-06-07T04:48:08Z
+git_sha: 9916aed
 git_branch: feature/copilot-ai
 ---
 
@@ -17,7 +17,7 @@ Personal Intelligence Portfolio Manager — deterministic **ingest → rank → 
 1. Deterministic ranking is sacred — same inputs → same outputs.
 2. Validation tail is sacred — do not fake `completed` status.
 3. LLMs **must not** influence ranking, conviction, sizing, or trade approval.
-4. Human approves entries and exits (ADR-033 critical stop override is **PROPOSED** only).
+4. Human approves entries and exits — ADR-033 critical-stop **auto-override is gated OFF by default** (`AUTO_EXIT_ON_CRITICAL_STOP=false`); needs PO sign-off (A–G) before any live auto-exec.
 5. ARGS / committee is **advisory** — cannot change `action`.
 
 ## 3. Session bootstrap (load in order)
@@ -46,11 +46,12 @@ uv run python scripts/generate_context.py
 
 | Field | Value |
 |-------|-------|
-| git_sha | `c8171f3` |
+| git_sha | `9916aed` |
 | branch | `feature/copilot-ai` |
 | migration_head | `20260611` |
 | tests_collected | 689 |
-| proposed_items | 4 |
+| proposed_items | 1 |
+| not_started_items | 3 |
 | partial_items | 20 |
 
 | ID | Capability | Status |

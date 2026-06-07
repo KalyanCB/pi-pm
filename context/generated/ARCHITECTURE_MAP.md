@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-07T03:43:13Z
+generated_at: 2026-06-07T04:48:08Z
 generator: scripts/generate_context.py
 ---
 
@@ -24,7 +24,7 @@ generator: scripts/generate_context.py
 
 - **Ranking/Validation** never call LLM for scores.
 - **Recommendation engine** sets `action`; committee cannot mutate it.
-- **Exit monitor** creates recommendations; human confirms (except paper auto / ADR-033 proposed).
+- **Exit monitor** creates recommendations; human confirms (except paper auto, or ADR-033 critical-stop auto-exec when `AUTO_EXIT_ON_CRITICAL_STOP=true` — OFF by default).
 - **ExecutionService** is the only path from APPROVED → position change.
 
 ## Canonical decisions
