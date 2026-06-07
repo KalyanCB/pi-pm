@@ -1,0 +1,30 @@
+---
+description: Pi-PM platform context — always load for backend, frontend, and ops work
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Pi-PM Platform Rules
+
+## Bootstrap (read first)
+
+1. [context/AGENTS.md](context/AGENTS.md) — session entry, non-negotiables, load order
+2. [context/GOTCHAS.md](context/GOTCHAS.md) — before batch/HITL/exit/recommendation changes
+3. [context/generated/PLATFORM_STATE.md](context/generated/PLATFORM_STATE.md) — branch, tests, migration head
+
+If `git_sha` in AGENTS.md ≠ current HEAD, run: `uv run python scripts/generate_context.py`
+
+## Truth hierarchy
+
+1. **Generated** `context/generated/` — implementation status, API, schema, env (from code)
+2. **Canonical** `context/canonical/` — ADRs, PRDs, runbooks (human decisions)
+3. **Registry** `context/registry/requirements.yaml` — requirement IDs + evidence
+4. **Legacy** `docs/` — deprecated; do not use for status
+
+## Agent rules
+
+- Cite requirement IDs (`ADR-033`, `R-EXIT`, `AC-HITL-01`) from `REQUIREMENTS.rtm.yaml`
+- Check `status` before assuming a feature exists
+- LLMs must not influence ranking, conviction, sizing, or trade approval
+- Minimize scope; match existing code conventions

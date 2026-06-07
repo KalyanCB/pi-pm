@@ -6,14 +6,14 @@ Personal Intelligence Portfolio Manager — deterministic ranking, validation, t
 
 | Doc | Audience |
 |-----|----------|
-| **[docs/README.md](docs/README.md)** | Full documentation index |
-| **[docs/HANDOFF.md](docs/HANDOFF.md)** | **Developers & AI takeover — read first** |
-| [docs/AI_CONTEXT.md](docs/AI_CONTEXT.md) | AI assistant onboarding |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | All endpoints |
-| [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Tables & migrations |
+| **[context/AGENTS.md](context/AGENTS.md)** | **AI & developers — read first** (Cursor, Claude Code, Devin) |
+| [context/generated/PLATFORM_STATE.md](context/generated/PLATFORM_STATE.md) | Live branch, tests, migration head |
+| [context/generated/IMPLEMENTATION_STATUS.md](context/generated/IMPLEMENTATION_STATUS.md) | Designed / planned / implemented / gaps |
+| [context/canonical/INDEX.md](context/canonical/INDEX.md) | ADRs & PRDs (human decisions) |
 
-**Current branch:** `feature/sprint8` | **Migration head:** `20260531_0008` | **Tests:** 150
+Regenerate: `uv run python scripts/generate_context.py`
+
+Legacy `docs/` is being retired — prefer `context/` for current truth.
 
 ## Stack
 
