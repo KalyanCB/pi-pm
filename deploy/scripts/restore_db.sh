@@ -13,7 +13,7 @@ set -euo pipefail
 BASE="/opt/pi-pm"
 DUMP="${1:?usage: restore_db.sh <dump-file>}"
 REL="$(readlink ${BASE}/current)"
-COMPOSE=(docker compose -p pipm --project-directory "${REL}/docker" \
+COMPOSE=(docker compose -p pipm --project-directory "${REL}/docker" --env-file "${REL}/.env" \
   -f "${REL}/docker/docker-compose.yml" -f "${REL}/docker/docker-compose.prod.yml")
 
 if [ -f "${DUMP}.sha256" ]; then

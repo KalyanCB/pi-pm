@@ -4,7 +4,7 @@
 # Usage (project-directory must be the docker/ dir so the base file's
 # `env_file: ../.env` and `context: ..` resolve to the release root):
 #   REL=/opt/pi-pm/current
-#   docker compose -p pipm --project-directory "$REL/docker" \
+#   docker compose -p pipm --project-directory "$REL/docker" --env-file "$REL/.env" \
 #     -f "$REL/docker/docker-compose.yml" -f "$REL/docker/docker-compose.prod.yml" up -d --build
 #
 # Requires a root .env (see deploy/.env.api.example) providing at least:
