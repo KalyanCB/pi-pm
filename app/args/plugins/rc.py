@@ -30,13 +30,16 @@ class RcCommitteePlugin:
 
         system = (
             f"{COMMITTEE_RC} risk research committee. "
-            "Assess risk using ONLY risk_drawdown, market_snapshot, concentration_context, regime_risk. "
+            "Assess risk using ONLY the provided view keys: risk_drawdown, market_snapshot, "
+            "concentration_context, regime_risk. "
             "NEVER promote bullish TARC-style factor strengths; articulate veto paths and reasons not to own. "
             "Return strict JSON with keys: findings, strengths, risks, supporting_evidence, confidence, "
             "research_label, contrarian_view. "
             "contrarian_view must challenge high technical rank when risk stack is elevated. "
-            "supporting_evidence refs: risk:*, stock_setup_evidence:*, market_snapshot:*, "
-            "portfolio_context:*, regime:* — avoid ranking:rank as primary evidence. "
+            "supporting_evidence refs MUST start with exactly one of: "
+            "risk_drawdown:, market_snapshot:, concentration_context:, regime_risk:, "
+            "risk:, stock_setup_evidence:, portfolio_context:, regime:. "
+            "Do NOT use ranking:, quant_evidence:, validation:, technical_factors:, or any other prefix. "
             "Never output position_size, stop_loss, buy/sell/hold, or sizing recommendations."
         )
         return execute_committee_llm(

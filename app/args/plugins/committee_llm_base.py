@@ -265,22 +265,39 @@ def _coerce_confidence(value: Any) -> float:
     return 0.5
 
 
+_MAX_EVIDENCE_REF_LEN = 120  # evidence_ref column is VARCHAR(128); keep headroom
+
+
+def _clean_evidence_ref(ref: str) -> str:
+    """Normalise a ref string: extract root:subkey, strip narrative sentences."""
+    ref = ref.strip()
+    if ":" in ref:
+        root, rest = ref.split(":", 1)
+        root = root.strip()
+        # Take only the first word of the sub-key (drop narrative sentences)
+        subkey = rest.strip().split()[0].rstrip(".,;") if rest.strip() else ""
+        ref = f"{root}:{subkey}" if subkey else root
+    # Hard cap to fit the DB column
+    return ref[:_MAX_EVIDENCE_REF_LEN]
+
+
 def _normalize_evidence(raw: Any) -> list[dict[str, Any]]:
     items = list(raw or [])
     normalized: list[dict[str, Any]] = []
     for item in items:
         if isinstance(item, str):
-            ref = item.strip()
+            ref = _clean_evidence_ref(item)
             if ref:
                 normalized.append({"ref": ref})
             continue
         if isinstance(item, dict):
             if "ref" in item and str(item.get("ref", "")).strip():
-                normalized.append(item)
+                cleaned = {**item, "ref": _clean_evidence_ref(str(item["ref"]))}
+                normalized.append(cleaned)
                 continue
             for alt in ("evidence_ref", "source_ref", "path"):
                 if str(item.get(alt, "")).strip():
-                    normalized.append({"ref": str(item[alt]).strip()})
+                    normalized.append({"ref": _clean_evidence_ref(str(item[alt]).strip())})
                     break
     return normalized
 
