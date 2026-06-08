@@ -13,6 +13,7 @@ from app.args.llm.providers import build_llm_port
 from app.copilot.citations import ValidationResult, citations_to_dicts, validate
 from app.copilot.intent import CopilotIntent, classify
 from app.copilot.lineage import lineage_summary
+from app.copilot.llm_intent import llm_classify
 from app.copilot.prompt_builder import build as build_prompt
 from app.copilot.retriever import RetrievalContext, retrieve
 from app.models.copilot import CopilotQueryLog
@@ -40,8 +41,16 @@ class CopilotService:
         """Process a question and return a grounded answer with citations."""
         started = time.perf_counter()
 
-        # 1. Classify intent + extract entities
+        # 1. Classify intent + extract entities (deterministic regex first).
         classification = classify(question)
+
+        # 1b. Low-confidence (generic fallback) → let the LLM pick a better
+        #     intent. Refusals are decided above and never reach this path.
+        if classification.low_confidence and classification.intent != CopilotIntent.REFUSED:
+            llm_intent = llm_classify(question, self._llm)
+            if llm_intent is not None:
+                classification.intent = llm_intent
+                classification.low_confidence = False
 
         # 2. Short-circuit for refused questions
         if classification.intent == CopilotIntent.REFUSED:
