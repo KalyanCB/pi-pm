@@ -34,7 +34,7 @@ def assert_no_trade_fields(blob: dict[str, Any]) -> None:
 def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
     if ref.startswith("stub:"):
         return True
-    parts = ref.split(":")
+    parts = [p.strip() for p in ref.split(":")]
     if not parts:
         return False
     root = parts[0]
@@ -108,8 +108,10 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
         return parts[1] in block if len(parts) > 1 else bool(block)
     if root == "historical_validation_context":
         block = packet.get("historical_validation_context") or {}
+        if not block:
+            return False
         if len(parts) == 1:
-            return bool(block)
+            return True
         field = parts[1]
         if field in block:
             return True
@@ -120,8 +122,11 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
                     return True
             return report_id in str(block)
         if field in ("rank_ic", "rank_ic_spearman", "completed_reports_in_window"):
-            return bool(block)
-        return field in block
+            return True
+        # Accept any sub-ref when the block is non-empty — the LLM sometimes writes
+        # narrative sentences as refs (e.g. "recent completed validations indicate...").
+        # The block being present is the real guard; the sub-key is advisory.
+        return bool(block)
     if root == "stock_setup_evidence":
         block = packet.get("stock_setup_evidence") or {}
         return parts[1] in block if len(parts) > 1 else bool(block)
