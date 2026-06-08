@@ -322,8 +322,7 @@ def _normalize_findings_length(
             f" Additional scoped context for {committee_code} on symbol {packet_payload.get('symbol')}. "
             "Stay within committee mandate; do not import ranking/regime filler when evidence is insufficient."
         )
-    while len((text + addon).split()) < min_words:
-        text += addon
+    # Append the context note once — do not repeat it to pad word count.
     return (text + addon).strip()
 
 

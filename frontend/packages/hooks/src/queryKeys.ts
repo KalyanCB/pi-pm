@@ -41,6 +41,7 @@ export const queryKeys = {
     latest: (universe?: string) => ['committee', 'latest', universe] as const,
     packets: (id: string) => ['committee', 'packets', id] as const,
     report: (id: string) => ['committee', 'report', id] as const,
+    explain: (id: string) => ['committee', 'explain', id] as const,
   },
   copilot: {
     audit: (limit: number) => ['copilot', 'audit', limit] as const,
