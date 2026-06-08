@@ -38,8 +38,8 @@ export const queryKeys = {
       ['portfolio', 'exits', asOfDate, includeResolved] as const,
   },
   committee: {
-    latest: (universe?: string, strategy?: string) =>
-      ['committee', 'latest', universe, strategy] as const,
+    latest: (universe?: string, strategy?: string, asOfDate?: string) =>
+      ['committee', 'latest', universe, strategy, asOfDate] as const,
     packets: (id: string) => ['committee', 'packets', id] as const,
     report: (id: string) => ['committee', 'report', id] as const,
     explain: (id: string) => ['committee', 'explain', id] as const,

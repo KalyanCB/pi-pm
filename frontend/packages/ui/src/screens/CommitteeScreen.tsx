@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@pipm/theme';
@@ -7,6 +7,7 @@ import { InvestorScreenShell } from '../layout/InvestorScreenShell';
 import { LoadingState } from '../feedback/LoadingState';
 import { ErrorState } from '../feedback/ErrorState';
 import { Badge } from '../atoms/Badge';
+import { DatePicker } from '../atoms/DatePicker';
 import { CommitteeConsensusCard } from '../molecules/CommitteeConsensusCard';
 import { CommitteeReportPanel } from '../molecules/CommitteeReportPanel';
 import { HighConcernBanner } from '../molecules/HighConcernBanner';
@@ -17,13 +18,55 @@ export function CommitteeScreen() {
   const router = useRouter();
   const toggleCopilot = useUiStore((s) => s.toggleCopilotPanel);
   const openCopilot = useUiStore((s) => s.openCopilotWithQuestion);
-  const { review, packets, highConcernPackets, report, isLoading, isError, error, refetch } =
-    useCommitteeScreen();
+  const {
+    review,
+    packets,
+    highConcernPackets,
+    report,
+    findingsBySymbol,
+    strategy,
+    selectedAsOfDate,
+    setRecommendationAsOfDate,
+    availableDates,
+    latestDate,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useCommitteeScreen();
+
+  const dateBounds = useMemo(() => {
+    if (!availableDates.length) return { min: undefined, max: undefined };
+    return { min: availableDates[availableDates.length - 1], max: availableDates[0] };
+  }, [availableDates]);
+
+  const pickerValue = selectedAsOfDate ?? review?.as_of_date ?? latestDate ?? '';
+
+  const subtitle = (
+    <View style={styles.subtitleBlock}>
+      <Text style={[styles.subtitleText, { color: theme.colors.textMuted }]}>
+        Advisory · HIGH_CONCERN · Governance{strategy ? ` · ${strategy}` : ''}
+      </Text>
+      <View style={styles.dateRow}>
+        <DatePicker
+          value={pickerValue}
+          min={dateBounds.min}
+          max={dateBounds.max}
+          onChange={(d) => setRecommendationAsOfDate(d === latestDate ? null : d)}
+        />
+        {selectedAsOfDate && latestDate && (
+          <Pressable onPress={() => setRecommendationAsOfDate(null)}>
+            <Text style={[styles.latestLink, { color: theme.colors.accent }]}>Latest</Text>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
 
   return (
     <InvestorScreenShell
       title="Investment Committee"
-      subtitle="Advisory · HIGH_CONCERN · Governance"
+      subtitle={subtitle}
       headerRight={<Button label="Copilot" onPress={toggleCopilot} variant="ghost" />}
     >
       {isLoading && <LoadingState />}
@@ -32,6 +75,13 @@ export function CommitteeScreen() {
           message={error instanceof Error ? error.message : 'Failed to load committee data'}
           onRetry={() => void refetch()}
         />
+      )}
+
+      {!isLoading && !isError && !review && (
+        <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+          No committee review for {selectedAsOfDate ?? latestDate ?? 'this date'}. The committee
+          runs on a subset of sessions — pick another date or return to Latest.
+        </Text>
       )}
 
       {review && (
@@ -66,15 +116,18 @@ export function CommitteeScreen() {
                 symbol={packet.symbol}
                 advisory={packet.payload.committee_advisory!}
                 machineAction={packet.payload.recommendation?.action}
+                findings={findingsBySymbol.get(packet.symbol) ?? []}
               />
             </Pressable>
           ))}
         </View>
       )}
 
-      <Text style={[styles.section, { color: theme.colors.textMuted }]}>
-        ALL COMMITTEE ACTIONS ({packets.length})
-      </Text>
+      {review && (
+        <Text style={[styles.section, { color: theme.colors.textMuted }]}>
+          ALL COMMITTEE ACTIONS ({packets.length})
+        </Text>
+      )}
       <View style={styles.list}>
         {packets.map((packet) => (
           <View key={packet.packet_id}>
@@ -90,6 +143,7 @@ export function CommitteeScreen() {
                 symbol={packet.symbol}
                 advisory={packet.payload.committee_advisory}
                 machineAction={packet.payload.recommendation?.action}
+                findings={findingsBySymbol.get(packet.symbol) ?? []}
               />
             )}
           </View>
@@ -102,6 +156,22 @@ export function CommitteeScreen() {
 }
 
 const styles = StyleSheet.create({
+  subtitleBlock: {
+    gap: 8,
+  },
+  subtitleText: {
+    fontSize: 13,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  latestLink: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   header: {
     borderWidth: 1,
     borderRadius: 6,
@@ -143,5 +213,11 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: 10,
+  },
+  empty: {
+    fontSize: 13,
+    padding: 16,
+    textAlign: 'center',
+    lineHeight: 19,
   },
 });

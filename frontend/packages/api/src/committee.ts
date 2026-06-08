@@ -7,12 +7,14 @@ export function createCommitteeApi(client: ApiClient) {
     async getLatest(
       universeCode = 'NIFTY_500',
       strategyName?: string,
+      asOfDate?: string,
     ): Promise<CommitteeReviewSummary | null> {
       try {
+        const params: Record<string, string> = { universe_code: universeCode };
+        if (strategyName) params.strategy_name = strategyName;
+        if (asOfDate) params.as_of_date = asOfDate;
         return await client.get<CommitteeReviewSummary>('/investment-committee/latest', {
-          params: strategyName
-            ? { universe_code: universeCode, strategy_name: strategyName }
-            : { universe_code: universeCode },
+          params,
         });
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {

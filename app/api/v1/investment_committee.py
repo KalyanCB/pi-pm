@@ -8,6 +8,7 @@ Old routes at /research/* are preserved as deprecated aliases.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -52,16 +53,20 @@ def start_committee_review(
 def latest_committee_review(
     universe_code: str = Query(default="NIFTY_500"),
     strategy_name: str | None = Query(default=None),
+    as_of_date: date | None = Query(default=None),
     service: ArgsResearchRunService = Depends(get_args_research_run_service),
 ) -> dict:
     """Get the latest Investment Committee review.
 
     When ``strategy_name`` is provided, returns the latest review for that
     strategy so committee data aligns with the regime-selected strategy on the
-    client. Omitted → latest review across strategies (back-compat).
+    client. ``as_of_date`` pins the review to a specific session (for the
+    committee date picker). Both omitted → latest review (back-compat).
     """
     result = service.get_latest(
-        universe_code=universe_code, strategy_name=strategy_name
+        universe_code=universe_code,
+        strategy_name=strategy_name,
+        as_of_date=as_of_date,
     )
     if result is None:
         raise HTTPException(status_code=404, detail="No committee review found")
