@@ -22,6 +22,10 @@ ALL_COMMITTEE_LLM_CODES = (
     COMMITTEE_CRO,
 )
 
+# Non-committee LLM consumers that share the same provider/credentials.
+COPILOT_LLM_CODE = "copilot"
+ALL_LLM_CODES = (*ALL_COMMITTEE_LLM_CODES, COPILOT_LLM_CODE)
+
 _AGENT_SETTINGS_KEYS: dict[str, str] = {
     COMMITTEE_TARC: "tarc",
     COMMITTEE_FRC: "frc",
@@ -55,12 +59,14 @@ class ArgsLlmSettings:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> ArgsLlmSettings:
-        agents = {code: _resolve_agent_config(settings, code) for code in ALL_COMMITTEE_LLM_CODES}
+        agents = {code: _resolve_agent_config(settings, code) for code in ALL_LLM_CODES}
         return cls(agents=agents)
 
 
 def _resolve_agent_config(settings: Settings, agent_code: str) -> AgentLlmConfig:
-    key = _AGENT_SETTINGS_KEYS[agent_code]
+    # Committee agents have a short settings key; other consumers (e.g. copilot)
+    # use their own code and inherit the shared args_llm_* / openai_* settings.
+    key = _AGENT_SETTINGS_KEYS.get(agent_code, agent_code)
     provider = _coalesce(
         getattr(settings, f"args_llm_{key}_provider", ""),
         settings.args_llm_provider,

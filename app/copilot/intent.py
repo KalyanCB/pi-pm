@@ -28,6 +28,14 @@ class CopilotIntent(StrEnum):
     EXPLAIN_RANK = "explain_rank"
     EXPLAIN_VALIDATION = "explain_validation"
     OPS_STATUS = "ops_status"
+    # Data-model–level explainability
+    EXPLAIN_STOCK = "explain_stock"
+    EXPLAIN_MARKET_DATA = "explain_market_data"
+    EXPLAIN_FACTOR_IC = "explain_factor_ic"
+    EXPLAIN_RCEE = "explain_rcee"
+    EXPLAIN_REGIME = "explain_regime"
+    EXPLAIN_POSITIONS = "explain_positions"
+    EXPLAIN_EXIT_STRATEGY = "explain_exit_strategy"
     REFUSED = "refused"
 
 
@@ -44,6 +52,10 @@ class ClassificationResult:
     intent: CopilotIntent
     entities: ExtractedEntities
     refuse_reason: str | None = None
+    # True when no specific intent pattern matched and we used the generic
+    # fallback (symbol→rank, else→ops). Signals the caller to try the LLM
+    # classifier for a better-routed intent.
+    low_confidence: bool = False
 
 
 # ── Refuse patterns (checked first — hard stops) ─────────────────────────────
@@ -108,14 +120,37 @@ _INTENT_PATTERNS: list[tuple[re.Pattern, CopilotIntent]] = [
         CopilotIntent.WHY_NOT_RECOMMENDED,
     ),
     (
-        re.compile(r"\bwhy\s+(?:was|is)\s+(?:\w+\s+)+recommended\b", re.I),
+        # Allow dotted tickers (TRENT.NS) between "why is/was" and "recommended".
+        re.compile(r"\bwhy\s+(?:was|is)\b[\w.\s]*\brecommended\b", re.I),
         CopilotIntent.WHY_RECOMMENDED,
     ),
     (
         re.compile(r"\bwhy\s+recommend\b", re.I),
         CopilotIntent.WHY_RECOMMENDED,
     ),
-    # Exit (before generic rank/recommend patterns)
+    (
+        # "why is X a BUY", "why did X get BUY/WATCH"
+        re.compile(r"\bwhy\b[\w.\s']*\b(?:a\s+)?(?:buy|watch)\b", re.I),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    # Exit STRATEGY / policy / framework (before specific exit-signal patterns)
+    (
+        re.compile(
+            r"\b(exit|stop|trailing|time[\s-]?stop|alpha\s+decay)\b.*"
+            r"\b(strateg\w*|polic\w*|framework|rule|research|study|backtest|decay)\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_EXIT_STRATEGY,
+    ),
+    (
+        re.compile(r"\bexit\s+(?:strateg\w*|polic\w*|framework|rule|research)\b", re.I),
+        CopilotIntent.EXPLAIN_EXIT_STRATEGY,
+    ),
+    (
+        re.compile(r"\b(trailing\s+stop|time\s+stop|stop[\s-]?loss\s+polic\w*|alpha\s+decay)\b", re.I),
+        CopilotIntent.EXPLAIN_EXIT_STRATEGY,
+    ),
+    # Exit (specific signal — before generic rank/recommend patterns)
     (
         re.compile(r"\b(exit|sell|close)\b.*\b(reason|why|approved|signal)\b", re.I),
         CopilotIntent.EXPLAIN_EXIT,
@@ -145,9 +180,60 @@ _INTENT_PATTERNS: list[tuple[re.Pattern, CopilotIntent]] = [
         re.compile(r"\b(supportive|cautious|high.concern)\b", re.I),
         CopilotIntent.EXPLAIN_COMMITTEE,
     ),
+    # Stock profile / setup evidence (SEE v2)
+    (
+        re.compile(
+            r"\b(stock\s+setup|setup\s+evidence|similar\s+setups?|setup\s+score|"
+            r"stock\s+(?:info|related|profile|details?|overview|summary)|"
+            r"fundamentals?|company\s+profile|see[\s_]?v2|which\s+sector|what\s+sector|industry)\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_STOCK,
+    ),
+    # Market data / OHLCV / price
+    (
+        re.compile(
+            r"\b(market\s+data|ohlc\w*|price\s+(?:data|history)|closing\s+price|"
+            r"last\s+close|candles?|daily\s+bars?|traded\s+volume|"
+            r"adj(?:usted)?\s+close|open(?:ing)?\s+price)\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_MARKET_DATA,
+    ),
+    # Factor IC (before validation's generic "ic")
+    (
+        re.compile(r"\bfactors?\b|\bfactor\s+(?:ic|performance|contribution|spread)\b", re.I),
+        CopilotIntent.EXPLAIN_FACTOR_IC,
+    ),
+    # RCEE — Regime Coverage Edge Engine (before generic regime)
+    (
+        re.compile(
+            r"\b(rcee|edge|regime\s+coverage|coverage\s+edge|expectancy)\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_RCEE,
+    ),
+    # Regime (current regime + onset)
+    (
+        re.compile(
+            r"\b(regime|trend\s+regime|vol(?:atility)?\s+regime|market\s+regime|"
+            r"bull[_\s]?(?:low|high)|bear[_\s]?(?:low|high))\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_REGIME,
+    ),
+    # Positions (before portfolio)
+    (
+        re.compile(r"\b(positions?|holdings?)\b", re.I),
+        CopilotIntent.EXPLAIN_POSITIONS,
+    ),
     # Portfolio
     (
-        re.compile(r"\b(portfolio|holding|holdings|allocation|exposure|nav|position)\b", re.I),
+        re.compile(
+            r"\b(portfolio|allocation|exposure|nav|equity|cash|deployable|"
+            r"single[\s-]?name\s+cap|sector\s+cap|cap\s+pct)\b",
+            re.I,
+        ),
         CopilotIntent.EXPLAIN_PORTFOLIO,
     ),
     # Risk
@@ -184,9 +270,15 @@ _INTENT_PATTERNS: list[tuple[re.Pattern, CopilotIntent]] = [
 
 # ── Entity extraction ─────────────────────────────────────────────────────────
 
-_NSE_SYMBOL = re.compile(r"\b([A-Z][A-Z0-9&-]{1,15}(?:\.NS)?)\b")
+# Explicit ".NS"-suffixed ticker (any case) — strongest signal.
+_SYMBOL_WITH_SUFFIX = re.compile(r"\b([A-Za-z][A-Za-z0-9&-]{1,15})\.NS\b", re.I)
+# Bare ticker — only ALL-CAPS tokens in the ORIGINAL question, so lowercase
+# words like "Explain"/"about" are never mistaken for a symbol.
+_SYMBOL_UPPER = re.compile(r"\b([A-Z][A-Z0-9&-]{1,15})\b")
 _DATE_PATTERN = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
-_STRATEGY_PATTERN = re.compile(r"\b(momentum_v1|breakout_v1)\b", re.I)
+_STRATEGY_PATTERN = re.compile(
+    r"\b(momentum_v1|breakout_v1|reversal_v1|low_vol_v1)\b", re.I
+)
 
 _STOP_WORDS = {
     "IS",
@@ -228,6 +320,33 @@ _STOP_WORDS = {
     "SHOW",
     "PASS",
     "EXIT",
+    # Data-model / domain keywords — never tickers
+    "REGIME",
+    "RCEE",
+    "EDGE",
+    "FACTOR",
+    "FACTORS",
+    "IC",
+    "MARKET",
+    "PRICE",
+    "VOLUME",
+    "OHLC",
+    "STOCK",
+    "SETUP",
+    "SECTOR",
+    "INDUSTRY",
+    "HOLDING",
+    "HOLDINGS",
+    "POSITION",
+    "POSITIONS",
+    "PORTFOLIO",
+    "STRATEGY",
+    "POLICY",
+    "BULL",
+    "BEAR",
+    "NAV",
+    "CASH",
+    "EQUITY",
 }
 
 
@@ -245,11 +364,17 @@ def _extract_entities(question: str) -> ExtractedEntities:
         except ValueError:
             pass
 
-    candidates = _NSE_SYMBOL.findall(question.upper())
-    for c in candidates:
-        clean = c.replace(".NS", "")
-        if len(clean) >= 2 and clean not in _STOP_WORDS:
-            entities.symbol = c if c.endswith(".NS") else f"{clean}.NS"
+    # 1) Explicit ".NS" suffix wins (e.g. "sbin.ns", "TRENT.NS").
+    suffixed = _SYMBOL_WITH_SUFFIX.search(question)
+    if suffixed:
+        entities.symbol = f"{suffixed.group(1).upper()}.NS"
+        return entities
+
+    # 2) Otherwise pick the first ALL-CAPS token (a real ticker like SBIN),
+    #    matched against the original case so verbs/question words are excluded.
+    for c in _SYMBOL_UPPER.findall(question):
+        if len(c) >= 2 and c not in _STOP_WORDS:
+            entities.symbol = f"{c}.NS"
             break
 
     return entities
@@ -275,6 +400,10 @@ def classify(question: str) -> ClassificationResult:
 
     entities = _extract_entities(question)
     if entities.symbol:
-        return ClassificationResult(intent=CopilotIntent.EXPLAIN_RANK, entities=entities)
+        return ClassificationResult(
+            intent=CopilotIntent.EXPLAIN_RANK, entities=entities, low_confidence=True
+        )
 
-    return ClassificationResult(intent=CopilotIntent.OPS_STATUS, entities=entities)
+    return ClassificationResult(
+        intent=CopilotIntent.OPS_STATUS, entities=entities, low_confidence=True
+    )

@@ -36,9 +36,12 @@ GR-05: Keep answers concise. Use bullet points for multi-part answers.
 GR-06: Reference lineage IDs when present: recommendation_run_id, recommendation_id,
         portfolio_position_id, committee_review_id.
 
-== OUTPUT FORMAT ==
-Respond in plain text with inline citations like: [source: recommendation_results.conviction_score = 74]
-End your response with a "Citations:" section listing all sources used.
+== OUTPUT FORMAT (MANDATORY) ==
+- Respond in concise PLAIN-TEXT prose. DO NOT return a JSON object.
+- For EVERY value or fact you state, append an inline citation in this exact
+  form: [source: table.field = value]  (e.g. [source: recommendation_results.conviction_score = 74]).
+- Use the field names exactly as they appear in the CONTEXT JSON.
+- End with a "Citations:" line listing the sources used.
 """
 
 _INTENT_INSTRUCTIONS: dict[CopilotIntent, str] = {
@@ -89,6 +92,39 @@ _INTENT_INSTRUCTIONS: dict[CopilotIntent, str] = {
     CopilotIntent.OPS_STATUS: (
         "Summarise the recent daily batch run(s): status, phases completed, any failures. "
         "Report dates and run IDs."
+    ),
+    CopilotIntent.EXPLAIN_STOCK: (
+        "Describe the stock's profile (name, sector, industry, exchange) and its latest "
+        "Stock Setup Evidence (SEE v2): setup_evidence_score, match counts, and per-regime "
+        "historical win-rate/return metrics. Reference stock_setup_research IDs."
+    ),
+    CopilotIntent.EXPLAIN_MARKET_DATA: (
+        "Report the most recent OHLCV market data for the stock: date, open/high/low/close, "
+        "volume, adj_close, and source. Cite market_data fields. Do not infer trends beyond the rows."
+    ),
+    CopilotIntent.EXPLAIN_FACTOR_IC: (
+        "Summarise factor information-coefficient (IC) metrics: ic_spearman/ic_pearson, hit_rate, "
+        "stability and coverage labels, statistical significance, by factor/regime/horizon. "
+        "Cite factor_performance_metrics fields."
+    ),
+    CopilotIntent.EXPLAIN_RCEE: (
+        "Explain the Regime Coverage Edge Engine (RCEE) evidence for the strategy: per regime/horizon "
+        "avg_ic, ic_lower_95, hit_rate, expectancy(_after_costs), and sample_count. State whether the "
+        "evidence indicates an edge. Cite strategy_regime_performance fields."
+    ),
+    CopilotIntent.EXPLAIN_REGIME: (
+        "State the current market regime and since when it has been in effect "
+        "(current_regime, in_effect_since, sessions_in_regime). If a regime policy is present, "
+        "note allowed_regimes, default_action, and size_multipliers. Cite ranking_runs.regime_label."
+    ),
+    CopilotIntent.EXPLAIN_POSITIONS: (
+        "Summarise the open portfolio positions: symbol/stock, status, quantity, avg_cost, "
+        "market_value, unrealized_pnl, weight_pct, conviction_band. Reference portfolio_position_id."
+    ),
+    CopilotIntent.EXPLAIN_EXIT_STRATEGY: (
+        "Summarise exit-strategy research: the latest exit_research_run and the best exit policy "
+        "variants by regime/horizon (hit_rate, mean_return, avg_holding_days, conclusion_status). "
+        "These are research findings, not active exit signals. Cite exit_research_policy_metrics."
     ),
 }
 
