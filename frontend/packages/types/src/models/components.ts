@@ -12,6 +12,7 @@ export interface RecommendationCardProps {
   reasonCodes: string[];
   committeeAdvisory?: CommitteeAdvisoryOverlay | null;
   layout?: 'card' | 'row';
+  embedded?: boolean;
   onPress?: () => void;
 }
 
@@ -25,6 +26,15 @@ export interface PortfolioPositionCardProps {
   convictionBand: string | null;
   sector: string | null;
   onPress?: () => void;
+  // Closed / exited position fields
+  positionStatus?: 'OPEN' | 'CLOSED';
+  exitPrice?: number | null;
+  exitDate?: string | null;
+  realizedPnl?: number | null;
+  entryDate?: string | null;
+  entryPrice?: number | null;
+  strategyName?: string | null;
+  exitReason?: string | null;
 }
 
 export interface TrustScoreCardProps {

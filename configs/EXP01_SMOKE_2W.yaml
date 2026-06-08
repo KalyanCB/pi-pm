@@ -1,0 +1,15 @@
+experiment_id: EXP01_SMOKE_2W
+name: "Smoke Test - 2 Weeks"
+description: "Quick validation of framework on recent 2-week window"
+mode: AUTONOMOUS_RCEE
+start_date: "2026-05-19"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1]
+capital:
+  initial_cash: 1000000
+  monthly_contribution: 0
+portfolio:
+  max_positions: 10
+  max_buy_slots: 5
+outputs:
+  output_dir: "docs/experiments/results"

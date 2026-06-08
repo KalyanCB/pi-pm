@@ -119,3 +119,30 @@ class RankingRunRepository:
             .order_by(RankingRun.completed_at.desc())
             .limit(1)
         )
+
+    def find_completed_by_date(
+        self,
+        *,
+        as_of_date,
+        strategy_name: str,
+        strategy_version: str,
+        universe_code: str,
+    ) -> RankingRun | None:
+        """Return the most recent completed run for a given date + strategy + universe.
+
+        Used as a pre-flight check BEFORE running the ranking engine to prevent
+        duplicate runs on the same trading day (e.g. when two batch jobs overlap).
+        """
+        return self.db.scalar(
+            select(RankingRun)
+            .options(selectinload(RankingRun.results))
+            .where(
+                RankingRun.as_of_date == as_of_date,
+                RankingRun.strategy_name == strategy_name,
+                RankingRun.strategy_version == strategy_version,
+                RankingRun.universe_code == universe_code,
+                RankingRun.status == RankingRunStatus.COMPLETED.value,
+            )
+            .order_by(RankingRun.started_at.desc())
+            .limit(1)
+        )

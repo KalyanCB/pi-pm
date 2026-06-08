@@ -85,6 +85,29 @@ class RankingService:
             payload.benchmark_symbol or self.settings.ranking_default_benchmark
         ).upper()
 
+        # Pre-flight dedup: return existing completed run for this date/strategy/universe
+        # before running the engine. Prevents duplicate runs when two batch jobs overlap.
+        if not payload.force_regenerate:
+            pre_existing = self.ranking_run_repo.find_completed_by_date(
+                as_of_date=as_of_date,
+                strategy_name=strategy_name,
+                strategy_version=strategy_version,
+                universe_code=universe_code,
+            )
+            if pre_existing is not None:
+                self.traceability_service.ensure_ranking_traceability(pre_existing)
+                elapsed_ms = int((time.perf_counter() - started) * 1000)
+                log_event(
+                    logger,
+                    "ranking_completed",
+                    ranking_run_id=pre_existing.id,
+                    reused=True,
+                    reused_reason="date_dedup",
+                    ranked_stock_count=pre_existing.ranked_stock_count,
+                    execution_duration_ms=elapsed_ms,
+                )
+                return RankingRunOutcome(pre_existing, True)
+
         log_event(
             logger,
             "ranking_started",

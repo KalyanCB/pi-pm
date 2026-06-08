@@ -1,0 +1,14 @@
+experiment_id: EXP10C_BREAKOUT_REVERSAL
+name: "Breakout + Reversal"
+mode: AUTONOMOUS_RCEE
+start_date: "2022-01-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, reversal_v1]
+capital:
+  initial_cash: 1000000
+  monthly_contribution: 0
+portfolio:
+  max_positions: 10
+  max_buy_slots: 5
+outputs:
+  output_dir: "docs/experiments/results"

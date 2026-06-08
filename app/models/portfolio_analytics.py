@@ -131,6 +131,20 @@ class ExitRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     urgency: Mapped[str] = mapped_column(String(16), nullable=False, default="NORMAL")
     # LOW | NORMAL | HIGH | CRITICAL
 
+    # ADR-033: two-tier monitor metadata
+    monitor_tier: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="DAILY"
+    )
+    # DAILY (T2 post-close swing monitor) | INTRADAY (T1 price monitor)
+
+    auto_executed: Mapped[bool] = mapped_column(
+        nullable=False, default=False
+    )
+    # True when critical stop bypass fired without HITL confirm
+
+    actor_id: Mapped[str | None] = mapped_column(String(64))
+    # 'system' for auto-exec, user id / 'hitl_auto' for human paths
+
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_reason: Mapped[str | None] = mapped_column(String(256))
@@ -141,6 +155,7 @@ class ExitRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Index("ix_exit_recs_status", "status"),
         Index("ix_exit_recs_date", "as_of_date"),
         Index("ix_exit_recs_position", "portfolio_position_id"),
+        Index("ix_exit_recs_tier", "monitor_tier"),
     )
 
 

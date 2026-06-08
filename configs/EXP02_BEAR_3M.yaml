@@ -1,0 +1,11 @@
+experiment_id: EXP02_BEAR_3M
+name: "Bear Regime - 3 Month"
+description: "Portfolio behavior during 3M BEAR_LOW_VOL (Mar-Jun 2026)"
+mode: AUTONOMOUS_RCEE
+start_date: "2026-03-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1]
+capital:
+  initial_cash: 1000000
+  monthly_contribution: 100000
+  contribution_day: FIRST_TRADING_DAY

@@ -1,0 +1,885 @@
+# Pi-PM requirements registry — source for REQUIREMENTS.rtm.yaml generation.
+# Edit this file when adding PRD/ADR requirements. Run: uv run python scripts/generate_context.py
+
+meta:
+  version: "2.0.0"
+  po_signoff: context/canonical/po/PO_SIGNOFF_2026_06_04.md
+
+requirements:
+  # ── Phase 1 — PRD Goals (G1–G8) ─────────────────────────────────────────
+  - id: G1
+    title: Deterministic ranking
+    area: ranking
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/ranking/engine.py
+      - app/api/v1/rankings.py
+      - tests/unit/ranking/test_golden_ranking.py
+
+  - id: G2
+    title: Forward-return validation
+    area: validation
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - Validation tail ops (insufficient_data ingest expectation)
+    evidence:
+      - app/validation/
+      - tests/integration/api/test_validation_api.py
+
+  - id: G3
+    title: NIFTY 500 daily batch
+    area: ops
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - E2E batch integration tests
+      - Cron auth hardening
+    evidence:
+      - app/services/daily_batch_service.py
+      - app/api/v1/daily_batch.py
+      - tests/unit/ops/test_daily_batch_planner.py
+
+  - id: G4
+    title: Audit traceability
+    area: observability
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/services/traceability_service.py
+      - app/models/platform_traceability.py
+      - app/api/v1/observability.py
+      - tests/unit/services/test_platform_traceability.py
+
+  - id: G5
+    title: Research analytics
+    area: analytics
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/factor_analytics/
+      - app/api/v1/factor_analytics.py
+      - app/services/exit_research_service.py
+      - tests/unit/factor_analytics/
+
+  - id: G6
+    title: ARGS governance
+    area: investment_committee
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/args/
+      - app/api/v1/investment_committee.py
+      - tests/unit/investment_committee/test_advisory.py
+
+  - id: G7
+    title: Stock Setup Evidence Engine v2
+    area: research
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/stock_setup_evidence/
+      - app/services/stock_setup_research_service.py
+      - tests/unit/stock_setup_evidence/
+      - tests/integration/api/test_stock_setup_research_api.py
+
+  - id: G8
+    title: No LLM ranking/sizing/approval
+    area: governance
+    source: context/canonical/phase1/PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - context/canonical/design/domain-boundaries.md
+      - tests/unit/args/test_qrc_sqe_flag.py
+
+  # ── Phase 2 — Recommendation Engine ───────────────────────────────────────
+  - id: R-ENTRY
+    title: Entry rules (R-ENTRY-01..06)
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - tests/unit/recommendation/test_engine.py
+
+  - id: R-HOLD
+    title: Hold active positions (R-HOLD-01)
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - tests/unit/recommendation/test_engine.py
+
+  - id: R-EXIT
+    title: Exit triggers (R-EXIT-01..04)
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - app/portfolio/exit_monitor/triggers.py
+      - tests/unit/portfolio/test_exit_triggers.py
+
+  - id: R-ARGS
+    title: ARGS boundaries (R-ARGS-01..04)
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - app/args/
+      - tests/unit/investment_committee/test_advisory.py
+
+  - id: AC-RE-01
+    title: Deterministic replay
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - tests/unit/recommendation/test_engine.py
+
+  - id: AC-RE-02
+    title: Lineage on recommendation records
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/models/recommendation.py
+      - app/api/v1/recommendations.py
+
+  - id: AC-RE-03
+    title: LLM cannot mutate action
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/args/
+      - tests/unit/investment_committee/test_advisory.py
+
+  - id: AC-RE-04
+    title: BUY ≤ regime slots
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - tests/unit/recommendation/test_engine.py
+
+  - id: AC-RE-05
+    title: EXIT has reason_code
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - tests/unit/recommendation/test_engine.py
+
+  - id: AC-RE-06
+    title: Latest per strategy API
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - No integration API test for /recommendations/latest and /daily
+    evidence:
+      - app/api/v1/recommendations.py
+      - app/services/recommendation_service.py
+
+  - id: AC-RE-07
+    title: ARGS packet block
+    area: recommendation
+    source: context/canonical/product/01_RECOMMENDATION_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/args/builders/investment_review_packet_builder.py
+      - tests/unit/args/test_packet_builder.py
+
+  - id: AC-CS
+    title: Conviction scoring (AC-CS-01..07)
+    area: recommendation
+    source: context/canonical/product/02_CONVICTION_SCORING_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/conviction_scorer.py
+      - tests/unit/recommendation/test_conviction_scorer.py
+
+  - id: AC-LC-01
+    title: Illegal transitions rejected
+    area: lifecycle
+    source: context/canonical/product/04_RECOMMENDATION_LIFECYCLE.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - No explicit state machine module
+    evidence:
+      - app/services/recommendation_service.py
+      - app/api/v1/recommendations.py
+
+  - id: AC-LC-02
+    title: One current position per symbol
+    area: lifecycle
+    source: context/canonical/product/04_RECOMMENDATION_LIFECYCLE.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/services/portfolio_service.py
+      - app/api/v1/portfolio.py
+      - tests/unit/portfolio/test_portfolio_service.py
+
+  - id: AC-LC-03
+    title: Human approval gates
+    area: lifecycle
+    source: context/canonical/product/04_RECOMMENDATION_LIFECYCLE.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/api/v1/recommendations.py
+      - app/api/auth_deps.py
+      - app/models/recommendation.py
+
+  - id: AC-LC-04
+    title: Full lineage chain
+    area: lifecycle
+    source: context/canonical/product/04_RECOMMENDATION_LIFECYCLE.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - ranking→trade chain partial
+    evidence:
+      - app/services/traceability_service.py
+      - tests/unit/services/test_platform_traceability.py
+
+  - id: AC-WNR
+    title: Why-not framework (AC-WNR-01..04)
+    area: recommendation
+    source: context/canonical/product/16_WHY_NOT_RECOMMENDED_FRAMEWORK.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/recommendation/engine.py
+      - app/api/v1/recommendations.py
+      - tests/unit/recommendation/test_engine.py
+
+  # ── Phase 2 — Portfolio & Paper ───────────────────────────────────────────
+  - id: AC-PE-01
+    title: Reconciliation ±0.1%
+    area: portfolio
+    source: context/canonical/product/05_PORTFOLIO_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - Not portfolio-scoped reconciliation
+    evidence:
+      - app/portfolio/reconciliation/service.py
+      - tests/unit/portfolio/test_reconciliation.py
+
+  - id: AC-PE-02
+    title: Slot enforcement
+    area: portfolio
+    source: context/canonical/product/05_PORTFOLIO_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/services/portfolio_service.py
+      - tests/unit/portfolio/test_position_sizing.py
+
+  - id: AC-PE-03
+    title: ARGS context truthful
+    area: portfolio
+    source: context/canonical/product/05_PORTFOLIO_ENGINE_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Single-tenant portfolio context in packet builder
+    evidence:
+      - app/args/builders/investment_review_packet_builder.py
+      - tests/unit/args/test_packet_builder.py
+
+  - id: AC-PE-04
+    title: Idempotent recompute
+    area: portfolio
+    source: context/canonical/product/05_PORTFOLIO_ENGINE_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/services/portfolio_service.py
+      - tests/unit/portfolio/test_portfolio_service.py
+
+  - id: AC-PT-01
+    title: Idempotent paper trade
+    area: paper
+    source: context/canonical/product/06_PAPER_TRADING_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - No portfolio_id on paper_trades
+    evidence:
+      - app/services/paper_trade_service.py
+      - tests/unit/services/test_paper_trade_lineage.py
+
+  - id: AC-PT-02
+    title: BUY lineage on paper trade
+    area: paper
+    source: context/canonical/product/06_PAPER_TRADING_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-PT-03
+    title: Positions reconcile after trade
+    area: paper
+    source: context/canonical/product/06_PAPER_TRADING_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/portfolio/reconciliation/service.py
+      - tests/unit/portfolio/test_reconciliation.py
+
+  - id: AC-PT-04
+    title: Attribution golden test
+    area: paper
+    source: context/canonical/product/06_PAPER_TRADING_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/api/v1/portfolio.py
+      - tests/unit/portfolio/test_analytics.py
+
+  - id: AC-EX
+    title: Exit framework (AC-EX-01..04)
+    area: portfolio
+    source: context/canonical/product/07_EXIT_DECISION_FRAMEWORK.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - No auto-sell (AC-EX-03) except paper auto / ADR-033 critical (proposed)
+      - Exit monitor skipped in daily batch when HITL_ENABLED=true
+      - stop_loss_price on DB model; not exposed on position API/UI
+    evidence:
+      - app/portfolio/exit_monitor/service.py
+      - app/api/v1/portfolio.py
+      - tests/unit/portfolio/test_exit_triggers.py
+
+  # ── Phase 2 — HITL, Execution, Risk, Live ───────────────────────────────
+  - id: AC-HITL-01
+    title: No fill without APPROVED
+    area: hitl
+    source: context/canonical/product/11_HUMAN_IN_LOOP_EXECUTION_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-HITL-02
+    title: Approval audit export
+    area: hitl
+    source: context/canonical/product/11_HUMAN_IN_LOOP_EXECUTION_PRD.md
+    designed: true
+    planned: true
+    status: NOT_STARTED
+    left_off:
+      - No CSV export endpoint for approvals
+    evidence: []
+
+  - id: AC-HITL-03
+    title: Broker mock contract
+    area: hitl
+    source: context/canonical/product/11_HUMAN_IN_LOOP_EXECUTION_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/adapters/paper.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-HITL-04
+    title: ARGS disagreement non-blocking
+    area: hitl
+    source: context/canonical/product/11_HUMAN_IN_LOOP_EXECUTION_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Backend OK; frontend UX partial
+    evidence:
+      - app/args/
+      - frontend/packages/ui/src/screens/CommitteeScreen.tsx
+
+  - id: AC-HITL-L
+    title: Live HITL (AC-HITL-L01..06)
+    area: hitl
+    source: context/canonical/product/18_HUMAN_IN_LOOP_LIVE_INVESTING_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Paper path works; live broker stub
+    evidence:
+      - app/execution/services/execution_service.py
+      - app/execution/adapters/zerodha_kite.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-EXEC-01
+    title: Unified ExecutionService (paper path)
+    area: execution
+    source: context/canonical/product/21_EXECUTION_WORKFLOW_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-EXEC-02
+    title: ExecutionService shared by portfolio trades
+    area: execution
+    source: context/canonical/product/21_EXECUTION_WORKFLOW_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - app/services/paper_trade_service.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-EXEC-03
+    title: Lineage on execution audit
+    area: execution
+    source: context/canonical/product/21_EXECUTION_WORKFLOW_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - app/models/execution.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-EXEC-04
+    title: Risk gate before order
+    area: execution
+    source: context/canonical/product/21_EXECUTION_WORKFLOW_PRD.md
+    designed: true
+    planned: true
+    status: NOT_STARTED
+    left_off:
+      - No RiskControlService pre-trade gate
+    evidence: []
+
+  - id: AC-EXEC-05
+    title: LIVE rejects pilot_auto
+    area: execution
+    source: context/canonical/product/21_EXECUTION_WORKFLOW_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Flag exists; live broker stub
+    evidence:
+      - app/ops/daily_batch/paper_pilot_ops.py
+      - app/execution/adapters/zerodha_kite.py
+
+  - id: AC-EXEC-06
+    title: Entry/exit same execution flow
+    area: execution
+    source: context/canonical/product/21_EXECUTION_WORKFLOW_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: AC-BRK
+    title: Broker adapter (AC-BRK-01..05)
+    area: execution
+    source: context/canonical/product/19_BROKER_ADAPTER_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Zerodha adapter returns not_implemented
+    evidence:
+      - app/execution/adapters/zerodha_kite.py
+      - tests/unit/execution/test_zerodha_adapter.py
+
+  - id: AC-RISK
+    title: Pre-trade risk controls (AC-RISK-01..06)
+    area: risk
+    source: context/canonical/product/20_RISK_CONTROL_PRD.md
+    designed: true
+    planned: true
+    status: NOT_STARTED
+    left_off:
+      - No RiskControlService
+      - No pre-trade risk gates
+    evidence: []
+
+  - id: K-03
+    title: Approval endpoint unchanged
+    area: execution
+    source: context/canonical/decisions/ADR-031-Unified-Execution-Architecture.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/api/v1/recommendations.py
+
+  - id: K-04
+    title: POST /execution/orders requires APPROVED
+    area: execution
+    source: context/canonical/decisions/ADR-031-Unified-Execution-Architecture.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - app/api/v1/execution.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: K-13
+    title: OWNER/ADMIN submit orders
+    area: execution
+    source: context/canonical/decisions/ADR-031-Unified-Execution-Architecture.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/api/auth_deps.py
+      - app/api/v1/execution.py
+      - tests/unit/execution/test_execution_service.py
+
+  # ── Phase 2 — Auth, Multi-Tenant, Pilot, Copilot, Frontend ───────────────
+  - id: ADR-027-JWT
+    title: JWT auth + RBAC
+    area: auth
+    source: context/canonical/decisions/ADR-027-Authentication-And-MultiTenant-Architecture.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - Default JWT secret risk in dev
+    evidence:
+      - app/services/auth_service.py
+      - app/api/v1/auth.py
+      - tests/integration/api/test_auth_api.py
+
+  - id: ADR-027-TENANCY
+    title: Portfolio-scoped tenancy
+    area: auth
+    source: context/canonical/decisions/ADR-027-Authentication-And-MultiTenant-Architecture.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Analytics tables global (not portfolio-scoped)
+    evidence:
+      - app/api/auth_deps.py
+      - tests/integration/api/test_tenant_isolation.py
+
+  - id: ADR-028
+    title: 90-day paper trading batch phases
+    area: pilot
+    source: context/canonical/decisions/ADR-028-Paper-Trading-Readiness.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Cron auth gap
+    evidence:
+      - app/ops/daily_batch/paper_pilot_ops.py
+      - tests/unit/ops/test_paper_pilot_ops.py
+
+  - id: ADR-029
+    title: Pilot command center
+    area: pilot
+    source: context/canonical/decisions/ADR-029-Pilot-Operations.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - No API integration tests for /pilot/*
+    evidence:
+      - app/services/pilot_command_center_service.py
+      - app/api/v1/pilot_ops.py
+      - tests/unit/ops/test_pilot_command_center.py
+
+  - id: GR-COPILOT
+    title: Copilot grounding (GR-01..06)
+    area: copilot
+    source: context/canonical/product/10_AI_COPILOT_PRD.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/copilot/
+      - app/api/v1/copilot.py
+      - tests/unit/copilot/
+
+  - id: AC-CP
+    title: Copilot acceptance (AC-CP-01..04)
+    area: copilot
+    source: context/canonical/product/10_AI_COPILOT_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - No latency/load acceptance tests
+    evidence:
+      - app/services/copilot_service.py
+      - tests/unit/copilot/test_copilot_service.py
+
+  - id: AC-FE
+    title: Frontend architecture (AC-FE-01..08)
+    area: frontend
+    source: context/canonical/decisions/ADR-026-Frontend-Architecture.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - 8/10 screens wired
+      - Missing /exits and /analytics routes
+    evidence:
+      - frontend/packages/ui/src/screens/
+      - frontend/packages/hooks/src/queries/
+      - context/canonical/frontend/FEATURE_INTEGRATION_REPORT.md
+
+  - id: AC-MOB
+    title: Mobile MVP (AC-MOB-01..04)
+    area: frontend
+    source: context/canonical/product/09_MOBILE_APP_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Missing /exits and /analytics screens
+    evidence:
+      - frontend/apps/mobile/
+      - context/canonical/frontend/FEATURE_INTEGRATION_REPORT.md
+
+  - id: FP-FE
+    title: Frontend principles (FP-01..06)
+    area: frontend
+    source: context/canonical/frontend/DESIGN_SYSTEM.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Citation deep-link navigation unwired
+    evidence:
+      - frontend/packages/ui/
+      - context/canonical/frontend/DESIGN_SYSTEM.md
+
+  - id: FR-MOB
+    title: Mobile functional requirements (FR-D/R/P/C/CP-*)
+    area: frontend
+    source: context/canonical/product/09_MOBILE_APP_PRD.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - ~70% API wiring complete
+    evidence:
+      - frontend/apps/mobile/
+      - context/canonical/frontend/FEATURE_INTEGRATION_REPORT.md
+
+  # ── Pilot KPIs ────────────────────────────────────────────────────────────
+  - id: KPI-batch
+    title: ≥95% batch completion
+    area: pilot
+    source: context/canonical/decisions/ADR-029-Pilot-Operations.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Metrics API exists; no historical proof
+    evidence:
+      - app/api/v1/pilot_ops.py
+      - app/services/pilot_command_center_service.py
+
+  - id: KPI-recon
+    title: ≥98% recon pass rate
+    area: pilot
+    source: context/canonical/decisions/ADR-029-Pilot-Operations.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Recon service works; not multi-tenant scoped
+    evidence:
+      - app/portfolio/reconciliation/service.py
+      - tests/unit/portfolio/test_reconciliation.py
+
+  - id: KPI-nav
+    title: ≥95% NAV coverage days
+    area: pilot
+    source: context/canonical/decisions/ADR-029-Pilot-Operations.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - NAV snapshot in batch; global table
+    evidence:
+      - app/services/daily_batch_service.py
+      - app/services/portfolio_service.py
+
+  - id: GO-NOGO-recon
+    title: Zero recon FAIL for 14 days
+    area: pilot
+    source: context/canonical/decisions/ADR-029-Pilot-Operations.md
+    designed: true
+    planned: true
+    status: DOCUMENTED_ONLY
+    left_off:
+      - Manual gate; not automated
+    evidence:
+      - context/canonical/runbooks/LIVE_TRADING_SAFETY_CHECKLIST.md
+
+  # ── Architecture extensions ───────────────────────────────────────────────
+  - id: RCEE
+    title: Regime Coverage Edge Engine
+    area: recommendation
+    source: context/canonical/design/RCEE_DESIGN.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - Live validation gate integration (ADR-032)
+    evidence:
+      - app/recommendation/regime_edge_engine.py
+      - tests/unit/recommendation/test_regime_edge_engine.py
+
+  - id: ADR-033
+    title: Intraday exit monitor + stop override
+    area: portfolio
+    source: context/canonical/decisions/ADR-033-Intraday-Exit-Monitor-And-Stop-Override.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - PO sign-off checklist (A–G)
+      - Live QuoteProvider (Kite)
+      - Intraday scheduler (1–5 min NSE session)
+      - Notification service wired to urgency
+      - Broker GTC stop at entry (live S1)
+      - AUTO_EXIT_ON_CRITICAL_STOP live path
+    evidence:
+      - app/portfolio/exit_monitor/intraday_service.py
+      - app/portfolio/exit_monitor/quote_provider.py
+      - app/portfolio/exit_monitor/notification.py
+      - tests/unit/portfolio/test_intraday_exit_monitor.py
+
+  - id: ADR-032
+    title: Entry timing & validation gate
+    area: recommendation
+    source: context/canonical/decisions/ADR-032-Live-Entry-Timing-Validation-Gate.md
+    designed: true
+    planned: true
+    status: PROPOSED
+    left_off:
+      - PO gate mode selection (per_run_strict vs strategy_trust vs watch_hitl)
+      - Freshness check at approve()
+      - Deploy lane API
+    evidence:
+      - context/canonical/decisions/ADR-032-IMPLEMENTATION.md
+
+  - id: ADR-030
+    title: Live investing (S0→S1→S2)
+    area: execution
+    source: context/canonical/decisions/ADR-030-Live-Investing-Architecture.md
+    designed: true
+    planned: true
+    status: PARTIALLY_IMPLEMENTED
+    left_off:
+      - Zerodha live order placement
+      - Broker reconciliation sync
+      - Unified exit queue (exit rec → RecommendationResult)
+    evidence:
+      - app/execution/adapters/zerodha_kite.py
+      - context/canonical/runbooks/LIVE_TRADING_SAFETY_CHECKLIST.md
+
+  - id: ADR-031
+    title: Unified execution architecture
+    area: execution
+    source: context/canonical/decisions/ADR-031-Unified-Execution-Architecture.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    evidence:
+      - app/execution/services/execution_service.py
+      - app/execution/adapters/paper.py
+      - tests/unit/execution/test_execution_service.py
+
+  - id: FP-REC-HIST
+    title: Recommendations historical date picker + execution panel
+    area: frontend
+    source: context/canonical/frontend/FEATURE_INTEGRATION_REPORT.md
+    designed: true
+    planned: false
+    status: IMPLEMENTED
+    left_off:
+      - Link paper trade exit_reason on expand panel
+    evidence:
+      - frontend/packages/ui/src/atoms/DatePicker.tsx
+      - frontend/packages/ui/src/molecules/RecommendationExecutionPanel.tsx
+      - frontend/packages/ui/src/molecules/ExitMonitorCard.tsx

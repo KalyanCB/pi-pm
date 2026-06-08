@@ -10,6 +10,13 @@ export interface AskRequest {
   session_id?: string | null;
 }
 
+export interface LineageSummary {
+  recommendation_run_ids: string[];
+  recommendation_ids: string[];
+  portfolio_position_ids: string[];
+  committee_review_ids: string[];
+}
+
 export interface AskResponse {
   answer: string;
   citations: Citation[];
@@ -19,6 +26,7 @@ export interface AskResponse {
   model: string | null;
   latency_ms: number | null;
   query_log_id: string;
+  lineage: LineageSummary | null;
 }
 
 export interface CopilotMessageModel {
@@ -30,4 +38,5 @@ export interface CopilotMessageModel {
   citations?: Citation[];
   uncitedClaims?: string[];
   latencyMs?: number;
+  lineage?: LineageSummary | null;
 }

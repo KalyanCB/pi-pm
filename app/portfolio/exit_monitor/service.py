@@ -1,6 +1,14 @@
-"""Exit Monitor Service — evaluates ACTIVE positions daily for exit triggers.
+"""Exit Monitor Service — T2 daily swing monitor (ADR-033).
 
-Generates ExitRecommendation rows. Never auto-executes. Human confirms.
+Evaluates OPEN positions post-close for swing triggers:
+  EXIT_RANK_DROP, EXIT_ALPHA_DECAY, EXIT_REGIME, EXIT_TIME,
+  EXIT_STOP_LOSS (EOD close), EXIT_TRAILING_STOP, concentration, liquidity.
+
+Generates ExitRecommendation rows with monitor_tier='DAILY'.
+Never auto-executes. Human confirms (or paper pilot in HITL_ENABLED=false mode).
+
+ADR-033 change: stop thresholds now sourced from Settings
+(advisory_stop_pct / critical_stop_pct) instead of hardcoded -8%.
 """
 
 from __future__ import annotations
@@ -11,6 +19,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.constants import DEFAULT_BENCHMARK_SYMBOL
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
@@ -46,7 +55,11 @@ class ExitMonitorService:
         self.regime_repo = regime_repo or RegimeAnalyticsRepository(db)
 
     def run(self, as_of_date: date | None = None) -> list[ExitRecommendation]:
-        """Evaluate all ACTIVE positions and generate ExitRecommendation rows."""
+        """Evaluate all OPEN positions and generate T2 DAILY ExitRecommendation rows.
+
+        ADR-033: skip if a DAILY PENDING row already exists for this position today
+        (allows T1 intraday rows to coexist without being swallowed by T2 dedup).
+        """
         as_of = as_of_date or date.today()
         cfg = self._get_config()
         positions = self._get_open_positions()
@@ -55,12 +68,14 @@ class ExitMonitorService:
         results: list[ExitRecommendation] = []
 
         for pos in positions:
-            # Skip if PENDING exit already exists for today
+            # Skip if a DAILY PENDING exit already exists for today.
+            # INTRADAY rows do NOT block T2 from running for the same position.
             existing = self.db.scalar(
                 select(ExitRecommendation).where(
                     ExitRecommendation.portfolio_position_id == pos.id,
                     ExitRecommendation.as_of_date == as_of,
                     ExitRecommendation.status == "PENDING",
+                    ExitRecommendation.monitor_tier == "DAILY",
                 )
             )
             if existing:
@@ -96,6 +111,7 @@ class ExitMonitorService:
                 days_held=context.get("days_held"),
                 unrealized_pnl_pct=round(unrealized_pct, 4) if unrealized_pct is not None else None,
                 urgency=urgency,
+                monitor_tier="DAILY",   # ADR-033: tag tier for audit
             )
             self.db.add(exit_rec)
             results.append(exit_rec)
@@ -108,6 +124,16 @@ class ExitMonitorService:
         if as_of_date:
             q = q.where(ExitRecommendation.as_of_date == as_of_date)
         return list(self.db.scalars(q.order_by(ExitRecommendation.urgency.desc())).all())
+
+    def list_for_date(self, as_of_date: date) -> list[ExitRecommendation]:
+        """All exit monitor rows for a day (pending, confirmed, rejected)."""
+        return list(
+            self.db.scalars(
+                select(ExitRecommendation)
+                .where(ExitRecommendation.as_of_date == as_of_date)
+                .order_by(ExitRecommendation.urgency.desc(), ExitRecommendation.created_at.desc())
+            ).all()
+        )
 
     def confirm(self, exit_rec_id: UUID) -> ExitRecommendation:
         rec = self.db.get(ExitRecommendation, exit_rec_id)
@@ -237,7 +263,8 @@ class ExitMonitorService:
         regime_posture: str,
     ) -> list:
         single_cap = float(cfg.single_name_cap_pct * 100) if cfg else 18.0
-        stop_loss = -8.0  # PO default; could be in config
+        # ADR-033: advisory stop from Settings (not hardcoded -8.0)
+        stop_loss = get_settings().advisory_stop_pct
         trailing = 5.0
 
         results = [

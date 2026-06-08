@@ -7,8 +7,9 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.backtest.trading_calendar import TradingCalendar
-from app.core.config import Settings
 from app.core.constants import MARKET_DATA_SOURCE_YAHOO
+
+from app.core.config import Settings
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.db.repositories.stock_repository import StockRepository
@@ -128,6 +129,22 @@ class RegimeAnalyticsService:
             strategy_name=strategy_name,
             strategy_version=strategy_version,
             horizon=horizon,
+        )
+
+    def refresh_from_market_data(
+        self,
+        *,
+        strategy_name: str,
+        strategy_version: str,
+        horizon: int = 20,
+        cutoff_date=None,
+    ) -> list[StrategyRegimePerformance]:
+        """ADR-032: Compute OOS IC directly from ranking_results + market_data."""
+        return self.regime_repo.refresh_from_market_data(
+            strategy_name=strategy_name,
+            strategy_version=strategy_version,
+            horizon=horizon,
+            cutoff_date=cutoff_date,
         )
 
     def list_strategy_regime_performance(

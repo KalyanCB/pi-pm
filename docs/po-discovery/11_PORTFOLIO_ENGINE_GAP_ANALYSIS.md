@@ -1,13 +1,17 @@
 # Portfolio Engine Gap Analysis
 
-**Date:** 2026-06-05  
+> **⚠️ STALE (2026-06-05):** Portfolio engine and paper execution are **shipped** (`app/portfolio/`, `app/execution/`, 22 `/portfolio/*` APIs).  
+> **Current truth:** [`docs/IMPLEMENTATION_SUMMARY.md`](../IMPLEMENTATION_SUMMARY.md), [`docs/audit/PAPER_TRADING_AUDIT.md`](../audit/PAPER_TRADING_AUDIT.md).  
+> Remaining gaps: `portfolio_id` on NAV/cash/recon tables, portfolio API integration tests, live Zerodha stub.
+
+**Date:** 2026-06-05 (snapshot before Phase 2 completion)  
 **Scope:** Paper trading, portfolio positions, construction, APIs
 
 ---
 
-## Executive summary
+## Executive summary (historical)
 
-Portfolio capabilities are **schema-only stubs**. Database tables and ORM models exist from initial migration; **no services, APIs, or tests** implement portfolio logic. ARGS packets include a **placeholder** `portfolio_context` with `existing_position: false`.
+At time of writing portfolio capabilities were **schema-only stubs** — **services, APIs, and tests now exist**.
 
 | Layer | Status |
 |-------|--------|

@@ -4,17 +4,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import (
-    Date,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    Numeric,
-    String,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,9 +44,7 @@ class RankingFactorContribution(Base, UUIDPrimaryKeyMixin):
     ranking_run_id: Mapped[UUID] = mapped_column(
         ForeignKey("ranking_runs.id", ondelete="CASCADE"), nullable=False
     )
-    stock_id: Mapped[UUID] = mapped_column(
-        ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False
-    )
+    stock_id: Mapped[UUID] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), nullable=False)
     factor_name: Mapped[str] = mapped_column(String(64), nullable=False)
     raw_factor_value: Mapped[float | None] = mapped_column(Numeric(18, 8))
     normalized_factor_value: Mapped[float | None] = mapped_column(Numeric(18, 8))
@@ -128,9 +116,7 @@ class RunLineageRecord(Base, UUIDPrimaryKeyMixin):
     relationship_type: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (
-        Index("ix_run_lineage_records_child", "child_entity_type", "child_entity_id"),
-    )
+    __table_args__ = (Index("ix_run_lineage_records_child", "child_entity_type", "child_entity_id"),)
 
 
 class ExperimentRun(Base, UUIDPrimaryKeyMixin):
@@ -168,3 +154,10 @@ class StrategyRegimePerformance(Base, UUIDPrimaryKeyMixin):
     avg_spread: Mapped[float | None] = mapped_column(Numeric(18, 8))
     sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # ADR-032: OOS edge columns (populated by refresh_from_market_data)
+    ic_std: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    ic_lower_95: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    hit_rate: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    expectancy: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    expectancy_after_costs: Mapped[float | None] = mapped_column(Numeric(18, 8))
+    computed_from: Mapped[str | None] = mapped_column(String(32))

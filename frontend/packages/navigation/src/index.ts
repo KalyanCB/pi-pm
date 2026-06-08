@@ -4,3 +4,4 @@ export { resolveCitationRoute } from './citationNavigation';
 export { Sidebar, type SidebarProps } from './Sidebar';
 export { TabBar, type TabBarProps } from './TabBar';
 export { AppShell, type AppShellProps } from './AppShell';
+export { InvestorTopBar } from './InvestorTopBar';

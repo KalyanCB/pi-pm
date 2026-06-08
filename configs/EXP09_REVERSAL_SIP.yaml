@@ -1,0 +1,22 @@
+experiment_id: EXP09_REVERSAL_SIP
+name: "Full Replay with reversal_v1 - Rs 10K Start + Rs 10K Monthly SIP"
+description: "2022-2026 with all 3 strategies, Rs 10K initial + Rs 10K/month SIP"
+mode: AUTONOMOUS_RCEE
+start_date: "2022-01-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1, reversal_v1]
+capital:
+  initial_cash: 10000
+  monthly_contribution: 10000
+  contribution_day: FIRST_TRADING_DAY
+portfolio:
+  max_positions: 10
+  max_buy_slots: 5
+  deploy_pct: 0.85
+  cash_floor_pct: 0.15
+outputs:
+  generate_nav_curve: true
+  generate_trade_report: true
+  generate_regime_report: true
+  generate_strategy_report: true
+  output_dir: "docs/experiments/results"

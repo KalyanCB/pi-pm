@@ -1,8 +1,12 @@
 export { ApiError, ReconciliationGateError, normalizeError, shouldRetry, retryDelay } from './errors';
 export { ApiClient, createApiClient, type ApiClientConfig, type RequestOptions } from './client';
+export { createAuthApi, type AuthApi } from './auth';
+export { createStocksApi, type StocksApi } from './stocks';
 export { createRecommendationsApi, type RecommendationsApi } from './recommendations';
 export { createPortfolioApi, type PortfolioApi } from './portfolio';
 export { createCommitteeApi, type CommitteeApi } from './committee';
 export { createCopilotApi, type CopilotApi } from './copilot';
 export { createAnalyticsApi, type AnalyticsApi } from './analytics';
+export { createPilotApi, type PilotApi } from './pilot';
+export { createObservabilityApi, type ObservabilityApi } from './observability';
 export { createPipmApi, type PipmApi } from './createApi';

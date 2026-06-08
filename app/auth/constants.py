@@ -27,6 +27,9 @@ class Permission(StrEnum):
     # Analytics
     ANALYTICS_READ = "analytics:read"
     ANALYTICS_RUN = "analytics:run"
+    # Execution
+    EXECUTION_READ = "execution:read"
+    EXECUTION_WRITE = "execution:write"
     # Platform ops
     OPS_ADMIN = "ops:admin"
     USER_ADMIN = "user:admin"
@@ -47,6 +50,8 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
             Permission.COPILOT_AUDIT,
             Permission.ANALYTICS_READ,
             Permission.ANALYTICS_RUN,
+            Permission.EXECUTION_READ,
+            Permission.EXECUTION_WRITE,
         }
     ),
     UserRole.VIEWER: frozenset(
@@ -56,6 +61,7 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
             Permission.COMMITTEE_READ,
             Permission.COPILOT_ASK,
             Permission.ANALYTICS_READ,
+            Permission.EXECUTION_READ,
         }
     ),
 }

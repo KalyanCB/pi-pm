@@ -3,11 +3,15 @@
 Formula (PRD §4, conv_v1.1.0):
   conviction_score = clamp(round(
     0.26 * S_rank_quality
-  + 0.32 * S_validation
+  + 0.32 * S_validation_or_regime_fit   (ADR-032: S_regime_fit when available)
   + 0.16 * S_ic_factor
   + 0.16 * S_regime
   + 0.10 * S_exit_health
   ), 0, 100)
+
+ADR-032 Phase 4:
+  When regime_fit_edge_state is provided, S_validation is replaced by S_regime_fit.
+  Legacy S_validation path preserved for backward compat (regime_fit_edge_state=None).
 """
 
 from __future__ import annotations
@@ -51,6 +55,12 @@ class ConvictionInputs:
     position_state: PositionState
     rank_v2_promoted: bool
     config_version: str = CONVICTION_CONFIG_VERSION
+    # ADR-032 Phase 4: regime fit edge state (optional — None → legacy S_validation path)
+    regime_fit_edge_state: str | None = None
+    # Strategy-level IC from RCEE (avg_ic from strategy_regime_performance).
+    # When set, used instead of factor_ic_median for S_ic_factor — more accurate
+    # for strategies (e.g. reversal_v1) whose factors are not in factor_daily_metrics.
+    strategy_regime_ic: float | None = None
 
 
 @dataclass
@@ -90,6 +100,7 @@ def _score_rank_quality(inputs: ConvictionInputs) -> float:
 
 
 def _score_validation(inputs: ConvictionInputs) -> float:
+    """Legacy S_validation — used when regime_fit_edge_state is None."""
     if inputs.validation_status == "insufficient_data":
         return 35.0
 
@@ -111,8 +122,29 @@ def _score_validation(inputs: ConvictionInputs) -> float:
     return min(100.0, base + spread_bonus)
 
 
+def _score_regime_fit(inputs: ConvictionInputs) -> float:
+    """S_regime_fit (ADR-032 Phase 4): replaces S_validation when RCEE data is available.
+
+    Mapping:
+      EDGE_PRESENT  → 85.0
+      EDGE_WEAK     → 50.0
+      NO_EDGE       → 15.0
+      UNKNOWN/None  → 35.0  (legacy floor, same as old insufficient_data)
+    """
+    state = inputs.regime_fit_edge_state
+    mapping = {
+        "EDGE_PRESENT": 85.0,
+        "EDGE_WEAK": 50.0,
+        "NO_EDGE": 15.0,
+    }
+    return mapping.get(state or "", 35.0)
+
+
 def _score_ic_factor(inputs: ConvictionInputs) -> float:
-    ic = inputs.factor_ic_median
+    # Prefer strategy-level IC from RCEE (more accurate for strategies whose
+    # per-factor IC is not in factor_daily_metrics, e.g. reversal_v1).
+    # Fall back to per-factor median IC from the factor analytics pipeline.
+    ic = inputs.strategy_regime_ic if inputs.strategy_regime_ic is not None else inputs.factor_ic_median
     if ic is None:
         return 50.0
     if ic > 0.03:
@@ -123,6 +155,12 @@ def _score_ic_factor(inputs: ConvictionInputs) -> float:
 
 
 def _score_regime(inputs: ConvictionInputs) -> float:
+    # When RCEE confirms EDGE_PRESENT, the current regime IS the strategy's
+    # optimal regime — score it as risk_on regardless of raw market posture.
+    # Example: reversal_v1 in BEAR_LOW_VOL has EDGE_PRESENT; penalising it
+    # as "defensive" would contradict the RCEE's own verdict.
+    if inputs.regime_fit_edge_state == "EDGE_PRESENT":
+        return 75.0
     mapping = {"risk_on": 75.0, "neutral": 55.0, "defensive": 25.0}
     return mapping.get(inputs.regime_posture, 55.0)
 
@@ -151,7 +189,15 @@ def _band_from_score(score: int) -> ConvictionBand:
 
 def score(inputs: ConvictionInputs) -> ConvictionResult:
     s_rank = _score_rank_quality(inputs)
-    s_val = _score_validation(inputs)
+
+    # ADR-032 Phase 4: use S_regime_fit when RCEE data available, else legacy S_validation
+    if inputs.regime_fit_edge_state is not None:
+        s_val = _score_regime_fit(inputs)
+        validation_scorer_used = "regime_fit"
+    else:
+        s_val = _score_validation(inputs)
+        validation_scorer_used = "legacy_validation"
+
     s_ic = _score_ic_factor(inputs)
     s_regime = _score_regime(inputs)
     s_exit = _score_exit_health(inputs)
@@ -181,5 +227,9 @@ def score(inputs: ConvictionInputs) -> ConvictionResult:
         "exit_health": round(s_exit, 2),
         "weights": _WEIGHTS,
         "config_version": inputs.config_version,
+        "validation_scorer_used": validation_scorer_used,
+        "regime_fit_edge_state": inputs.regime_fit_edge_state,
+        "strategy_regime_ic": inputs.strategy_regime_ic,
+        "ic_source": "strategy_regime" if inputs.strategy_regime_ic is not None else "factor_median",
     }
     return ConvictionResult(score=final_score, band=band, components=components)

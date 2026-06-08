@@ -9,20 +9,16 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
-    DailyBatchArtifactType,
     DailyBatchPhase,
     DailyBatchRunStatus,
-    IngestionMode,
     IngestPeriod,
+    IngestionMode,
 )
 from app.core.exceptions import NotFoundError, PiPMError
 from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
 from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
-from app.core.constants import PORTFOLIO_TR_BENCHMARK_SYMBOL
 from app.ops.daily_batch.batch_planner import DailyBatchPlanner, StrategySpec
-from app.ops.daily_batch.evidence_windows import DEFAULT_REGIME_PERFORMANCE_HORIZON
-from app.ops.daily_batch.paper_pilot_ops import PaperPilotOps
 from app.ops.daily_batch.traceability import DailyBatchTraceabilityRecorder
 from app.ops.daily_batch.trading_day_resolver import TradingDayResolver
 from app.schemas.backtest import GenerateRankingsRequest
@@ -35,13 +31,14 @@ from app.schemas.daily_batch import (
     DailyBatchTraceResponse,
 )
 from app.services.backtest_service import BacktestService
+from app.ops.daily_batch.evidence_windows import DEFAULT_REGIME_PERFORMANCE_HORIZON
 from app.services.exit_research_service import ExitResearchService
 from app.services.factor_predictive_power_service import FactorPredictivePowerService
 from app.services.market_data_service import MarketDataService
-from app.services.recommendation_service import RecommendationService
 from app.services.regime_analytics_service import RegimeAnalyticsService
 from app.services.research_intelligence_service import ResearchIntelligenceService
 from app.services.signal_validation_service import SignalValidationService
+from app.services.recommendation_service import RecommendationService
 
 
 class DailyBatchService:
@@ -55,11 +52,6 @@ class DailyBatchService:
         DailyBatchPhase.FACTOR_IC: 17.0,
         DailyBatchPhase.RESEARCH_INTELLIGENCE: 9.0,
         DailyBatchPhase.EXIT_RESEARCH: 14.0,
-        DailyBatchPhase.PORTFOLIO_RECOMPUTE: 3.0,
-        DailyBatchPhase.EXIT_MONITOR: 2.0,
-        DailyBatchPhase.PAPER_TRADING: 3.0,
-        DailyBatchPhase.PORTFOLIO_NAV: 2.0,
-        DailyBatchPhase.PORTFOLIO_RECONCILE: 2.0,
     }
 
     def __init__(
@@ -91,9 +83,7 @@ class DailyBatchService:
         self.artifact_repo = artifact_repo or DailyBatchArtifactRepository(db)
         self.recommendation_service = recommendation_service or RecommendationService(db)
 
-    def create_and_execute(
-        self, request: DailyBatchRunCreateRequest
-    ) -> DailyBatchRunCreateResponse:
+    def create_and_execute(self, request: DailyBatchRunCreateRequest) -> DailyBatchRunCreateResponse:
         if request.idempotency_key and not request.force_from_date:
             existing = self.run_repo.get_by_idempotency_key(request.idempotency_key)
             if existing is not None and existing.status == DailyBatchRunStatus.COMPLETED.value:
@@ -217,7 +207,9 @@ class DailyBatchService:
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RANKINGS]
 
             if request.phases.validation and (
-                plan.validation_gap_count > 0 or request.force_recompute or request.force_from_date
+                plan.validation_gap_count > 0
+                or request.force_recompute
+                or request.force_from_date
             ):
                 self._set_phase(run, DailyBatchPhase.VALIDATION, base_pct)
                 result = self.validation_service.backfill(
@@ -264,9 +256,7 @@ class DailyBatchService:
                                 strategy_name=spec.strategy_name,
                                 status=rec_run.status,
                             )
-                            phase_results["recommendations"].setdefault(
-                                spec.strategy_name, []
-                            ).append(
+                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
                                 {
                                     "ranking_run_id": str(rr.id),
                                     "recommendation_run_id": str(rec_run.id),
@@ -274,9 +264,7 @@ class DailyBatchService:
                                 }
                             )
                         except Exception as exc:
-                            phase_results["recommendations"].setdefault(
-                                spec.strategy_name, []
-                            ).append(
+                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
                                 {
                                     "ranking_run_id": str(rr.id),
                                     "status": "failed",
@@ -284,6 +272,74 @@ class DailyBatchService:
                                 }
                             )
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RECOMMENDATIONS]
+
+            # Cross-strategy deduplication: if same symbol gets BUY from multiple
+            # strategies on the same day, keep the higher-conviction one.
+            if request.phases.recommendations:
+                self._dedup_cross_strategy_buys(
+                    strategies=request.strategies,
+                    as_of_date=plan.target_trading_day,
+                )
+                self.db.commit()
+
+            # ── HITL Gate ────────────────────────────────────────────────────
+            # When HITL_ENABLED=false (paper trading mode), auto-approve all
+            # CANDIDATE BUYs for today with actor=hitl_auto. Full audit trail
+            # preserved. Committee remains advisory-only regardless of flag.
+            if request.phases.recommendations:
+                from app.ops.hitl.gate import HITLGate
+                hitl = HITLGate.from_settings()
+                hitl.log_status()
+                if hitl.auto_approve:
+                    self._set_phase(run, "hitl_auto_approve", base_pct)
+                    hitl_result = hitl.auto_approve_buys(
+                        self.db,
+                        as_of_date=plan.target_trading_day,
+                        max_slots=5,
+                    )
+                    phase_results["hitl_auto_approve"] = hitl_result
+                    self.db.commit()
+
+            # ── T2 Daily Exit Monitor (ADR-033) ──────────────────────────────
+            # Runs whenever phases.portfolio=true, independent of paper pilot
+            # and HITL gate. This closes the gap where HITL_ENABLED=true
+            # silently skipped exit monitoring (ADR-033 implementation gap #3).
+            if request.phases.portfolio and request.portfolio_phases.exit_monitor:
+                self._set_phase(run, "exit_monitor", base_pct)
+                from app.portfolio.exit_monitor.service import ExitMonitorService
+                t2_monitor = ExitMonitorService(self.db)
+                t2_recs = t2_monitor.run(plan.target_trading_day)
+                phase_results["exit_monitor"] = {
+                    "candidates": len(t2_recs),
+                    "ids": [str(r.id) for r in t2_recs],
+                    "monitor_tier": "DAILY",
+                }
+                self.db.commit()
+
+            # ── Paper Trading ─────────────────────────────────────────────────
+            # Execute paper fills only when both HITL_ENABLED=false and
+            # PAPER_TRADING_ENABLED=true. Requires phases.portfolio=true in
+            # the request (so caller opts in explicitly).
+            # ADR-033: exit_monitor=False here — T2 already ran above for all modes.
+            if request.phases.recommendations and request.phases.portfolio:
+                from app.ops.hitl.gate import HITLGate
+                _hitl = HITLGate.from_settings()
+                if _hitl.should_execute_paper_trades:
+                    self._set_phase(run, "paper_trading", base_pct)
+                    from app.ops.daily_batch.paper_pilot_ops import PaperPilotOps
+                    pilot = PaperPilotOps(self.db)
+                    paper_result = pilot.run(
+                        as_of_date=plan.target_trading_day,
+                        recompute=request.portfolio_phases.recompute,
+                        exit_monitor=False,      # ADR-033: T2 already ran above
+                        paper_trading=request.portfolio_phases.paper_trading,
+                        nav_snapshot=request.portfolio_phases.nav_snapshot,
+                        reconcile=request.portfolio_phases.reconcile,
+                        pilot_auto_approve=True,
+                        pilot_auto_execute=True,
+                    )
+                    phase_results["paper_trading"] = paper_result
+                    self.db.commit()
 
             regime_history_start = max(
                 request.holdout_start_date,
@@ -451,80 +507,6 @@ class DailyBatchService:
                         }
                     base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.EXIT_RESEARCH]
 
-            if request.phases.portfolio and not request.dry_run:
-                pilot = PaperPilotOps(self.db)
-                pf = request.portfolio_phases
-                target_day = plan.target_trading_day
-
-                if pf.recompute:
-                    self._set_phase(run, DailyBatchPhase.PORTFOLIO_RECOMPUTE, base_pct)
-                    phase_results["portfolio_recompute"] = pilot.portfolio_service.recompute()
-                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PORTFOLIO_RECOMPUTE]
-
-                if pf.exit_monitor:
-                    self._set_phase(run, DailyBatchPhase.EXIT_MONITOR, base_pct)
-                    exit_recs = pilot.exit_monitor.run(target_day)
-                    phase_results["exit_monitor"] = {
-                        "candidates": len(exit_recs),
-                        "ids": [str(r.id) for r in exit_recs],
-                    }
-                    for er in exit_recs:
-                        trace.artifact_repo.add(
-                            daily_batch_run_id=run.id,
-                            artifact_type=DailyBatchArtifactType.EXIT_RECOMMENDATION.value,
-                            artifact_id=er.id,
-                            status=er.status,
-                        )
-                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.EXIT_MONITOR]
-
-                if pf.paper_trading and request.pilot_auto_execute:
-                    self._set_phase(run, DailyBatchPhase.PAPER_TRADING, base_pct)
-                    pt_result = pilot._execute_pilot_trades(
-                        target_day,
-                        pilot_auto_approve=request.pilot_auto_approve,
-                    )
-                    phase_results["paper_trading"] = pt_result
-                    for tid in pt_result.get("entries", []) + pt_result.get("exits", []):
-                        trace.artifact_repo.add(
-                            daily_batch_run_id=run.id,
-                            artifact_type=DailyBatchArtifactType.PAPER_TRADE.value,
-                            artifact_id=UUID(tid),
-                            status="filled",
-                        )
-                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PAPER_TRADING]
-
-                if pf.nav_snapshot:
-                    self._set_phase(run, DailyBatchPhase.PORTFOLIO_NAV, base_pct)
-                    nav = pilot.nav_service.snapshot(target_day)
-                    phase_results["portfolio_nav"] = {
-                        "nav_id": str(nav.id),
-                        "total_equity": float(nav.total_equity),
-                    }
-                    trace.artifact_repo.add(
-                        daily_batch_run_id=run.id,
-                        artifact_type=DailyBatchArtifactType.PORTFOLIO_NAV_SNAPSHOT.value,
-                        artifact_id=nav.id,
-                        status="completed",
-                    )
-                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PORTFOLIO_NAV]
-
-                if pf.reconcile:
-                    self._set_phase(run, DailyBatchPhase.PORTFOLIO_RECONCILE, base_pct)
-                    report = pilot.reconciliation_service.run(target_day)
-                    phase_results["portfolio_reconcile"] = {
-                        "report_id": str(report.id),
-                        "status": report.status,
-                    }
-                    trace.artifact_repo.add(
-                        daily_batch_run_id=run.id,
-                        artifact_type=DailyBatchArtifactType.PORTFOLIO_RECONCILIATION.value,
-                        artifact_id=report.id,
-                        status=report.status,
-                    )
-                    base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.PORTFOLIO_RECONCILE]
-
-                phase_results["portfolio_health"] = pilot.health_snapshot(target_day)
-
             self.run_repo.set_phase_results(run, phase_results)
             duration = time.perf_counter() - started
             self.run_repo.complete(run, duration_seconds=duration)
@@ -549,6 +531,80 @@ class DailyBatchService:
             self.db.commit()
             raise
 
+    def _dedup_cross_strategy_buys(
+        self,
+        strategies: list,
+        as_of_date: date,
+    ) -> None:
+        """If the same symbol receives BUY from multiple strategies on the same day,
+        keep only the highest-conviction BUY. Downgrade others to WATCH with
+        reason code CROSS_STRATEGY_DUPLICATE.
+
+        Rationale: deploying 2 slots (one per strategy) into the same stock doubles
+        concentration without adding diversification.
+        """
+        from collections import defaultdict
+
+        from sqlalchemy import select
+
+        from app.core.constants import REC_REASON_CROSS_STRATEGY_DUPLICATE, RecommendationAction
+        from app.models.ranking_run import RankingRun
+        from app.models.recommendation import RecommendationResult, RecommendationRun
+
+        strategy_names = [s.strategy_name for s in strategies]
+
+        buys = self.db.execute(
+            select(
+                RecommendationResult.id,
+                RecommendationResult.stock_id,
+                RecommendationResult.conviction_score,
+                RecommendationRun.strategy_name,
+            )
+            .join(RecommendationRun, RecommendationRun.id == RecommendationResult.recommendation_run_id)
+            .join(RankingRun, RankingRun.id == RecommendationRun.ranking_run_id)
+            .where(
+                RecommendationResult.action == RecommendationAction.BUY,
+                RankingRun.as_of_date == as_of_date,
+                RecommendationRun.strategy_name.in_(strategy_names),
+            )
+        ).all()
+
+        by_stock: dict = defaultdict(list)
+        for row in buys:
+            by_stock[row.stock_id].append(row)
+
+        # Collect IDs to downgrade, then use a bulk SQL UPDATE to avoid
+        # ORM StaleDataError when rows were inserted in the same session.
+        from sqlalchemy import update as sa_update
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        ids_to_downgrade = []
+        for stock_id, rows in by_stock.items():
+            if len(rows) <= 1:
+                continue
+            sorted_rows = sorted(rows, key=lambda r: r.conviction_score, reverse=True)
+            for row in sorted_rows[1:]:
+                ids_to_downgrade.append(row.id)
+
+        if ids_to_downgrade:
+            # Use raw SQL UPDATE to avoid ORM identity-map stale-state issues
+            from sqlalchemy import text as sa_text
+            for row_id in ids_to_downgrade:
+                self.db.execute(sa_text("""
+                    UPDATE recommendation_results
+                    SET action = 'WATCH',
+                        reason_codes = CASE
+                            WHEN reason_codes::text NOT LIKE :dup_marker
+                            THEN reason_codes || :new_reason::jsonb
+                            ELSE reason_codes
+                        END
+                    WHERE id = :row_id
+                """), {
+                    "dup_marker": f"%{REC_REASON_CROSS_STRATEGY_DUPLICATE}%",
+                    "new_reason": f'["{REC_REASON_CROSS_STRATEGY_DUPLICATE}"]',
+                    "row_id": row_id,
+                })
+
     def get_run(self, run_id: UUID) -> DailyBatchRunStatusResponse:
         run = self.run_repo.get_by_id(run_id)
         if run is None:
@@ -559,9 +615,7 @@ class DailyBatchService:
             current_phase=run.current_phase,
             target_trading_day=run.target_trading_day,
             from_date=run.from_date,
-            percent_complete=float(run.percent_complete)
-            if run.percent_complete is not None
-            else None,
+            percent_complete=float(run.percent_complete) if run.percent_complete is not None else None,
             phase_progress=run.phase_results,
             plan_snapshot=run.plan_snapshot,
             phase_results=run.phase_results,
@@ -610,27 +664,23 @@ class DailyBatchService:
                 "ingestion_batch_ids": grouped.get("ingestion_batch", []),
                 "ranking_run_ids": grouped.get("ranking_run", []),
                 "validation_report_ids": grouped.get("validation_report", []),
-                "recommendation_run_ids": grouped.get("recommendation_run", []),
                 "factor_performance_run_ids": grouped.get("factor_performance_run", []),
                 "regime_history_backfill_ids": grouped.get("regime_history_backfill", []),
                 "regime_performance_refresh_ids": grouped.get("regime_performance_refresh", []),
                 "exit_research_run_ids": grouped.get("exit_research_run", []),
                 "research_intelligence_run_ids": grouped.get("research_intelligence_run", []),
-                "paper_trade_ids": grouped.get("paper_trade", []),
-                "portfolio_nav_snapshot_ids": grouped.get("portfolio_nav_snapshot", []),
-                "portfolio_reconciliation_ids": grouped.get("portfolio_reconciliation", []),
-                "exit_recommendation_ids": grouped.get("exit_recommendation", []),
             },
             current_load=run.current_load,
             artifacts=artifacts,
         )
 
-    def _set_phase(self, run, phase: DailyBatchPhase, base_pct: float) -> None:
+    def _set_phase(self, run, phase: "DailyBatchPhase | str", base_pct: float) -> None:
+        phase_str = phase.value if hasattr(phase, "value") else str(phase)
         self.run_repo.update_progress(
             run,
-            current_phase=phase.value,
+            current_phase=phase_str,
             percent_complete=base_pct,
-            current_load={"phase": phase.value},
+            current_load={"phase": phase_str},
         )
         self.db.commit()
 
@@ -640,16 +690,8 @@ class DailyBatchService:
         request: DailyBatchRunCreateRequest,
         trace: DailyBatchTraceabilityRecorder,
     ) -> dict:
-        universe = self.backtest_service.universe_repo.list_stocks_in_universe(
-            request.universe_code
-        )
+        universe = self.backtest_service.universe_repo.list_stocks_in_universe(request.universe_code)
         symbols = sorted({s.symbol for s in universe})
-        benchmark_symbols = {request.benchmark_symbol.upper()}
-        if request.phases.portfolio and request.ingest_portfolio_benchmarks:
-            benchmark_symbols.add(PORTFOLIO_TR_BENCHMARK_SYMBOL.upper())
-        for bsym in sorted(benchmark_symbols):
-            if bsym not in symbols:
-                symbols.append(bsym)
         totals = {
             "batches": 0,
             "symbols_succeeded": 0,
@@ -667,9 +709,7 @@ class DailyBatchService:
             since_date = None
         else:
             ingestion_mode = IngestionMode.INCREMENTAL
-            since_date = (
-                request.from_date if (request.force_from_date or request.force_ingest) else None
-            )
+            since_date = request.from_date if (request.force_from_date or request.force_ingest) else None
 
         batch_size = request.ingest_batch_size
         for offset in range(0, len(symbols), batch_size):
@@ -767,9 +807,7 @@ class DailyBatchService:
             status=run.status,
             target_trading_day=run.target_trading_day,
             from_date=run.from_date,
-            already_current=run.plan_snapshot.get("already_current", False)
-            if run.plan_snapshot
-            else False,
+            already_current=run.plan_snapshot.get("already_current", False) if run.plan_snapshot else False,
             plan=plan,
             phases=run.phase_results,
             started_at=run.started_at,

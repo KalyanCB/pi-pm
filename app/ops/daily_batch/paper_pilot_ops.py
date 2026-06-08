@@ -17,10 +17,14 @@ from app.models.portfolio_position import PortfolioPosition
 from app.models.recommendation import RecommendationResult, RecommendationRun
 from app.portfolio.exit_monitor.service import ExitMonitorService
 from app.portfolio.reconciliation.service import ReconciliationService
+from app.execution.services.execution_service import ExecutionService
+from app.models.recommendation import RecommendationApproval
 from app.services.paper_trade_service import PaperTradeService
 from app.services.portfolio_nav_service import PortfolioNavService
 from app.services.portfolio_service import PortfolioService
 from app.services.recommendation_service import RecommendationService
+
+DEFAULT_PORTFOLIO_ID = UUID("00000000-0000-4000-8000-000000000010")
 
 
 class PaperPilotOps:
@@ -34,14 +38,23 @@ class PaperPilotOps:
         exit_monitor: ExitMonitorService | None = None,
         paper_trade_service: PaperTradeService | None = None,
         recommendation_service: RecommendationService | None = None,
+        execution_service: ExecutionService | None = None,
     ) -> None:
         self.db = db
-        self.portfolio_service = portfolio_service or PortfolioService(db)
+        self.portfolio_service = portfolio_service or PortfolioService(
+            db, portfolio_id=DEFAULT_PORTFOLIO_ID
+        )
         self.nav_service = nav_service or PortfolioNavService(db)
         self.reconciliation_service = reconciliation_service or ReconciliationService(db)
         self.exit_monitor = exit_monitor or ExitMonitorService(db)
-        self.paper_trade_service = paper_trade_service or PaperTradeService(db)
+        self.paper_trade_service = paper_trade_service or PaperTradeService(
+            db, portfolio_service=self.portfolio_service
+        )
         self.recommendation_service = recommendation_service or RecommendationService(db)
+        self.execution_service = execution_service or ExecutionService(
+            db, portfolio_id=DEFAULT_PORTFOLIO_ID
+        )
+        self._pilot_actor_id = UUID("00000000-0000-4000-8000-000000000001")
 
     def run(
         self,
@@ -104,7 +117,35 @@ class PaperPilotOps:
 
         limits = self.portfolio_service.get_limits(as_of_date)
 
-        # Exits first — EXIT_APPROVED with open position
+        # Exits first — only when pilot_auto_execute; otherwise exit_monitor.run() leaves PENDING for UI.
+        monitor_exits = self.db.scalars(
+            select(ExitRecommendation).where(
+                ExitRecommendation.as_of_date == as_of_date,
+                ExitRecommendation.status == "PENDING",
+            )
+        ).all()
+        for exit_rec in monitor_exits:
+            pos = self.db.get(PortfolioPosition, exit_rec.portfolio_position_id)
+            if pos is None or pos.position_status != "OPEN" or not pos.is_current:
+                continue
+            try:
+                trade = self.paper_trade_service.execute_position_exit(
+                    stock_id=exit_rec.stock_id,
+                    as_of_date=as_of_date,
+                    exit_triggers=list(exit_rec.triggers or []),
+                    portfolio_exit_recommendation_id=exit_rec.id,
+                    idempotency_key=f"pilot-exit-monitor:{exit_rec.id}",
+                )
+                self.exit_monitor.confirm(exit_rec.id)
+                exits.append(str(trade.id))
+            except Exception as exc:
+                skipped.append({
+                    "exit_recommendation_id": str(exit_rec.id),
+                    "action": "exit_monitor",
+                    "error": str(exc),
+                })
+
+        # EXIT_APPROVED recommendation rows (engine path, when present)
         exit_candidates = self.db.scalars(
             select(RecommendationResult).where(
                 RecommendationResult.action == RecommendationAction.EXIT_APPROVED.value,
@@ -121,11 +162,25 @@ class PaperPilotOps:
             if pos is None:
                 continue
             try:
-                trade = self.paper_trade_service.execute_exit(
-                    recommendation_result_id=rec.id,
+                approval_id = self._latest_approval_id(rec.id)
+                if approval_id is None:
+                    self.recommendation_service.approve(
+                        rec.id,
+                        approval_type="EXIT",
+                        decision="APPROVED",
+                        actor_id="paper_pilot",
+                        note="Auto-approved exit for paper pilot",
+                        idempotency_key=f"pilot-approve-exit:{rec.id}",
+                    )
+                    approval_id = self._latest_approval_id(rec.id)
+                order = self.execution_service.submit_from_recommendation(
+                    recommendation_id=rec.id,
+                    approval_id=approval_id,
+                    requested_by=self._pilot_actor_id,
                     as_of_date=as_of_date,
+                    idempotency_key=f"pilot-exit:{rec.id}",
                 )
-                exits.append(str(trade.id))
+                exits.append(str(order.id))
             except Exception as exc:
                 skipped.append({"recommendation_id": str(rec.id), "action": "exit", "error": str(exc)})
 
@@ -192,11 +247,15 @@ class PaperPilotOps:
                     continue
 
                 try:
-                    trade = self.paper_trade_service.execute_entry(
-                        recommendation_result_id=rec.id,
+                    approval_id = self._latest_approval_id(rec.id)
+                    order = self.execution_service.submit_from_recommendation(
+                        recommendation_id=rec.id,
+                        approval_id=approval_id,
+                        requested_by=self._pilot_actor_id,
                         as_of_date=as_of_date,
+                        idempotency_key=f"pilot-entry:{rec.id}",
                     )
-                    entries.append(str(trade.id))
+                    entries.append(str(order.id))
                     buys_today += 1
                 except Exception as exc:
                     skipped.append({
@@ -212,6 +271,17 @@ class PaperPilotOps:
             "entries_count": len(entries),
             "exits_count": len(exits),
         }
+
+    def _latest_approval_id(self, recommendation_id: UUID) -> UUID | None:
+        approval = self.db.scalar(
+            select(RecommendationApproval)
+            .where(
+                RecommendationApproval.recommendation_result_id == recommendation_id,
+                RecommendationApproval.decision == "APPROVED",
+            )
+            .order_by(RecommendationApproval.decided_at.desc())
+        )
+        return approval.id if approval else None
 
     def health_snapshot(self, as_of_date: date | None = None) -> dict:
         """Portfolio health for pilot dashboard — read-only."""

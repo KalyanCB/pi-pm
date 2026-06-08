@@ -32,6 +32,56 @@ class ConvictionComponentsRead(BaseModel):
     config_version: str
 
 
+class RecommendationApprovalRead(BaseModel):
+    approval_type: str
+    decision: str
+    decided_at: str
+    actor_id: str
+
+
+class RecommendationTradeRead(BaseModel):
+    side: str
+    fill_price: float
+    fill_quantity: float
+    status: str
+    filled_at: str | None
+
+
+class RecommendationPositionRead(BaseModel):
+    id: str
+    symbol: str | None
+    quantity: float
+    avg_cost: float
+    entry_price: float | None
+    entry_date: str | None
+    exit_price: float | None
+    exit_date: str | None
+    market_value: float | None
+    unrealized_pnl: float | None
+    realized_pnl: float | None
+    weight_pct: float | None
+    position_status: str
+    strategy_name: str | None
+    conviction_band: str | None
+    sector: str | None
+
+
+class RecommendationOutcomeRead(BaseModel):
+    outcome_status: str
+    entry_date: str
+    exit_date: str | None
+    pnl_pct: float | None
+    days_held: int | None
+    exit_reason: str | None
+
+
+class RecommendationExecutionContextRead(BaseModel):
+    approvals: list[RecommendationApprovalRead]
+    trades: list[RecommendationTradeRead]
+    position: RecommendationPositionRead | None
+    outcome: RecommendationOutcomeRead | None
+
+
 class RecommendationResultRead(BaseModel):
     id: UUID
     stock_id: UUID
@@ -44,6 +94,7 @@ class RecommendationResultRead(BaseModel):
     conviction_components: dict[str, Any]
     reason_codes: list[str]
     recommendation_run_id: UUID
+    portfolio_position_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -67,6 +118,7 @@ class DailyStrategyResults(BaseModel):
     as_of_date: date
     recommendation_run_id: UUID
     results: list[RecommendationResultRead]
+    execution_context: dict[str, RecommendationExecutionContextRead] = {}
 
 
 class DailyRecommendationsRead(BaseModel):
@@ -75,6 +127,11 @@ class DailyRecommendationsRead(BaseModel):
     total_results: int
     buy_count: int
     watch_count: int
+
+
+class RecommendationDatesRead(BaseModel):
+    dates: list[date]
+    latest_date: date | None
 
 
 class ApproveRequest(BaseModel):
@@ -142,6 +199,16 @@ def get_approval_queue(
     return service.get_approval_queue()  # type: ignore[return-value]
 
 
+@router.get("/dates", response_model=RecommendationDatesRead)
+def list_recommendation_dates(
+    strategy_name: str | None = Query(default=None),
+    service: RecommendationService = Depends(get_recommendation_service),
+) -> RecommendationDatesRead:
+    """Distinct dates with completed recommendation runs (newest first)."""
+    dates = service.list_available_dates(strategy_name)
+    return RecommendationDatesRead(dates=dates, latest_date=dates[0] if dates else None)
+
+
 @router.get("/daily", response_model=DailyRecommendationsRead)
 def get_daily(
     as_of_date: date = Query(..., description="Trading date, e.g. 2026-06-05"),
@@ -152,7 +219,14 @@ def get_daily(
 ) -> DailyRecommendationsRead:
     """All strategies' recommendations for a given date in one call."""
     action_filter = [action] if action else None
-    daily = service.get_daily(as_of_date, action_filter)
+    resolved_date = as_of_date
+    daily = service.get_daily(resolved_date, action_filter)
+
+    if not daily and resolved_date == date.today():
+        latest = service.recommendation_repo.get_latest_run_date()
+        if latest is not None and latest != resolved_date:
+            resolved_date = latest
+            daily = service.get_daily(resolved_date, action_filter)
 
     if not daily:
         raise HTTPException(
@@ -164,16 +238,23 @@ def get_daily(
     total = buy_count = watch_count = 0
 
     for strategy_name, results in daily.items():
-        # get run_id from first result's run
-        run_id = results[0].recommendation_run_id if results else None
-        # fetch run to get run id cleanly
-        rec_run = service.recommendation_repo.get_latest_run_by_strategy(strategy_name, as_of_date)
+        rec_run = service.recommendation_repo.get_latest_run_by_strategy(
+            strategy_name, resolved_date
+        )
+        if rec_run is None:
+            continue
+        result_ids = [r.id for r in results]
+        raw_ctx = service.get_execution_context(result_ids)
+        execution_context = {
+            k: RecommendationExecutionContextRead(**v) for k, v in raw_ctx.items()
+        }
         strategies.append(
             DailyStrategyResults(
                 strategy_name=strategy_name,
-                as_of_date=as_of_date,
+                as_of_date=resolved_date,
                 recommendation_run_id=rec_run.id,
                 results=results,  # type: ignore[arg-type]
+                execution_context=execution_context,
             )
         )
         total += len(results)
@@ -181,7 +262,7 @@ def get_daily(
         watch_count += sum(1 for r in results if r.action == "WATCH")
 
     return DailyRecommendationsRead(
-        as_of_date=as_of_date,
+        as_of_date=resolved_date,
         strategies=strategies,
         total_results=total,
         buy_count=buy_count,

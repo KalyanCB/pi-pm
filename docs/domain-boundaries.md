@@ -14,6 +14,11 @@ app/regime_policy/  → Post-ranking gating replay (research only, Sprint 8.1)
 app/factor_analytics/ → Factor IC analytics (read-only upstream, Sprint 8.2)
 app/workspace_exit_research/ → Exit policy simulation (read-only upstream, Sprint 8.3)
 app/workspace_research_reporting/ → Executive research reports (read-only upstream, Sprint 8.5)
+app/recommendation/ → Conviction scoring and action assignment (Phase 2, deterministic)
+app/portfolio/      → Exit monitor, reconciliation, analytics (Phase 2)
+app/execution/      → Unified execution adapter, state machine (paper + live stub)
+app/copilot/        → Explain-only Q&A over persisted engine output (read-only retrieval)
+app/auth/           → JWT helpers and RBAC role/permission constants
 app/backtest/       → Historical ranking replayer
 app/market_data/    → Bar loading cache (shared infrastructure)
 app/services/       → Orchestration and persistence
@@ -108,13 +113,58 @@ Implemented in `app/services/traceability_service.py` and repositories — **ins
 
 **Must NOT:** Alter ranking scores, validation IC, or policy decisions.
 
-## Explicitly Out of Scope (All Sprints to Date)
+## Recommendation Domain (`app/recommendation/`) — Phase 2
 
-- Portfolio management (tables exist, services stubbed)
-- Risk officer logic
-- Trade execution
-- LLM / LangGraph integration (planned Sprint 8.3)
-- Live regime policy activation
+**Owns:**
+- Deterministic conviction scoring (`conv_v1.1.0`)
+- Action assignment (BUY / WATCH / HOLD / REJECT / EXIT_APPROVED)
+- Reason codes for non-BUY outcomes
+
+**Inputs (read-only):** ranking results, validation status, regime posture, portfolio slot state.
+
+**Must NOT:**
+- Import LLM or committee outputs into conviction or action
+- Place trades or mutate portfolio positions directly (delegates to execution via services)
+
+## Portfolio Domain (`app/portfolio/`, `app/services/portfolio_*.py`) — Phase 2
+
+**Owns:**
+- Position ledger, cash ledger, NAV snapshots
+- Reconciliation, exit monitor, attribution analytics
+- Slot and sector limit enforcement
+
+**Must NOT:**
+- Rerank securities or recompute conviction
+- Call broker APIs directly (uses `ExecutionService`)
+
+## Execution Domain (`app/execution/`) — Phase 2
+
+**Owns:**
+- Unified order lifecycle (paper + live adapter protocol)
+- State machine transitions and execution audit trail
+- Idempotent `client_order_id` handling
+
+**Must NOT:**
+- Approve recommendations (requires prior HITL approval row)
+- Modify conviction or ranking
+
+## Copilot Domain (`app/copilot/`) — Phase 2
+
+**Owns:**
+- Intent classification, grounded retrieval, citation validation
+- Refusal patterns for trade/override/pick requests
+
+**Must NOT:**
+- Write to recommendation, portfolio, or execution tables
+- Influence ranking, conviction, or trade approval
+
+## Explicitly Out of Scope
+
+- **Live broker execution** — Zerodha adapter is a contract stub; `enable_live_trading` defaults false
+- **Risk pre-trade gates (AC-RISK)** — not implemented
+- **LLM ranking / sizing / trade approval** — G8 non-goals (unchanged)
+- **Live regime policy activation** — research replay only (Sprint 8.1)
+- **Copilot trade execution** — explain-only by design
 
 ## Sprint 3.1 Additions
 

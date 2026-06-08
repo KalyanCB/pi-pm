@@ -1,0 +1,14 @@
+experiment_id: EXP11_SLOTS_15
+name: "Stress: max_positions=15"
+mode: AUTONOMOUS_RCEE
+start_date: "2022-01-01"
+end_date: "2026-06-05"
+strategies: [breakout_v1, momentum_v1, reversal_v1]
+capital:
+  initial_cash: 1000000
+  monthly_contribution: 0
+portfolio:
+  max_positions: 15
+  max_buy_slots: 7
+outputs:
+  output_dir: "docs/experiments/results"

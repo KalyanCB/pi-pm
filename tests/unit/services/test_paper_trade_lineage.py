@@ -69,7 +69,8 @@ def test_entry_sets_ranking_run_id(db_session):
 
     latest_bar = MagicMock()
     latest_bar.close = 2500.0
-    svc.market_data_repo.get_latest_market_data = MagicMock(return_value=latest_bar)
+    # _fill_price now calls get_by_stock_and_date_range (returns a list of bars)
+    svc.market_data_repo.get_by_stock_and_date_range = MagicMock(return_value=[latest_bar])
 
     trade = svc.execute_entry(
         recommendation_result_id=result.id,

@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.constants import RecommendationAction, RecommendationRunStatus
@@ -100,6 +100,26 @@ class RecommendationRepository:
                 )
             ).all()
         )
+
+    def get_latest_run_date(self) -> date | None:
+        """Most recent completed recommendation run date."""
+        return self.db.scalar(
+            select(func.max(RecommendationRun.as_of_date)).where(
+                RecommendationRun.status == RecommendationRunStatus.COMPLETED.value,
+            )
+        )
+
+    def list_available_dates(self, strategy_name: str | None = None) -> list[date]:
+        """Distinct completed recommendation run dates, newest first."""
+        q = (
+            select(RecommendationRun.as_of_date)
+            .where(RecommendationRun.status == RecommendationRunStatus.COMPLETED.value)
+            .distinct()
+            .order_by(RecommendationRun.as_of_date.desc())
+        )
+        if strategy_name:
+            q = q.where(RecommendationRun.strategy_name == strategy_name)
+        return list(self.db.scalars(q).all())
 
     def get_run_by_ranking_run_id(self, ranking_run_id: UUID) -> RecommendationRun | None:
         return self.db.scalar(

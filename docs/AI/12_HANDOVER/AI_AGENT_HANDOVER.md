@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-04  
 **Repo:** `/Users/kalyancb/pi-pm`  
-**Branch:** `feature/see-v2` · **Migration:** `20260609_0018` · **Tests:** 312 passed
+**Branch:** `feature/see-v2` · **Migration:** `20260610_0026` · **Tests:** 574 passed
 
 ---
 

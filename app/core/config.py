@@ -86,6 +86,50 @@ class Settings(BaseSettings):
     jwt_refresh_token_days: int = 7
     auth_bypass_for_tests: bool = False
 
+    # CORS — comma-separated browser origins (local UI preview + Expo web dev)
+    cors_allowed_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:8081,http://127.0.0.1:8081"
+    )
+
+    # Execution platform (Track K)
+    enable_live_trading: bool = False
+    kite_api_key: str = ""
+    kite_api_secret: str = ""
+    kite_access_token: str = ""
+
+    # ── Human-In-The-Loop (HITL) feature flag ────────────────────────────────
+    # True  = require explicit human approval before any BUY is executed (default, production)
+    # False = auto-approve BUYs after recommendation + committee review (paper trading mode)
+    # Set HITL_ENABLED=false in .env to enable autonomous paper trading.
+    hitl_enabled: bool = True
+
+    # ── Paper trading mode ────────────────────────────────────────────────────
+    # True  = execute paper trades in daily batch when HITL_ENABLED=false
+    # False = generate recommendations only, no execution
+    paper_trading_enabled: bool = False
+
+    # ── ADR-033: Intraday exit monitor ────────────────────────────────────────
+    # T1 intraday price monitor (stop_loss + trailing_stop).
+    # For paper mode uses last known close as LTP proxy.
+    # For live, inject a real QuoteProvider (Kite adapter).
+    intraday_exit_monitor_enabled: bool = False
+    intraday_interval_sec: int = 300  # poll cadence when run by a scheduler
+
+    # Advisory stop — creates PENDING exit + notifies owner (HITL required).
+    advisory_stop_pct: float = -8.0   # unrealized % vs avg_cost; e.g. -8.0
+
+    # Critical stop — bypasses HITL; only when auto_exit_on_critical_stop=true.
+    critical_stop_pct: float = -10.0  # e.g. -10.0
+
+    # Whether the critical stop fires an automatic SELL (no HITL).
+    # PO must explicitly enable. Never auto-enabled.
+    auto_exit_on_critical_stop: bool = False
+
+
+def parse_cors_origins(value: str) -> list[str]:
+    return [origin.strip() for origin in value.split(",") if origin.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:

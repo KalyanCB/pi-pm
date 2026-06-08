@@ -1,8 +1,9 @@
 # Requirements Traceability Matrix
 
-**Date:** 2026-06-05  
-**Requirements source:** [`docs/AI/01_PRODUCT/PRD.md`](../AI/01_PRODUCT/PRD.md)  
-**Verification:** Code modules + pytest paths
+**Date:** 2026-06-05 (updated post Phase 2)  
+**Requirements source:** [`docs/AI/01_PRODUCT/PRD.md`](../AI/01_PRODUCT/PRD.md), [`docs/product-next/`](../product-next/INDEX.md)  
+**Verification:** Code modules + pytest paths (**574 passed**)  
+**Full audit:** [`docs/audit/REQUIREMENTS_TRACEABILITY_MATRIX.md`](../audit/REQUIREMENTS_TRACEABILITY_MATRIX.md)
 
 ---
 
@@ -38,7 +39,7 @@
 
 | Out-of-scope item | Code check | Status |
 |-------------------|------------|--------|
-| Live broker execution | `app/execution/` placeholder only | **Correctly absent** |
+| Live broker execution | `app/execution/adapters/zerodha_kite.py` stub only | **Correctly gated** — paper adapter production |
 | LLM-generated rankings | Rankings only in `app/ranking/` | **Correctly absent** |
 | Auto-promote ARGS_QRC_USE_SQE | Default `false` in config | **Correctly gated** |
 | Ranking v2 in production | Only in `app/ranking_research/` | **Correctly absent** |
@@ -53,9 +54,13 @@
 | Ranking calibration research | `app/ranking_research/` | `tests/unit/ranking_research/*` | Met (research) |
 | Regime policy replay | `app/regime_policy/` | `tests/unit/regime_policy/*` | Met (research API) |
 | Committee effectiveness metrics | `app/args/analytics/committee_effectiveness.py` | `test_committee_effectiveness.py` | Met |
-| Paper trading | Models only | None | **Orphan req** — tables without services |
-| Portfolio construction | Not implemented | None | **Orphan req** |
-| Mobile app | Not in repo | None | **Orphan req** |
+| Paper trading (Phase 2) | `app/execution/`, `PaperPilotOps` | `test_paper_pilot_ops.py`, `test_execution_service.py` | **Met** (paper path; no E2E) |
+| Portfolio engine (Phase 2) | `app/services/portfolio_service.py`, `app/portfolio/` | 7 unit test files | **Partial** — multi-tenant gaps on NAV/cash |
+| JWT auth (ADR-027) | `app/auth/`, `app/services/auth_service.py` | `test_auth_api.py`, `test_tenant_isolation.py` | **Met** (production secret checklist pending) |
+| Frontend investor app | `frontend/` monorepo | component + route tests | **Partial** — 8/10 screens |
+| Pilot command center | `app/services/pilot_command_center_service.py` | `test_pilot_command_center.py` | **Met** |
+| Copilot explain-only | `app/copilot/`, `app/services/copilot_service.py` | 5 unit test files | **Met** |
+| Risk controls (AC-RISK) | Not implemented | None | **Missing** |
 | AI research agent Sprint 8.4 | Not in `app/` | None | **Orphan req** — doc only |
 
 ---
@@ -94,7 +99,9 @@ flowchart LR
   PRD --> SEE[stock_setup_evidence]
   ROADMAP[ROADMAP extras] -.-> OA[outcome_attribution]
   ROADMAP -.-> RR[ranking_research]
-  ROADMAP -.->|missing| PORT[portfolio stub]
+  ROADMAP --> REC[app/recommendation]
+  ROADMAP --> PORT[app/portfolio]
+  ROADMAP --> EXEC[app/execution]
 ```
 
 ---
@@ -104,7 +111,8 @@ flowchart LR
 | Item | PRD/doc | Code |
 |------|---------|------|
 | Sprint 8.4 AI agent | Listed in PRODUCT_STATUS in progress | **No implementation found** — classify as doc-only |
-| "312 tests" | Handover | 312 collected 2026-06-05 ✓ |
+| Test count | Handover / IMPLEMENTATION_SUMMARY | **574 passed** 2026-06-05 (`pytest tests/ -q`) |
+| Paper/portfolio stub | PLATFORM-HANDOFF Jun 4 | **Stale** — services shipped Jun 5 |
 
 ---
 

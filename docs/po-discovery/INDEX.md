@@ -9,7 +9,9 @@
 
 ## Purpose
 
-Onboarding pack for a new Product Owner. Each document is evidence-backed from code scans and test collection (312 tests, `pytest --collect-only`, 2026-06-05). Where legacy docs disagree with code, discrepancies are flagged inline.
+Onboarding pack for a new Product Owner. **Rescored 2026-06-05** after Phase 2 (recommendation, portfolio, auth, frontend). **574 tests passed** (`pytest tests/ -q`). Authoritative verification: [`docs/audit/Executive_Summary.md`](../audit/Executive_Summary.md).
+
+**Stale pack entries (pre-Phase 2):** `10_RECOMMENDATION_ENGINE_GAP_ANALYSIS.md`, `11_PORTFOLIO_ENGINE_GAP_ANALYSIS.md`, `12_MOBILE_READINESS_ASSESSMENT.md` — use audit reports instead.
 
 ---
 
@@ -25,12 +27,11 @@ Onboarding pack for a new Product Owner. Each document is evidence-backed from c
 | 6 | [04_API_CATALOG.md](./04_API_CATALOG.md) | 30 min | HTTP surface for integrations |
 | 7 | [05_DATA_PIPELINE_INVENTORY.md](./05_DATA_PIPELINE_INVENTORY.md) | 25 min | Batch and research pipelines |
 | 8 | [06_AI_AND_AGENT_INVENTORY.md](./06_AI_AND_AGENT_INVENTORY.md) | 25 min | LLM boundaries and ARGS |
-| 9 | [10_RECOMMENDATION_ENGINE_GAP_ANALYSIS.md](./10_RECOMMENDATION_ENGINE_GAP_ANALYSIS.md) | 20 min | Buy/hold/exit signal gaps |
-| 10 | [11_PORTFOLIO_ENGINE_GAP_ANALYSIS.md](./11_PORTFOLIO_ENGINE_GAP_ANALYSIS.md) | 15 min | Paper trade / portfolio stubs |
-| 11 | [07_TEST_COVERAGE_ASSESSMENT.md](./07_TEST_COVERAGE_ASSESSMENT.md) | 15 min | Test distribution and holes |
+| 9 | [../audit/Executive_Summary.md](../audit/Executive_Summary.md) | 20 min | **Current** AUDIT-01 verification |
+| 10 | [07_TEST_COVERAGE_ASSESSMENT.md](./07_TEST_COVERAGE_ASSESSMENT.md) | 15 min | Tests (also `audit/TEST_COVERAGE_AUDIT.md`) |
 | 12 | [08_TECHNICAL_DEBT_REGISTER.md](./08_TECHNICAL_DEBT_REGISTER.md) | 15 min | Known structural debt |
 | 13 | [09_REQUIREMENTS_TRACEABILITY_MATRIX.md](./09_REQUIREMENTS_TRACEABILITY_MATRIX.md) | 20 min | PRD → code → tests |
-| 14 | [12_MOBILE_READINESS_ASSESSMENT.md](./12_MOBILE_READINESS_ASSESSMENT.md) | 15 min | No mobile app; API readiness |
+| 14 | [../frontend/docs/FEATURE_INTEGRATION_REPORT.md](../frontend/docs/FEATURE_INTEGRATION_REPORT.md) | 15 min | Frontend web + mobile (replaces stale mobile assessment) |
 | 15 | [13_ROADMAP_RECOMMENDATION.md](./13_ROADMAP_RECOMMENDATION.md) | 20 min | P0–P3 from actual state |
 | 16 | [14_PO_QUESTIONS_FOR_FOUNDER.md](./14_PO_QUESTIONS_FOR_FOUNDER.md) | 10 min | Unknowns not in code |
 
@@ -69,9 +70,11 @@ Onboarding pack for a new Product Owner. Each document is evidence-backed from c
 | 5 committees + CRO; Phase 2 packet views | `app/workspace_args/constants.py`, `app/args/committee_packet_views.py` |
 | SQE on packets; `ARGS_QRC_USE_SQE=false` default | `app/args/plugins/stock_quality_evidence.py`, `app/core/config.py:79` |
 | `outcome_attribution`, `ranking_research` modules | `app/outcome_attribution/`, `app/ranking_research/` |
-| Paper trade / portfolio tables; no services | `app/models/paper_trade.py`, `app/portfolio/__init__.py` |
-| Migration head `20260609_0018` | `migrations/versions/20260609_0018_see_v2_metrics.py` |
-| Tests: **312 collected** | `pytest tests/ --collect-only -q` (2026-06-05) |
+| Phase 2 recommendation + portfolio + execution | `app/recommendation/`, `app/portfolio/`, `app/execution/` |
+| JWT auth on domain APIs | `app/api/router.py`, migration `20260610_0025` |
+| Frontend monorepo (web + mobile) | `frontend/apps/web`, `frontend/apps/mobile` |
+| Migration head `20260610_0026` | `migrations/versions/20260610_0026_unified_execution.py` |
+| Tests: **574 passed** | `pytest tests/ -q` (2026-06-05) |
 
 ---
 
