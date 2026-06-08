@@ -1,0 +1,65 @@
+# Production overlay for Hostinger KVM4 (srv1733992 / 187.127.177.217).
+# Paper auto-pilot, public IP behind a Caddy reverse proxy.
+#
+# Usage (project-directory must be the docker/ dir so the base file's
+# `env_file: ../.env` and `context: ..` resolve to the release root):
+#   REL=/opt/pi-pm/current
+#   docker compose -p pipm --project-directory "$REL/docker" \
+#     -f "$REL/docker/docker-compose.yml" -f "$REL/docker/docker-compose.prod.yml" up -d --build
+#
+# Requires a root .env (see deploy/.env.api.example) providing at least:
+#   POSTGRES_PASSWORD, RELEASE_TAG, PUBLIC_HOST  + the app flags.
+#
+# Security model:
+#   - Postgres 5432 is NOT published to the host/internet (intra-network only).
+#   - API 8000 is NOT published either; only Caddy (same Docker network) reaches it.
+#   - Only Caddy publishes :80 to the world. UFW should allow 22 + 80 only.
+
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Remove the dev port publish (base file maps 5432:5432). Internal only.
+    ports: !reset []
+    expose:
+      - "5432"
+    restart: unless-stopped
+
+  api:
+    image: pipm-api:${RELEASE_TAG:-local}
+    environment:
+      DATABASE_URL: postgresql+psycopg://pipm:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/pipm
+      APP_ENV: production
+      DEBUG: "false"
+    # Remove the dev port publish (base file maps 8000:8000). Caddy proxies it.
+    ports: !reset []
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    volumes:
+      # Paths are relative to the project directory = the docker/ dir
+      # (compose is invoked with --project-directory <release>/docker), so
+      # ".." points at the release root.
+      - ../deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../frontend/apps/web/dist:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

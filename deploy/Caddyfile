@@ -1,0 +1,31 @@
+# Single public origin for Pi-PM — IP only, HTTP (no domain => no auto-HTTPS).
+#   /api/*  -> FastAPI container (api:8000)
+#   /*      -> Expo-web static export (SPA), served from /srv
+#
+# Same-origin design means the frontend uses EXPO_PUBLIC_API_BASE_URL=/api/v1
+# and there is no cross-origin (CORS) concern.
+
+{
+	auto_https off
+}
+
+:80 {
+	encode gzip
+
+	# API -> FastAPI on the compose network.
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Frontend static build with SPA fallback to index.html.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
