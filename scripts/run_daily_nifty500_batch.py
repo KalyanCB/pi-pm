@@ -23,6 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force-recompute", action="store_true")
     parser.add_argument("--force-regenerate-rankings", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--portfolio",
+        action="store_true",
+        help="Run the portfolio/paper-pilot phase (sets phases.portfolio=true). "
+        "Paper auto-approve/execute are server-side when HITL off + paper on.",
+    )
     parser.add_argument("--assume-session-done", action="store_true", default=True)
     parser.add_argument("--no-assume-session-done", action="store_false", dest="assume_session_done")
     parser.add_argument("--timeout", type=float, default=7200.0)
@@ -53,6 +59,9 @@ def main() -> int:
         # Recommendations always run with rankings
         payload.setdefault("phases", {})
         payload["phases"]["recommendations"] = True
+        # Portfolio/paper-pilot phase only when explicitly requested
+        if args.portfolio:
+            payload["phases"]["portfolio"] = True
         response = client.post(API_PATH, json=payload)
         response.raise_for_status()
         print(json.dumps(response.json(), indent=2, default=str))
