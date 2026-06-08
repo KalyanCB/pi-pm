@@ -689,7 +689,14 @@ class DailyBatchService:
         trace: DailyBatchTraceabilityRecorder,
     ) -> dict:
         universe = self.backtest_service.universe_repo.list_stocks_in_universe(request.universe_code)
-        symbols = sorted({s.symbol for s in universe})
+        # Always ingest the benchmark (e.g. ^NSEI) alongside the universe. The
+        # trading-day resolver and ranking key off the benchmark's latest date,
+        # so if it lags the universe the daily run gaps at ranking. Including it
+        # here keeps the benchmark current as part of the daily ingest.
+        symbol_set = {s.symbol for s in universe}
+        if request.benchmark_symbol:
+            symbol_set.add(request.benchmark_symbol)
+        symbols = sorted(symbol_set)
         totals = {
             "batches": 0,
             "symbols_succeeded": 0,
