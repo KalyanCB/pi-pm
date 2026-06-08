@@ -192,6 +192,8 @@ def build_rc_view(payload: dict[str, Any]) -> dict[str, Any]:
         "scope_note": (
             "RC mandate: drawdown, regime risk, liquidity, concentration, veto themes. "
             "Strengths must not mirror TARC bullish factors. "
-            "Cite risk:*, stock_setup_evidence:*, market_snapshot:*, portfolio_context:*, regime:*."
+            "supporting_evidence refs MUST use exactly: risk_drawdown:, market_snapshot:, "
+            "concentration_context:, regime_risk:, risk:, stock_setup_evidence:, portfolio_context:, regime:. "
+            "Do NOT use ranking:, quant_evidence:, validation:, or technical_factors: prefixes."
         ),
     }

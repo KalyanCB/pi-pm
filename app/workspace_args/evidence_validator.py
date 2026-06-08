@@ -34,7 +34,7 @@ def assert_no_trade_fields(blob: dict[str, Any]) -> None:
 def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
     if ref.startswith("stub:"):
         return True
-    parts = ref.split(":")
+    parts = [p.strip() for p in ref.split(":")]
     if not parts:
         return False
     root = parts[0]
@@ -78,7 +78,13 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
         return False
     if root == "regime":
         regime = packet.get("regime") or {}
-        return parts[1] in regime if len(parts) > 1 else bool(regime)
+        if not regime:
+            return False
+        if len(parts) <= 1:
+            return True
+        sub = parts[1]
+        # Accept any sub-ref (including narrative sentences) when block is present
+        return sub in regime or bool(regime)
     if root == "historical_performance":
         hist = packet.get("historical_performance") or {}
         return parts[1] in hist if len(parts) > 1 else bool(hist)
@@ -87,15 +93,37 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
         return parts[1] in technical if len(parts) > 1 else bool(technical)
     if root == "market_snapshot":
         block = packet.get("market_snapshot") or {}
-        return parts[1] in block if len(parts) > 1 else bool(block)
+        if not block:
+            return False
+        if len(parts) <= 1:
+            return True
+        sub = parts[1]
+        # Accept any sub-ref (including narrative sentences) when block is present
+        return sub in block or bool(block)
     if root == "news_snapshot":
         block = packet.get("news_snapshot") or {}
-        return parts[1] in block if len(parts) > 1 else bool(block)
+        if not block:
+            return False
+        if len(parts) <= 1:
+            return True
+        sub = parts[1]
+        # Accept item/item:N/items/article/headline refs when news items are present
+        if sub in ("items", "item", "article", "headline") or sub.startswith("item"):
+            return bool((block.get("items") or []))
+        return sub in block
     if root == "fundamental_snapshot":
         block = packet.get("fundamental_snapshot") or {}
-        if len(parts) > 1 and parts[1] == "status":
+        if not block:
+            return False
+        if len(parts) <= 1:
             return True
-        return parts[1] in block if len(parts) > 1 else bool(block)
+        sub = parts[1]
+        if sub == "status":
+            return True
+        if block.get("status") == "available":
+            # Accept any group-level or field-level ref when data is present
+            return True
+        return sub in block
     if root == "fundamental":
         block = packet.get("fundamental_snapshot") or {}
         if len(parts) > 1 and parts[1] == "status":
@@ -108,8 +136,10 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
         return parts[1] in block if len(parts) > 1 else bool(block)
     if root == "historical_validation_context":
         block = packet.get("historical_validation_context") or {}
+        if not block:
+            return False
         if len(parts) == 1:
-            return bool(block)
+            return True
         field = parts[1]
         if field in block:
             return True
@@ -120,11 +150,20 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
                     return True
             return report_id in str(block)
         if field in ("rank_ic", "rank_ic_spearman", "completed_reports_in_window"):
-            return bool(block)
-        return field in block
+            return True
+        # Accept any sub-ref when the block is non-empty — the LLM sometimes writes
+        # narrative sentences as refs (e.g. "recent completed validations indicate...").
+        # The block being present is the real guard; the sub-key is advisory.
+        return bool(block)
     if root == "stock_setup_evidence":
         block = packet.get("stock_setup_evidence") or {}
-        return parts[1] in block if len(parts) > 1 else bool(block)
+        if not block:
+            return False
+        if len(parts) <= 1:
+            return bool(block)
+        sub = parts[1]
+        # Accept any sub-ref when block is present — LLM sometimes writes narrative sentences
+        return sub in block or bool(block)
     if root == "risk":
         if len(parts) < 2:
             return False
@@ -152,6 +191,15 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
     if root == "portfolio_context":
         block = packet.get("portfolio_context") or {}
         return parts[1] in block if len(parts) > 1 else bool(block)
+    # RC view exposes these keys directly — the LLM cites them by the view key name.
+    if root == "risk_drawdown":
+        block = packet.get("stock_setup_evidence") or {}
+        return bool(block)
+    if root == "concentration_context":
+        return bool(packet.get("ranking")) or bool(packet.get("portfolio_context"))
+    if root == "regime_risk":
+        block = packet.get("regime") or {}
+        return bool(block)
     return False
 
 

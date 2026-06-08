@@ -29,7 +29,7 @@ export interface RecommendationDetailScreenProps {
 export function RecommendationDetailScreen({ symbol, runId }: RecommendationDetailScreenProps) {
   const theme = useTheme();
   const openCopilot = useUiStore((s) => s.openCopilotWithQuestion);
-  const { result, committeeAdvisory, machineAction, isLoading, isError, error, refetch } =
+  const { result, committeeAdvisory, committeeFindings, machineAction, isLoading, isError, error, refetch } =
     useRecommendationDetail(symbol, runId);
   const trust = useTrustQuery();
   const approve = useApproveRecommendation();
@@ -93,7 +93,11 @@ export function RecommendationDetailScreen({ symbol, runId }: RecommendationDeta
           {committeeAdvisory && (
             <View style={[styles.section, { borderColor: theme.colors.border }]}>
               <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>COMMITTEE ADVISORY</Text>
-              <CommitteeAdvisoryCard advisory={committeeAdvisory} machineAction={machineAction} />
+              <CommitteeAdvisoryCard
+                advisory={committeeAdvisory}
+                machineAction={machineAction}
+                findings={committeeFindings}
+              />
             </View>
           )}
 

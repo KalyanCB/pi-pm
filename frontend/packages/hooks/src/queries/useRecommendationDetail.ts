@@ -46,21 +46,33 @@ export function useRecommendationDetail(symbol: string, runId?: string) {
     enabled: isAuthenticated && !!reviewId,
   });
 
+  const explainQuery = useQuery({
+    queryKey: queryKeys.committee.explain(reviewId ?? 'none'),
+    queryFn: () => api.committee.getExplain(reviewId!),
+    enabled: isAuthenticated && !!reviewId,
+  });
+
   const packet = packetQuery.data?.[0];
   const result = detailQuery.data;
 
   const stockId = result?.stock_id;
   const resolvedSymbol = stockId ? (symbolMap.get(stockId) ?? symbol) : symbol;
 
+  // Per-committee findings for this symbol from the explain endpoint
+  const committeeFindings = (explainQuery.data?.committee_reviews ?? []).filter(
+    (r) => r.symbol === symbol || r.symbol === resolvedSymbol,
+  );
+
   return {
     result,
     symbol: resolvedSymbol,
     runId: resolvedRunId,
     committeeAdvisory: packet?.payload.committee_advisory ?? null,
+    committeeFindings,
     machineAction: packet?.payload.recommendation?.action,
     isLoading: detailQuery.isLoading || packetQuery.isLoading,
     isError: detailQuery.isError,
     error: detailQuery.error,
-    refetch: () => Promise.all([detailQuery.refetch(), packetQuery.refetch()]),
+    refetch: () => Promise.all([detailQuery.refetch(), packetQuery.refetch(), explainQuery.refetch()]),
   };
 }

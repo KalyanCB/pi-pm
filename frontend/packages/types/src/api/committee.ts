@@ -24,6 +24,20 @@ export interface CommitteePacket {
   built_at: string;
 }
 
+export interface CommitteeReviewFinding {
+  committee_code: string;
+  symbol: string;
+  findings: string;
+  confidence: number | null;
+  supporting_evidence: Array<{ ref: string; note?: string }>;
+}
+
+export interface CommitteeExplainResponse {
+  research_run_id: string;
+  status: string;
+  committee_reviews: CommitteeReviewFinding[];
+}
+
 export interface CommitteeReviewSummary {
   run_id: string;
   status: string;

@@ -468,6 +468,21 @@ def _load_historical_validation_context(
         start_date=start,
         end_date=as_of_date,
     )
+
+    # If no completed reports in the primary window (common for current-date ranking
+    # runs where forward horizons are not yet observable), fall back to the most
+    # recent completed reports regardless of age so QRC has real validation evidence.
+    using_fallback = False
+    if not reports:
+        reports = validation_repo.list_completed_with_runs(
+            universe_code=universe_code,
+            strategy_name=strategy_name,
+            strategy_version=strategy_version,
+            start_date=None,
+            end_date=as_of_date,
+        )
+        using_fallback = True
+
     recent: list[dict[str, Any]] = []
     for report in reports[-_MAX_HISTORICAL_VALIDATION_REPORTS:]:
         run = report.ranking_run
@@ -484,14 +499,21 @@ def _load_historical_validation_context(
             }
         )
 
+    note = (
+        "Historical completed validations supply QRC context when the current run "
+        "is pending (forward horizons not yet available)."
+    )
+    if using_fallback and recent:
+        note += (
+            " No completed reports in the primary window; showing oldest available "
+            "completed reports — regime may differ from current conditions."
+        )
+
     return {
         "lookback_days": _HISTORICAL_VALIDATION_LOOKBACK_DAYS,
-        "completed_reports_in_window": len(reports),
+        "completed_reports_in_window": len(reports) if not using_fallback else 0,
         "recent_completed_validations": recent,
-        "note": (
-            "Historical completed validations supply QRC context when the current run "
-            "is pending (forward horizons not yet available)."
-        ),
+        "note": note,
     }
 
 

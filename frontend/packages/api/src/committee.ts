@@ -1,4 +1,4 @@
-import type { CommitteePacket, CommitteeReviewSummary } from '@pipm/types';
+import type { CommitteeExplainResponse, CommitteePacket, CommitteeReviewSummary } from '@pipm/types';
 import { ApiError } from './errors';
 import type { ApiClient } from './client';
 
@@ -23,6 +23,9 @@ export function createCommitteeApi(client: ApiClient) {
       return client.get<CommitteePacket[]>(`/investment-committee/${reviewId}/packets`, {
         params: { symbol },
       });
+    },
+    getExplain(reviewId: string) {
+      return client.get<CommitteeExplainResponse>(`/investment-committee/${reviewId}/explain`);
     },
     getReport(reviewId: string) {
       return client.get<{

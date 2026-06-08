@@ -21,10 +21,13 @@ COMMITTEE_EVIDENCE_PREFIXES: dict[str, tuple[str, ...]] = {
     "FRC": ("fundamental:", "fundamental_snapshot:"),
     "RC": (
         "risk:",
+        "risk_drawdown:",          # actual view key the LLM sees
         "stock_setup_evidence:",
         "regime:",
+        "regime_risk:",            # actual view key the LLM sees
         "market_snapshot:",
         "portfolio_context:",
+        "concentration_context:",  # actual view key the LLM sees
     ),
 }
 
