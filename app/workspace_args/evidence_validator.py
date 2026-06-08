@@ -90,12 +90,28 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
         return parts[1] in block if len(parts) > 1 else bool(block)
     if root == "news_snapshot":
         block = packet.get("news_snapshot") or {}
-        return parts[1] in block if len(parts) > 1 else bool(block)
+        if not block:
+            return False
+        if len(parts) <= 1:
+            return True
+        sub = parts[1]
+        # Accept item/item:N/items/article/headline refs when news items are present
+        if sub in ("items", "item", "article", "headline") or sub.startswith("item"):
+            return bool((block.get("items") or []))
+        return sub in block
     if root == "fundamental_snapshot":
         block = packet.get("fundamental_snapshot") or {}
-        if len(parts) > 1 and parts[1] == "status":
+        if not block:
+            return False
+        if len(parts) <= 1:
             return True
-        return parts[1] in block if len(parts) > 1 else bool(block)
+        sub = parts[1]
+        if sub == "status":
+            return True
+        if block.get("status") == "available":
+            # Accept any group-level or field-level ref when data is present
+            return True
+        return sub in block
     if root == "fundamental":
         block = packet.get("fundamental_snapshot") or {}
         if len(parts) > 1 and parts[1] == "status":

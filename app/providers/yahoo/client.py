@@ -101,6 +101,87 @@ class YahooFinanceProvider:
 
         return bars
 
+    def fetch_fundamentals(self, symbol: str) -> dict:
+        """Fetch key fundamental metrics for a symbol via yfinance.
+
+        Returns a fundamental_snapshot dict with groups: profitability, valuation,
+        balance_sheet, growth, market. Returns {"status": "unavailable"} on failure.
+        """
+        _FIELD_GROUPS = {
+            "profitability": [
+                "grossMargins", "operatingMargins", "profitMargins",
+                "returnOnEquity", "returnOnAssets",
+            ],
+            "valuation": [
+                "trailingPE", "forwardPE", "priceToBook",
+                "trailingEps", "forwardEps", "marketCap",
+            ],
+            "balance_sheet": [
+                "currentRatio", "quickRatio", "debtToEquity",
+                "totalDebt", "freeCashflow", "totalRevenue", "netIncomeToCommon",
+            ],
+            "growth": [
+                "revenueGrowth", "earningsGrowth",
+            ],
+            "market": [
+                "beta", "52WeekChange", "dividendYield",
+            ],
+        }
+        try:
+            ticker = yf.Ticker(symbol)
+            info = ticker.info or {}
+        except Exception:
+            logger.exception("Yahoo fundamentals fetch failed for %s", symbol)
+            return {"status": "unavailable"}
+
+        groups: dict[str, dict] = {}
+        for group, fields in _FIELD_GROUPS.items():
+            values = {f: info[f] for f in fields if info.get(f) is not None}
+            if values:
+                groups[group] = values
+
+        if not groups:
+            return {"status": "unavailable"}
+
+        return {"status": "available", "source": "yfinance", **groups}
+
+    def fetch_news(self, symbol: str, max_items: int = 10) -> dict:
+        """Fetch recent news headlines for a symbol via yfinance.
+
+        Returns {"status": "available", "items": [...]} or {"status": "unavailable", "items": []}.
+        """
+        try:
+            ticker = yf.Ticker(symbol)
+            raw = ticker.news or []
+        except Exception:
+            logger.exception("Yahoo news fetch failed for %s", symbol)
+            return {"status": "unavailable", "items": [], "source": "yfinance"}
+
+        items = []
+        for entry in raw[:max_items]:
+            content = entry.get("content") or entry
+            if not isinstance(content, dict):
+                continue
+            pub_date = content.get("pubDate") or content.get("displayTime")
+            provider = (content.get("provider") or {}).get("displayName", "Unknown")
+            title = content.get("title", "")
+            summary = content.get("summary") or content.get("description") or ""
+            if not title:
+                continue
+            items.append(
+                {
+                    "title": title,
+                    "summary": summary,
+                    "published_at": pub_date,
+                    "source": provider,
+                    "url": (content.get("canonicalUrl") or {}).get("url"),
+                }
+            )
+
+        if not items:
+            return {"status": "unavailable", "items": [], "source": "yfinance"}
+        return {"status": "available", "items": items, "fetched_count": len(items), "source": "yfinance"}
+
     def fetch_history_since(
         self,
         symbol: str,
