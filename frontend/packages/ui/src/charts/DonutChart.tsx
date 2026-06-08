@@ -13,6 +13,8 @@ export interface DonutChartProps {
   segments: DonutSegment[];
   size?: number;
   emptyLabel?: string;
+  /** Max number of legend rows to show (default 4). */
+  maxLegend?: number;
 }
 
 const PALETTE = ['#3d8fd1', '#3dba7a', '#d4a017', '#5b9bd5', '#e07b39', '#8b9cb3'];
@@ -30,6 +32,7 @@ export function DonutChart({
   segments,
   size = 160,
   emptyLabel = 'No allocation data',
+  maxLegend = 4,
 }: DonutChartProps) {
   const theme = useTheme();
   const cx = size / 2;
@@ -58,9 +61,9 @@ export function DonutChart({
     return {
       paths,
       total: sum,
-      topLabels: paths.slice(0, 4),
+      topLabels: paths.slice(0, maxLegend),
     };
-  }, [segments, cx, cy, r]);
+  }, [segments, cx, cy, r, maxLegend]);
 
   if (paths.length === 0) {
     return (

@@ -9,8 +9,9 @@ export function useRegimeQuery(asOfDate?: string) {
 
   return useQuery({
     queryKey: queryKeys.regime.current(asOfDate),
+    // No date → current/latest regime (used by dashboard & committee screen).
     queryFn: () => api.observability.getCurrentRegime(asOfDate),
-    enabled: isAuthenticated && !!asOfDate,
+    enabled: isAuthenticated,
     staleTime: 60_000,
   });
 }

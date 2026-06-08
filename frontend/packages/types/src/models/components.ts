@@ -1,5 +1,5 @@
 import type { Action, ConvictionBand, RiskLevel } from '../enums';
-import type { CommitteeAdvisoryOverlay } from '../api/committee';
+import type { CommitteeAdvisoryOverlay, CommitteeReviewFinding } from '../api/committee';
 import type { Citation } from '../api/copilot';
 import type { RiskAlert } from '../api/common';
 
@@ -11,6 +11,7 @@ export interface RecommendationCardProps {
   convictionBand: ConvictionBand;
   reasonCodes: string[];
   committeeAdvisory?: CommitteeAdvisoryOverlay | null;
+  committeeFindings?: CommitteeReviewFinding[];
   layout?: 'card' | 'row';
   embedded?: boolean;
   onPress?: () => void;

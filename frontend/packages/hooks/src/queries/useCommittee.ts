@@ -4,14 +4,17 @@ import type { CommitteePacket } from '@pipm/types';
 import { useApi } from '../ApiProvider';
 import { queryKeys } from '../queryKeys';
 import { useAuthStore } from '../stores/authStore';
+import { useActiveStrategy } from './useActiveStrategy';
 
 export function useCommitteeScreen() {
   const api = useApi();
   const isAuthenticated = useAuthStore((s) => s.status === 'authenticated');
+  // Align the committee review with the current regime's strategy.
+  const { strategy } = useActiveStrategy();
 
   const latest = useQuery({
-    queryKey: queryKeys.committee.latest(),
-    queryFn: () => api.committee.getLatest(),
+    queryKey: queryKeys.committee.latest(undefined, strategy),
+    queryFn: () => api.committee.getLatest(undefined, strategy),
     enabled: isAuthenticated,
     refetchInterval: (query) => {
       const status = query.state.data?.status;

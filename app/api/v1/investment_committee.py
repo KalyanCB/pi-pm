@@ -51,10 +51,18 @@ def start_committee_review(
 @router.get("/latest")
 def latest_committee_review(
     universe_code: str = Query(default="NIFTY_500"),
+    strategy_name: str | None = Query(default=None),
     service: ArgsResearchRunService = Depends(get_args_research_run_service),
 ) -> dict:
-    """Get the latest Investment Committee review."""
-    result = service.get_latest(universe_code=universe_code)
+    """Get the latest Investment Committee review.
+
+    When ``strategy_name`` is provided, returns the latest review for that
+    strategy so committee data aligns with the regime-selected strategy on the
+    client. Omitted → latest review across strategies (back-compat).
+    """
+    result = service.get_latest(
+        universe_code=universe_code, strategy_name=strategy_name
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="No committee review found")
     return result

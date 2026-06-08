@@ -34,7 +34,9 @@ export {
 } from './queries/usePilotHealth';
 export { useRecommendationDetail } from './queries/useRecommendationDetail';
 export { useRegimeQuery } from './queries/useRegime';
+export { useActiveStrategy } from './queries/useActiveStrategy';
 export { useExitMonitorQuery } from './queries/useExitMonitor';
 export { defaultStrategyName, todayIsoDate } from './utils/dates';
+export { strategyForRegime, regimeLabel, REGIME_STRATEGY_MAP } from './utils/regimeStrategy';
 export { formatTrendRegime, formatVolRegime } from './utils/regime';
 export type { SelectedRecommendation } from './stores/uiStore';

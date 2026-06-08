@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useApi } from '../ApiProvider';
 import { queryKeys } from '../queryKeys';
 import { useAuthStore } from '../stores/authStore';
+import { useActiveStrategy } from './useActiveStrategy';
 
 export function useDashboardQuery() {
   const api = useApi();
@@ -30,7 +31,9 @@ export function useTrustQuery(strategyName?: string) {
 
 export function useDashboard() {
   const dashboard = useDashboardQuery();
-  const trust = useTrustQuery();
+  // Trust metrics for the current regime's strategy.
+  const { strategy } = useActiveStrategy();
+  const trust = useTrustQuery(strategy);
 
   return {
     dashboard: dashboard.data,
