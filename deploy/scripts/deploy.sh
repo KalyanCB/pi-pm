@@ -51,7 +51,7 @@ docker run --rm \
 
 echo "==> Build + start stack"
 export RELEASE_TAG="${TAG}"
-COMPOSE=(docker compose -p pipm --project-directory "${RELEASE_DIR}/docker" \
+COMPOSE=(docker compose -p pipm --project-directory "${RELEASE_DIR}/docker" --env-file "${RELEASE_DIR}/.env" \
   -f "${RELEASE_DIR}/docker/docker-compose.yml" \
   -f "${RELEASE_DIR}/docker/docker-compose.prod.yml")
 "${COMPOSE[@]}" build

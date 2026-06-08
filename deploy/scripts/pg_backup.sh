@@ -8,7 +8,7 @@ BASE="/opt/pi-pm"
 OUT_DIR="${BASE}/shared/backups"
 RETAIN_DAYS="${RETAIN_DAYS:-14}"
 REL="$(readlink ${BASE}/current)"
-COMPOSE=(docker compose -p pipm --project-directory "${REL}/docker" \
+COMPOSE=(docker compose -p pipm --project-directory "${REL}/docker" --env-file "${REL}/.env" \
   -f "${REL}/docker/docker-compose.yml" -f "${REL}/docker/docker-compose.prod.yml")
 DB_CID="$("${COMPOSE[@]}" ps -q db)"
 [ -n "${DB_CID}" ] || { echo "$(date -Is) FATAL: db container not found"; exit 1; }
