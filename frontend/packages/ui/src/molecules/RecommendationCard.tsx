@@ -6,6 +6,7 @@ import { Badge } from '../atoms/Badge';
 import { ConvictionBadge } from './ConvictionBadge';
 import { RecommendationReasonList } from './RecommendationReasonList';
 import { HighConcernBanner } from './HighConcernBanner';
+import { CommitteeAdvisoryCard } from './CommitteeAdvisoryCard';
 
 export function RecommendationCard({
   symbol,
@@ -15,6 +16,7 @@ export function RecommendationCard({
   convictionBand,
   reasonCodes,
   committeeAdvisory,
+  committeeFindings = [],
   layout = 'card',
   embedded = false,
   onPress,
@@ -60,17 +62,24 @@ export function RecommendationCard({
         <ConvictionBadge score={convictionScore} band={convictionBand} size="sm" />
       </View>
       <RecommendationReasonList reasonCodes={reasonCodes} />
-      {committeeAdvisory?.high_concern && (
-        <HighConcernBanner
-          committees={committeeAdvisory.high_concern_committees}
-          displayNames={committeeAdvisory.display_names}
-          compact
-        />
+      {committeeAdvisory && isRow && (
+        <>
+          {committeeAdvisory.high_concern && (
+            <HighConcernBanner
+              committees={committeeAdvisory.high_concern_committees}
+              displayNames={committeeAdvisory.display_names}
+              compact
+            />
+          )}
+          {committeeAdvisory.cro_advisory_action && (
+            <Text style={[styles.cro, { color: theme.colors.textSecondary }]}>
+              CRO: {committeeAdvisory.cro_advisory_action}
+            </Text>
+          )}
+        </>
       )}
-      {committeeAdvisory?.cro_advisory_action && (
-        <Text style={[styles.cro, { color: theme.colors.textSecondary }]}>
-          CRO: {committeeAdvisory.cro_advisory_action}
-        </Text>
+      {committeeAdvisory && !isRow && (
+        <CommitteeAdvisoryCard advisory={committeeAdvisory} findings={committeeFindings} />
       )}
     </View>
   );

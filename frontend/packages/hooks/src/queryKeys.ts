@@ -3,8 +3,8 @@ import type { DateRange } from '@pipm/types';
 export const queryKeys = {
   dashboard: (portfolioId?: string | null) =>
     ['portfolio', 'dashboard', portfolioId] as const,
-  trust: (params?: DateRange, portfolioId?: string | null) =>
-    ['analytics', 'trust', params, portfolioId] as const,
+  trust: (strategy?: string, portfolioId?: string | null) =>
+    ['analytics', 'trust', strategy, portfolioId] as const,
   stocks: {
     list: () => ['stocks', 'list'] as const,
   },
@@ -38,7 +38,8 @@ export const queryKeys = {
       ['portfolio', 'exits', asOfDate, includeResolved] as const,
   },
   committee: {
-    latest: (universe?: string) => ['committee', 'latest', universe] as const,
+    latest: (universe?: string, strategy?: string, asOfDate?: string) =>
+      ['committee', 'latest', universe, strategy, asOfDate] as const,
     packets: (id: string) => ['committee', 'packets', id] as const,
     report: (id: string) => ['committee', 'report', id] as const,
     explain: (id: string) => ['committee', 'explain', id] as const,

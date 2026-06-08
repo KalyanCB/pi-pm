@@ -46,7 +46,7 @@ _DEFAULT_CONFIG_BLOB: dict[str, Any] = {
     "engine_version": CONVICTION_ENGINE_VERSION,
     "conviction_config_version": CONVICTION_CONFIG_VERSION,
     "top_pool_size": 20,
-    "max_buy_slots": 5,
+    "max_buy_slots": 10,
     "exceptional_daily_cap": 3,
     "rank_v2_promoted": False,
 }
@@ -346,6 +346,7 @@ class RecommendationService:
         return EngineConfig(
             config_version=CONVICTION_ENGINE_VERSION,
             conviction_config_version=CONVICTION_CONFIG_VERSION,
+            max_buy_slots=10,  # 10 portfolio slots → up to 10 BUYs/day
             regime_posture=regime_posture,
             factor_ic_median=factor_ic,
             rank_v2_promoted=rank_v2_promoted,

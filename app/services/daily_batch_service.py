@@ -573,11 +573,6 @@ class DailyBatchService:
         for row in buys:
             by_stock[row.stock_id].append(row)
 
-        # Collect IDs to downgrade, then use a bulk SQL UPDATE to avoid
-        # ORM StaleDataError when rows were inserted in the same session.
-        from sqlalchemy import update as sa_update
-        from sqlalchemy.dialects.postgresql import JSONB
-
         ids_to_downgrade = []
         for stock_id, rows in by_stock.items():
             if len(rows) <= 1:
@@ -587,23 +582,26 @@ class DailyBatchService:
                 ids_to_downgrade.append(row.id)
 
         if ids_to_downgrade:
-            # Use raw SQL UPDATE to avoid ORM identity-map stale-state issues
-            from sqlalchemy import text as sa_text
-            for row_id in ids_to_downgrade:
-                self.db.execute(sa_text("""
-                    UPDATE recommendation_results
-                    SET action = 'WATCH',
-                        reason_codes = CASE
-                            WHEN reason_codes::text NOT LIKE :dup_marker
-                            THEN reason_codes || :new_reason::jsonb
-                            ELSE reason_codes
-                        END
-                    WHERE id = :row_id
-                """), {
-                    "dup_marker": f"%{REC_REASON_CROSS_STRATEGY_DUPLICATE}%",
-                    "new_reason": f'["{REC_REASON_CROSS_STRATEGY_DUPLICATE}"]',
-                    "row_id": row_id,
-                })
+            # Downgrade duplicates via the ORM. The previous raw-SQL UPDATE used
+            # `::jsonb`/`::text` casts which psycopg3 rejects ("syntax error at
+            # or near ':'"). Re-fetch the (freshly-inserted) rows and mutate them
+            # in place — JSONB reason_codes is a Python list at the ORM layer.
+            rows_to_fix = (
+                self.db.execute(
+                    select(RecommendationResult).where(
+                        RecommendationResult.id.in_(ids_to_downgrade)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for rec in rows_to_fix:
+                rec.action = "WATCH"
+                codes = list(rec.reason_codes or [])
+                if REC_REASON_CROSS_STRATEGY_DUPLICATE not in codes:
+                    codes.append(REC_REASON_CROSS_STRATEGY_DUPLICATE)
+                    rec.reason_codes = codes
+            self.db.flush()
 
     def get_run(self, run_id: UUID) -> DailyBatchRunStatusResponse:
         run = self.run_repo.get_by_id(run_id)

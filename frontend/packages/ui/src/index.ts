@@ -22,6 +22,10 @@ export { RecommendationExecutionPanel, type RecommendationExecutionPanelProps } 
 export { ExitMonitorCard, type ExitMonitorCardProps } from './molecules/ExitMonitorCard';
 export { RecommendationReasonList, type RecommendationReasonListProps } from './molecules/RecommendationReasonList';
 export { PortfolioPositionCard } from './molecules/PortfolioPositionCard';
+export { SectorPieCard, type SectorPieCardProps } from './molecules/SectorPieCard';
+export { ConcentrationCard, type ConcentrationCardProps } from './molecules/ConcentrationCard';
+export { PositionPnlCard, type PositionPnlCardProps } from './molecules/PositionPnlCard';
+export { ConvictionMixCard, type ConvictionMixCardProps } from './molecules/ConvictionMixCard';
 export { CommitteeAdvisoryCard, type CommitteeAdvisoryCardProps } from './molecules/CommitteeAdvisoryCard';
 export { CommitteeConsensusCard, type CommitteeConsensusCardProps } from './molecules/CommitteeConsensusCard';
 export { CommitteeReportPanel, type CommitteeReportPanelProps } from './molecules/CommitteeReportPanel';

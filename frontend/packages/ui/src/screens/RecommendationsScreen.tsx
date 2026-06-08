@@ -57,6 +57,7 @@ export function RecommendationsScreen() {
   const {
     cards,
     tabCounts,
+    strategy,
     asOfDate,
     availableDates,
     latestDate,
@@ -67,7 +68,7 @@ export function RecommendationsScreen() {
     error,
     refetch,
   } = useRecommendationCards();
-  const trust = useTrustQuery();
+  const trust = useTrustQuery(strategy);
   const regime = useRegimeQuery(asOfDate);
   const isViewingLatest = !selectedAsOfDate || selectedAsOfDate === latestDate;
   const exitMonitor = useExitMonitorQuery(asOfDate, !isViewingLatest);
@@ -254,6 +255,7 @@ export function RecommendationsScreen() {
               convictionBand={card.convictionBand}
               reasonCodes={card.reasonCodes}
               committeeAdvisory={card.committeeAdvisory}
+              committeeFindings={card.committeeFindings}
               lifecycleState={card.lifecycleState}
               execution={card.execution}
               hasExecutionHistory={showHistory}

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type {
   CommitteeAdvisoryOverlay,
+  CommitteeReviewFinding,
   RecommendationExecutionContext,
   RecommendationResultRead,
 } from '@pipm/types';
@@ -10,6 +11,7 @@ import { queryKeys } from '../queryKeys';
 import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
 import { defaultStrategyName, todayIsoDate } from '../utils/dates';
+import { useActiveStrategy } from './useActiveStrategy';
 import { useStockSymbolMap } from './useStocks';
 
 export interface RecommendationTabCounts {
@@ -27,6 +29,7 @@ export interface RecommendationCardModel {
   convictionBand: RecommendationResultRead['conviction_band'];
   reasonCodes: string[];
   committeeAdvisory: CommitteeAdvisoryOverlay | null;
+  committeeFindings: CommitteeReviewFinding[];
   runId: string;
   lifecycleState: string | null;
   execution: RecommendationExecutionContext | null;
@@ -80,13 +83,15 @@ export function useRecommendationCards() {
   const selectedAsOfDate = useUiStore((s) => s.recommendationAsOfDate);
   const setRecommendationAsOfDate = useUiStore((s) => s.setRecommendationAsOfDate);
   const isAuthenticated = useAuthStore((s) => s.status === 'authenticated');
-  const strategy = defaultStrategyName();
   const { symbolMap, isLoading: stocksLoading } = useStockSymbolMap();
 
   const datesQuery = useRecommendationDatesQuery();
   const latestDate = datesQuery.data?.latest_date ?? null;
   const queryAsOfDate = selectedAsOfDate ?? latestDate ?? todayIsoDate();
   const isViewingLatest = !selectedAsOfDate || selectedAsOfDate === latestDate;
+
+  // Strategy is chosen dynamically from the regime of the viewed date.
+  const { strategy } = useActiveStrategy(queryAsOfDate);
 
   const dailyQuery = useDailyRecommendationsQuery(queryAsOfDate, undefined, true);
 
@@ -95,8 +100,8 @@ export function useRecommendationCards() {
     : null;
 
   const committeeQuery = useQuery({
-    queryKey: queryKeys.committee.latest(),
-    queryFn: () => api.committee.getLatest(),
+    queryKey: queryKeys.committee.latest(undefined, strategy),
+    queryFn: () => api.committee.getLatest(undefined, strategy),
     enabled: isAuthenticated && isViewingLatest,
   });
 
@@ -115,6 +120,23 @@ export function useRecommendationCards() {
     }
     return map;
   }, [packetsQuery.data]);
+
+  // Per-committee findings (insights) for the latest review, grouped by symbol.
+  const explainQuery = useQuery({
+    queryKey: queryKeys.committee.explain(reviewId ?? 'none'),
+    queryFn: () => api.committee.getExplain(reviewId!),
+    enabled: isAuthenticated && isViewingLatest && !!reviewId,
+  });
+
+  const findingsBySymbol = useMemo(() => {
+    const map = new Map<string, CommitteeReviewFinding[]>();
+    for (const review of explainQuery.data?.committee_reviews ?? []) {
+      const list = map.get(review.symbol) ?? [];
+      list.push(review);
+      map.set(review.symbol, list);
+    }
+    return map;
+  }, [explainQuery.data]);
 
   const tabCounts = useMemo((): RecommendationTabCounts => {
     const results = strategyBlock?.results ?? [];
@@ -142,12 +164,13 @@ export function useRecommendationCards() {
         convictionBand: r.conviction_band,
         reasonCodes: r.reason_codes,
         committeeAdvisory: advisoryBySymbol.get(symbol) ?? null,
+        committeeFindings: findingsBySymbol.get(symbol) ?? [],
         runId: r.recommendation_run_id,
         lifecycleState: r.lifecycle_state,
         execution,
       };
     });
-  }, [tab, strategyBlock, symbolMap, advisoryBySymbol]);
+  }, [tab, strategyBlock, symbolMap, advisoryBySymbol, findingsBySymbol]);
 
   const isLoading =
     stocksLoading ||
@@ -160,6 +183,7 @@ export function useRecommendationCards() {
   return {
     cards,
     tabCounts,
+    strategy,
     asOfDate: dailyQuery.data?.as_of_date ?? queryAsOfDate,
     availableDates: datesQuery.data?.dates ?? [],
     latestDate,
@@ -175,6 +199,7 @@ export function useRecommendationCards() {
         dailyQuery.refetch(),
         committeeQuery.refetch(),
         packetsQuery.refetch(),
+        explainQuery.refetch(),
       ]),
   };
 }

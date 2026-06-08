@@ -29,9 +29,9 @@ export interface RecommendationDetailScreenProps {
 export function RecommendationDetailScreen({ symbol, runId }: RecommendationDetailScreenProps) {
   const theme = useTheme();
   const openCopilot = useUiStore((s) => s.openCopilotWithQuestion);
-  const { result, committeeAdvisory, committeeFindings, machineAction, isLoading, isError, error, refetch } =
+  const { result, strategy, committeeAdvisory, committeeFindings, machineAction, isLoading, isError, error, refetch } =
     useRecommendationDetail(symbol, runId);
-  const trust = useTrustQuery();
+  const trust = useTrustQuery(strategy);
   const approve = useApproveRecommendation();
   const reject = useRejectRecommendation();
 
@@ -41,7 +41,7 @@ export function RecommendationDetailScreen({ symbol, runId }: RecommendationDeta
   return (
     <InvestorScreenShell
       title={symbol}
-      subtitle={`${action} · ${defaultStrategyName()}`}
+      subtitle={`${action} · ${strategy ?? defaultStrategyName()}`}
     >
       {isLoading && <LoadingState />}
       {isError && (

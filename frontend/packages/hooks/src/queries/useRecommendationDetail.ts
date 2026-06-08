@@ -3,7 +3,8 @@ import { useApi } from '../ApiProvider';
 import { queryKeys } from '../queryKeys';
 import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
-import { defaultStrategyName, todayIsoDate } from '../utils/dates';
+import { todayIsoDate } from '../utils/dates';
+import { useActiveStrategy } from './useActiveStrategy';
 import { useStockSymbolMap } from './useStocks';
 import { useRecommendationDatesQuery } from './useRecommendations';
 
@@ -13,7 +14,8 @@ export function useRecommendationDetail(symbol: string, runId?: string) {
   const selectedAsOfDate = useUiStore((s) => s.recommendationAsOfDate);
   const datesQuery = useRecommendationDatesQuery();
   const asOfDate = selectedAsOfDate ?? datesQuery.data?.latest_date ?? todayIsoDate();
-  const strategy = defaultStrategyName();
+  // Strategy chosen dynamically from the regime of the viewed date.
+  const { strategy } = useActiveStrategy(asOfDate);
   const { symbolMap } = useStockSymbolMap();
 
   const dailyQuery = useQuery({
@@ -34,8 +36,8 @@ export function useRecommendationDetail(symbol: string, runId?: string) {
   });
 
   const committeeQuery = useQuery({
-    queryKey: queryKeys.committee.latest(),
-    queryFn: () => api.committee.getLatest(),
+    queryKey: queryKeys.committee.latest(undefined, strategy),
+    queryFn: () => api.committee.getLatest(undefined, strategy),
     enabled: isAuthenticated,
   });
 
@@ -67,6 +69,7 @@ export function useRecommendationDetail(symbol: string, runId?: string) {
     result,
     symbol: resolvedSymbol,
     runId: resolvedRunId,
+    strategy,
     committeeAdvisory: packet?.payload.committee_advisory ?? null,
     committeeFindings,
     machineAction: packet?.payload.recommendation?.action,

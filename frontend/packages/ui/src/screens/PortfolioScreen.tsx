@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, TextInput } from 'react-native';
-import { useTheme } from '@pipm/theme';
+import { useTheme, useBreakpoint } from '@pipm/theme';
 import { usePortfolioScreen, useNavHistory, useUiStore } from '@pipm/hooks';
 import { InvestorScreenShell } from '../layout/InvestorScreenShell';
 import { LoadingState } from '../feedback/LoadingState';
 import { ErrorState } from '../feedback/ErrorState';
 import { MetricValue } from '../atoms/MetricValue';
 import { PortfolioPositionCard } from '../molecules/PortfolioPositionCard';
+import { SectorPieCard } from '../molecules/SectorPieCard';
+import { ConcentrationCard } from '../molecules/ConcentrationCard';
+import { PositionPnlCard } from '../molecules/PositionPnlCard';
+import { ConvictionMixCard } from '../molecules/ConvictionMixCard';
 import { SparklineChart } from '../charts/SparklineChart';
 import { DonutChart } from '../charts/DonutChart';
 import { BarChart } from '../charts/BarChart';
@@ -18,6 +22,7 @@ const EXIT_REASONS = ['STOP_LOSS', 'TIME_STOP', 'RANK_DROP', 'FORCE_CLOSE'] as c
 
 export function PortfolioScreen() {
   const theme = useTheme();
+  const { isDesktop } = useBreakpoint();
   const [section, setSection] = useState<(typeof TABS)[number]>('Overview');
   const [showClosed, setShowClosed] = useState(false);
 
@@ -155,6 +160,23 @@ export function PortfolioScreen() {
           <Text style={[styles.posture, { color: theme.colors.textSecondary }]}>
             {summary.regime_posture} · {summary.active_positions} positions · {summary.slots_available} slots
           </Text>
+        </View>
+      )}
+
+      {section === 'Overview' && (
+        <View style={[styles.analyticsGrid, !isDesktop && styles.analyticsGridStack]}>
+          <View style={isDesktop ? styles.gridItem : undefined}>
+            <SectorPieCard positions={positions} />
+          </View>
+          <View style={isDesktop ? styles.gridItem : undefined}>
+            <ConvictionMixCard positions={positions} />
+          </View>
+          <View style={isDesktop ? styles.gridItem : undefined}>
+            <ConcentrationCard positions={positions} />
+          </View>
+          <View style={isDesktop ? styles.gridItem : undefined}>
+            <PositionPnlCard positions={positions} />
+          </View>
         </View>
       )}
 
@@ -490,6 +512,20 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 16,
     gap: 8,
+  },
+  analyticsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 12,
+  },
+  analyticsGridStack: {
+    flexDirection: 'column',
+  },
+  gridItem: {
+    flexGrow: 1,
+    flexBasis: '48%',
+    minWidth: 320,
   },
   summaryRow: {
     flexDirection: 'row',
