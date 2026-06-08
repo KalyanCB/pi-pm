@@ -8,7 +8,7 @@ set -euo pipefail
 
 BASE="/opt/pi-pm"
 REL="$(readlink ${BASE}/current)"
-COMPOSE=(docker compose -p pipm --project-directory "${REL}/docker" \
+COMPOSE=(docker compose -p pipm --project-directory "${REL}/docker" --env-file "${REL}/.env" \
   -f "${REL}/docker/docker-compose.yml" -f "${REL}/docker/docker-compose.prod.yml")
 
 echo "$(date -Is) starting daily batch"

@@ -23,13 +23,13 @@ TAG="$(echo "${NAME}" | sed 's/^pi-pm-//')"
 CUR="$(readlink ${BASE}/current 2>/dev/null || true)"
 if [ -n "${CUR}" ] && [ -d "${CUR}" ] && [ "${CUR}" != "${TARGET_DIR}" ]; then
   echo "==> Stopping current stack (${CUR})"
-  docker compose -p pipm --project-directory "${CUR}/docker" \
+  docker compose -p pipm --project-directory "${CUR}/docker" --env-file "${CUR}/.env" \
     -f "${CUR}/docker/docker-compose.yml" -f "${CUR}/docker/docker-compose.prod.yml" down || true
 fi
 
 echo "==> Bring up ${TARGET_DIR} (image pipm-api:${TAG})"
 export RELEASE_TAG="${TAG}"
-docker compose -p pipm --project-directory "${TARGET_DIR}/docker" \
+docker compose -p pipm --project-directory "${TARGET_DIR}/docker" --env-file "${TARGET_DIR}/.env" \
   -f "${TARGET_DIR}/docker/docker-compose.yml" \
   -f "${TARGET_DIR}/docker/docker-compose.prod.yml" up -d
 
