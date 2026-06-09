@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-07T04:48:08Z
+generated_at: 2026-06-09T00:56:52Z
 generator: scripts/generate_context.py
 ---
 
@@ -20,8 +20,12 @@ generator: scripts/generate_context.py
 | `scripts/backfill_sprint7_traceability.py` | Sprint 7.1 — backfill traceability tables from persisted ranking/valid... |
 | `scripts/backfill_sprint82_factor_analytics.py` | Sprint 8.2 — backfill factor predictive power analytics from ranking t... |
 | `scripts/backfill_sprint83_exit_research.py` | Sprint 8.3 — backfill exit research metrics from validated ranking sig... |
+| `scripts/backtest_honest.py` | Honest Paper-Trade Backtest |
 | `scripts/backtest_inmemory.py` | Pi-PM In-Memory Backtest — no DB writes, pure simulation. |
 | `scripts/backtest_reversal_v1.py` | Backtest: reversal_v1 strategy — Jan 2022 to Jun 2026 |
+| `scripts/batch1_eod_pipeline.py` | Batch 1 — End-of-Day Ingestion & Signal Generation Pipeline (ADR-034). |
+| `scripts/batch2_intraday_exit.py` | Batch 2 — Intraday Exit Monitor (ADR-035). |
+| `scripts/batch3_paper_trade_entry.py` | Batch 3 — Morning Paper Trade Execution (ADR-036). |
 | `scripts/export_args_research_run.py` | Export a full ARGS research run to markdown (packets, committees, gove... |
 | `scripts/fix_canonical_links.py` | Rewrite stale cross-references in context/canonical/ for self-containe... |
 | `scripts/generate_outcome_attribution_report.py` | Generate outcome attribution report from ranking runs and forward retu... |
@@ -43,10 +47,6 @@ generator: scripts/generate_context.py
 | `scripts/reingest_symbols_since.py` | Re-ingest Yahoo bars from since_date for symbols listed in a file (one... |
 | `scripts/resume_rebuild_from_validation.py` | Resume rebuild from validation onward after pruning stale ranking runs... |
 | `scripts/run_args_top20.py` | Run ARGS (top-N) for latest or specified NIFTY_500 ranking runs. |
-| `scripts/run_calibrated_ranking_backtest.py` | Run calibrated vs production top-20 backtest (research only). |
-| `scripts/run_full_rebuild_from_date.py` | Re-ingest market data from a start date and run the full daily-batch r... |
-| `scripts/run_recovery_batch.py` | Run recovery phases (regime, factor IC, research intelligence) and pri... |
-| `scripts/run_research_platform_recovery.py` | One-shot deterministic research platform recovery (regime, factor IC, ... |
 
 ## Experiment configs (`configs/`)
 

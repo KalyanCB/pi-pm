@@ -1,7 +1,7 @@
 ---
-generated_at: 2026-06-07T04:48:08Z
-git_sha: 9916aed
-git_branch: feature/copilot-ai
+generated_at: 2026-06-09T00:56:52Z
+git_sha: ca1abeb
+git_branch: main
 ---
 
 # Pi-PM Agent Context
@@ -46,10 +46,10 @@ uv run python scripts/generate_context.py
 
 | Field | Value |
 |-------|-------|
-| git_sha | `9916aed` |
-| branch | `feature/copilot-ai` |
+| git_sha | `ca1abeb` |
+| branch | `main` |
 | migration_head | `20260611` |
-| tests_collected | 689 |
+| tests_collected | 741 |
 | proposed_items | 1 |
 | not_started_items | 3 |
 | partial_items | 20 |

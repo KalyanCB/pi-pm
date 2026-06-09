@@ -113,6 +113,71 @@ def test_equity_cash_market_value_reconciliation():
     assert abs(reconstructed - summary.total_equity) < summary.total_equity * 0.001  # within 0.1%
 
 
+def test_summary_cash_pct_is_fraction_not_percent():
+    """cash_pct is a 0–1 fraction; consumers (dashboard endpoint, frontend) ×100."""
+    nav = MagicMock()
+    nav.total_equity = 1_000_000.0
+    nav.market_value = 250_000.0
+    nav.unrealized_pnl = 0.0
+    nav.cash_balance = 750_000.0
+    nav.cash_pct = 0.75
+
+    svc = _make_svc(nav_row=nav)
+    summary = svc.get_summary()
+
+    assert summary.cash_pct == pytest.approx(0.75)
+    assert 0.0 <= summary.cash_pct <= 1.0
+
+
+# ── Weight basis (nav_basis / _recompute_weights) ─────────────────────────────
+
+
+def test_nav_basis_uses_latest_nav_not_seed_equity():
+    nav = MagicMock()
+    nav.total_equity = 24_200_000.0  # ₹2.42Cr current NAV
+    svc = _make_svc(nav_row=nav)  # config seed = ₹10L
+    assert svc.nav_basis() == pytest.approx(24_200_000.0)
+
+
+def test_nav_basis_falls_back_to_config_when_no_nav():
+    svc = _make_svc(nav_row=None)
+    assert svc.nav_basis() == pytest.approx(1_000_000.0)
+
+
+def test_nav_basis_falls_back_when_nav_zero():
+    nav = MagicMock()
+    nav.total_equity = 0.0
+    svc = _make_svc(nav_row=nav)
+    assert svc.nav_basis() == pytest.approx(1_000_000.0)
+
+
+def test_recompute_weights_divides_by_nav_not_seed():
+    """Regression: weight_pct must use current NAV, not the ₹10L seed equity.
+
+    A ₹24.3L position against a ₹2.42Cr NAV is ~10%, not 243%.
+    """
+    nav = MagicMock()
+    nav.total_equity = 24_200_000.0
+    pos = MagicMock()
+    pos.market_value = 2_420_000.0
+
+    svc = _make_svc(positions=[pos], nav_row=nav)
+    svc._recompute_weights()
+
+    assert pos.weight_pct == pytest.approx(10.0, rel=0.01)
+    assert pos.weight_pct < 25.0  # below single-name cap → no phantom breach
+
+
+def test_recompute_weights_seed_fallback_when_no_nav():
+    pos = MagicMock()
+    pos.market_value = 200_000.0
+
+    svc = _make_svc(positions=[pos], nav_row=None)  # seed ₹10L
+    svc._recompute_weights()
+
+    assert pos.weight_pct == pytest.approx(20.0)
+
+
 # ── Regime slot enforcement (AC-PE-02) ────────────────────────────────────────
 
 

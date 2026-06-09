@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-07T04:48:08Z
+generated_at: 2026-06-09T00:56:52Z
 generator: scripts/generate_context.py
 ---
 
@@ -44,6 +44,7 @@ export const SECONDARY_NAV: NavItem[] = [
 
 ## React Query hooks
 
+- `frontend/packages/hooks/src/queries/useActiveStrategy.ts`
 - `frontend/packages/hooks/src/queries/useCommittee.ts`
 - `frontend/packages/hooks/src/queries/useDashboard.ts`
 - `frontend/packages/hooks/src/queries/useExitMonitor.ts`

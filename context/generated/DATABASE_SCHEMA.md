@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-07T04:48:08Z
+generated_at: 2026-06-09T00:56:52Z
 generator: scripts/generate_context.py
 ---
 
@@ -194,6 +194,7 @@ generator: scripts/generate_context.py
 | `as_of` | Date | — |
 | `is_current` | Boolean | — |
 | `position_status` | String | — |
+| `exit_reason` | String | — |
 | `stock` | other | — |
 
 ### `ranking_results`

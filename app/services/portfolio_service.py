@@ -183,6 +183,22 @@ class PortfolioService:
             .limit(1)
         )
 
+    def nav_basis(self, as_of_date: date | None = None) -> float:
+        """Denominator for position weights — the SAME NAV the summary reports.
+
+        Uses the latest ``portfolio_nav_history`` row's ``total_equity`` (cash +
+        marked-to-market positions), falling back to the config seed equity only
+        when no NAV snapshot exists yet. Dividing by the seed (often a ₹1L/₹10L
+        placeholder, see context/GOTCHAS.md) is what produced the >100% phantom
+        weights and false concentration breaches.
+        """
+        nav_row = self._latest_nav(as_of_date)
+        if nav_row is not None:
+            nav = float(nav_row.total_equity or 0)
+            if nav > 0:
+                return nav
+        return float(self.get_config().total_equity)
+
     # ── Positions ─────────────────────────────────────────────────────────────
 
     def get_positions(self, include_closed: bool = False) -> list[PortfolioPosition]:
@@ -439,11 +455,10 @@ class PortfolioService:
         )
 
     def _recompute_weights(self) -> None:
-        cfg = self.get_config()
-        equity = float(cfg.total_equity)
-        if equity <= 0:
+        basis = self.nav_basis()
+        if basis <= 0:
             return
         positions = self._current_positions()
         for pos in positions:
             mv = float(pos.market_value or 0)
-            pos.weight_pct = round(mv / equity * 100, 4)
+            pos.weight_pct = round(mv / basis * 100, 4)

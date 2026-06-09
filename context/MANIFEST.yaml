@@ -1,74 +1,74 @@
-generated_at: '2026-06-07T04:48:08Z'
-git_sha: 9916aed
+generated_at: '2026-06-09T00:56:52Z'
+git_sha: ca1abeb
 generator: scripts/generate_context.py
 artifacts:
 - path: context/generated/PLATFORM_STATE.md
   role: platform_state
-  sha256_prefix: 7e85622cd20dac3d
+  sha256_prefix: 11dcba4b5ed7350e
   exists: true
 - path: context/generated/API_SURFACE.md
   role: api_surface
-  sha256_prefix: d160f9efc3c45706
+  sha256_prefix: ae4e19b281030887
   exists: true
 - path: context/generated/API_SCHEMAS.md
   role: api_schemas_summary
-  sha256_prefix: b48fda014e829e3f
+  sha256_prefix: c38eca4f8fd672f9
   exists: true
 - path: context/generated/DATABASE_SCHEMA.md
   role: database_schema
-  sha256_prefix: 75c1f82bad0c7e5d
+  sha256_prefix: 11fd2f5d053e66fe
   exists: true
 - path: context/generated/ENV_CATALOG.md
   role: env_catalog
-  sha256_prefix: 9cead85ba570099f
+  sha256_prefix: b4491ea917ebff1d
   exists: true
 - path: context/generated/OPS_SCRIPTS.md
   role: ops_scripts
-  sha256_prefix: 1e9e13303a4a1ad3
+  sha256_prefix: 811a943aafb0be58
   exists: true
 - path: context/generated/RANKING_STRATEGIES.md
   role: ranking_strategies
-  sha256_prefix: 0b8842b8ffe387df
+  sha256_prefix: a0895901db02d7f3
   exists: true
 - path: context/generated/TEST_MAP.md
   role: test_map
-  sha256_prefix: b1ab57a46514a480
+  sha256_prefix: fbf4b4b37a041699
   exists: true
 - path: context/generated/FRONTEND_SURFACE.md
   role: frontend_surface
-  sha256_prefix: 97d8735f60708bcb
+  sha256_prefix: aba58cf08fa7f5b0
   exists: true
 - path: context/generated/IMPLEMENTATION_STATUS.md
   role: implementation_status
-  sha256_prefix: 3820e2c5266e39a0
+  sha256_prefix: e90e97d00a108b2b
   exists: true
 - path: context/generated/GAPS_AND_DEBT.md
   role: gaps
-  sha256_prefix: b854d47ba08677fc
+  sha256_prefix: bb53ab8985e9b297
   exists: true
 - path: context/generated/REQUIREMENTS.rtm.yaml
   role: rtm_yaml
-  sha256_prefix: 84d18ce3169d09fc
+  sha256_prefix: 3fc6e5be7a5c8b24
   exists: true
 - path: context/generated/REQUIREMENTS.rtm.md
   role: rtm_md
-  sha256_prefix: f8ba1d3de920771a
+  sha256_prefix: 1c19f78e1b451d50
   exists: true
 - path: context/generated/ARCHITECTURE_MAP.md
   role: architecture_map
-  sha256_prefix: 83b061919aac850a
+  sha256_prefix: b920b383710cd991
   exists: true
 - path: context/AGENTS.md
   role: agents
-  sha256_prefix: 8a9d7cffb0e21abd
+  sha256_prefix: ddf20d14fc4c2633
   exists: true
 - path: context/generated/CANONICAL_LINK_CHECK.md
   role: canonical_link_check
-  sha256_prefix: 9ae02aaa5c3c9a82
+  sha256_prefix: aab4fba45b0565bf
   exists: true
 - path: context/generated/API_SCHEMAS.json
   role: api_schemas_json
-  sha256_prefix: 0b483596edfd4b14
+  sha256_prefix: 69c8de1978a55c53
   exists: true
 - path: context/GOTCHAS.md
   role: gotchas

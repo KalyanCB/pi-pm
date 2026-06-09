@@ -1,11 +1,11 @@
 ---
-generated_at: 2026-06-07T04:48:08Z
+generated_at: 2026-06-09T00:56:52Z
 generator: scripts/generate_context.py
 ---
 
 # Canonical Link Check
 
-> **OK:** 335 resolved links | **Broken:** 0 | **Archived refs:** 78
+> **OK:** 345 resolved links | **Broken:** 0 | **Archived refs:** 78
 
 **No broken internal links.** Safe for `docs/` archive from link perspective.
 
