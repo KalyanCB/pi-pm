@@ -4972,7 +4972,7 @@
           "investment-committee"
         ],
         "summary": "Latest Committee Review",
-        "description": "Get the latest Investment Committee review.",
+        "description": "Get the latest Investment Committee review.\n\nWhen ``strategy_name`` is provided, returns the latest review for that\nstrategy so committee data aligns with the regime-selected strategy on the\nclient. ``as_of_date`` pins the review to a specific session (for the\ncommittee date picker). Both omitted \u2192 latest review (back-compat).",
         "operationId": "latest_committee_review_api_v1_investment_committee_latest_get",
         "security": [
           {
@@ -4988,6 +4988,39 @@
               "type": "string",
               "default": "NIFTY_500",
               "title": "Universe Code"
+            }
+          },
+          {
+            "name": "strategy_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy Name"
+            }
+          },
+          {
+            "name": "as_of_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of Date"
             }
           }
         ],

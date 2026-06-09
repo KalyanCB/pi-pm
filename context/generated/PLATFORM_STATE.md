@@ -1,7 +1,7 @@
 ---
-generated_at: 2026-06-07T04:48:08Z
-git_sha: 9916aed
-git_branch: feature/copilot-ai
+generated_at: 2026-06-09T00:56:52Z
+git_sha: ca1abeb
+git_branch: main
 generator: scripts/generate_context.py
 stale_after_hours: 24
 ---
@@ -12,10 +12,10 @@ stale_after_hours: 24
 
 | Field | Value |
 |-------|-------|
-| Git SHA | `9916aed` |
-| Branch | `feature/copilot-ai` |
+| Git SHA | `ca1abeb` |
+| Branch | `main` |
 | Migration head (latest file) | `20260611` |
-| Tests collected | 689 |
+| Tests collected | 741 |
 | API route handlers | 147 |
 | DB tables (models) | 70 |
 
