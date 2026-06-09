@@ -146,7 +146,9 @@ export function PortfolioScreen() {
             </View>
             <View>
               <Text style={[styles.label, { color: theme.colors.textMuted }]}>CASH</Text>
-              <MetricValue value={summary.cash_pct} format="percent" />
+              {/* summary.cash_pct is a 0–1 fraction; the percent formatter expects
+                  a 0–100 number (as the dashboard endpoint already returns). */}
+              <MetricValue value={summary.cash_pct == null ? null : summary.cash_pct * 100} format="percent" />
             </View>
             <View>
               <Text style={[styles.label, { color: theme.colors.textMuted }]}>DEPLOYABLE</Text>
