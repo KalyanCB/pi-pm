@@ -120,6 +120,10 @@ def main() -> int:
         for rec in t2_recs:
             log.info("  → %s triggers=%s urgency=%s", rec.portfolio_position_id, rec.triggers, rec.urgency)
 
+        # Persist exit signals. The T1/T2 services flush but leave the commit to
+        # the caller; without this the recommendations are rolled back on close.
+        db.commit()
+
         total = t1_result.new_recommendations + len(t2_recs)
         log.info("=" * 60)
         log.info("BATCH 2 COMPLETE | positions=%d | signals=%d (T1=%d T2=%d)",
