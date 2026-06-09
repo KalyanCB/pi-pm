@@ -95,8 +95,26 @@ class PortfolioAnalyticsService:
         self._check_gate()
         cfg = self._config()
         positions = self._open_positions_as_dicts()
-        total_equity = float(cfg.total_equity) if cfg else 0.0
-        cash = self._current_cash(total_equity)
+
+        # Use current NAV (latest snapshot) as the basis — NOT cfg.total_equity,
+        # which is often a seed placeholder and yields phantom >100% weights and
+        # false concentration breaches. Keep this in lock-step with
+        # PortfolioService.nav_basis / get_summary.
+        nav_rows = self._nav_rows(None, None)
+        nav_row = nav_rows[-1] if nav_rows else None
+        if nav_row is not None and float(nav_row.total_equity or 0) > 0:
+            total_equity = float(nav_row.total_equity)
+            cash = float(nav_row.cash_balance or 0)
+        else:
+            total_equity = float(cfg.total_equity) if cfg else 0.0
+            cash = self._current_cash(total_equity)
+
+        # Recompute weights live against the NAV basis so the risk card reconciles
+        # with the positions/summary endpoints regardless of stored weight_pct.
+        if total_equity > 0:
+            for pos in positions:
+                pos["weight_pct"] = round(pos.get("market_value", 0) / total_equity * 100, 4)
+
         current_dd = self._current_drawdown()
 
         return compute_risk(

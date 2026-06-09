@@ -110,9 +110,21 @@ def get_positions(
 ) -> list[dict]:
     """Positions with P&L. Pass include_closed=true to include exited positions."""
     positions = svc.get_positions(include_closed=include_closed)
+    # Weight against current NAV (same basis as the summary), not the stored
+    # value which may have been computed against the seed equity.
+    try:
+        basis = svc.nav_basis()
+    except ValueError:
+        basis = 0.0
     out = []
     for p in positions:
         stock = p.stock
+        if basis > 0 and p.position_status == "OPEN" and p.market_value is not None:
+            weight_pct = round(float(p.market_value) / basis * 100, 4)
+        elif p.weight_pct is not None:
+            weight_pct = float(p.weight_pct)
+        else:
+            weight_pct = None
         out.append(
             {
                 "id": str(p.id),
@@ -121,9 +133,9 @@ def get_positions(
                 "avg_cost": float(p.avg_cost),
                 "entry_price": float(p.entry_price) if p.entry_price else None,
                 "entry_date": p.entry_date.isoformat() if p.entry_date else None,
-                "market_value": float(p.market_value) if p.market_value else None,
-                "unrealized_pnl": float(p.unrealized_pnl) if p.unrealized_pnl else None,
-                "weight_pct": float(p.weight_pct) if p.weight_pct else None,
+                "market_value": float(p.market_value) if p.market_value is not None else None,
+                "unrealized_pnl": float(p.unrealized_pnl) if p.unrealized_pnl is not None else None,
+                "weight_pct": weight_pct,
                 "conviction_band": p.conviction_band,
                 "strategy_name": p.strategy_name,
                 "sector": p.sector,
