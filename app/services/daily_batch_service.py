@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from datetime import date
 from uuid import UUID
@@ -105,6 +106,26 @@ class DailyBatchService:
         run.force_recompute = request.force_recompute
         run.force_regenerate_rankings = request.force_regenerate_rankings
         self.db.flush()
+
+        # Keep the benchmark current BEFORE resolving/planning. The trading-day
+        # resolver and ranking-gap detection (expected_days) key off the
+        # benchmark's latest date; if it lags the universe, today is excluded
+        # from expected_days and the in-phase ingest (which runs later) is too
+        # late to fix the already-built plan. A small benchmark top-up here lets
+        # a single run self-recover instead of needing a second run.
+        if request.phases.ingest and not request.dry_run and request.benchmark_symbol:
+            try:
+                self.market_data_service.ingest(
+                    [request.benchmark_symbol],
+                    IngestPeriod.ONE_YEAR,
+                    ingestion_mode=IngestionMode.INCREMENTAL,
+                )
+            except Exception as exc:  # best-effort; the main ingest phase still runs
+                logging.getLogger(__name__).warning(
+                    "Benchmark pre-ingest failed for %s: %s",
+                    request.benchmark_symbol,
+                    exc,
+                )
 
         resolver = TradingDayResolver(self.db, benchmark_symbol=request.benchmark_symbol)
         resolution = resolver.resolve(
