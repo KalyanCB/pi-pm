@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Batch 3 — Morning Paper Trade Execution (ADR-036).
 
-Runs once per trading day at 09:15 IST (market open).
-Picks up last trading day's reversal_v1 BUY recommendations and executes
-paper trades for each eligible CANDIDATE or APPROVED signal.
+Runs once per trading day at market open. Two actions, both N-1 → N:
+  ENTRIES: picks up last trading day's reversal_v1 BUY recommendations and
+           executes paper BUYs for each eligible CANDIDATE/APPROVED signal.
+  EXITS:   executes the N-1 PENDING exit-monitor recommendations (from Batch 2)
+           as paper SELLs and marks them CONFIRMED. Exits run first to free slots.
 
-Signal selection (N-1 → N entry):
-  - as_of_date = last completed recommendation run date  (N-1 signal)
-  - entry date = today (N execution)
-  - action     = BUY
-  - lifecycle  = CANDIDATE or APPROVED  (REJECTED is the only hard block)
+Signal selection (N-1 → N):
+  - signal/exit as_of_date = last completed recommendation run date (N-1)
+  - execution date         = today (N)
+  - entry action           = BUY; lifecycle CANDIDATE/APPROVED (REJECTED blocked)
+  - exit source            = portfolio_exit_recommendations, status=PENDING, N-1
 
 Eligibility guards:
   - Position already open for this stock  → skip
@@ -47,8 +49,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.session import get_engine
 from app.models.portfolio_position import PortfolioPosition
+from app.models.portfolio_analytics import ExitRecommendation
 from app.models.recommendation import RecommendationResult, RecommendationRun
 from app.models.paper_trade import PaperTrade
+from app.portfolio.exit_monitor.service import ExitMonitorService
 from app.services.paper_trade_service import PaperTradeService
 from app.services.portfolio_service import PortfolioService
 
@@ -205,6 +209,83 @@ def execute_entries(
     }
 
 
+def get_pending_exits(db: Session, signal_date: date) -> list[ExitRecommendation]:
+    """PENDING exit-monitor recommendations from N-1 (signal_date)."""
+    return list(
+        db.scalars(
+            select(ExitRecommendation).where(
+                ExitRecommendation.as_of_date == signal_date,
+                ExitRecommendation.status == "PENDING",
+            ).order_by(ExitRecommendation.urgency.desc())
+        ).all()
+    )
+
+
+def execute_exits(
+    db: Session,
+    signal_date: date,
+    exit_date: date,
+    dry_run: bool,
+) -> dict:
+    """Execute N-1 exit-monitor recommendations as paper SELLs (mirrors PaperPilotOps).
+
+    For each PENDING ExitRecommendation from N-1 whose position is still OPEN:
+    simulate the SELL fill (idempotent) and mark the recommendation CONFIRMED.
+    """
+    portfolio_svc = PortfolioService(db, portfolio_id=PORTFOLIO_ID)
+    paper_svc = PaperTradeService(db, portfolio_service=portfolio_svc)
+    monitor = ExitMonitorService(db)
+
+    pending = get_pending_exits(db, signal_date)
+    if not pending:
+        log.info("No PENDING exit recommendations for %s — nothing to exit", signal_date)
+        return {"exits": [], "skipped": [], "exits_count": 0, "skipped_count": 0}
+
+    log.info("PENDING exit recommendations (N-1=%s): %d", signal_date, len(pending))
+    exits: list[str] = []
+    skipped: list[dict] = []
+
+    for rec in pending:
+        pos = db.get(PortfolioPosition, rec.portfolio_position_id)
+        if pos is None or pos.position_status != "OPEN" or not pos.is_current:
+            log.info("  exit rec %s — position not OPEN, skip", rec.id)
+            skipped.append({"exit_rec_id": str(rec.id), "reason": "position_not_open"})
+            continue
+
+        log.info("  EXIT | stock=%s | triggers=%s | urgency=%s",
+                 rec.stock_id, list(rec.triggers or []), rec.urgency)
+
+        if dry_run:
+            log.info("  [dry-run] would execute SELL + confirm exit rec %s", rec.id)
+            exits.append(f"dry:{rec.id}")
+            continue
+
+        try:
+            trade = paper_svc.execute_position_exit(
+                stock_id=rec.stock_id,
+                as_of_date=exit_date,
+                exit_triggers=list(rec.triggers or []),
+                portfolio_exit_recommendation_id=rec.id,
+                idempotency_key=f"pilot-exit-monitor:{rec.id}",
+            )
+            monitor.confirm(rec.id)
+            db.commit()
+            exits.append(str(trade.id))
+            log.info("  ✅ EXIT executed | stock=%s | trade=%s | fill=%.2f",
+                     rec.stock_id, trade.id, float(trade.fill_price or 0))
+        except Exception as exc:
+            db.rollback()
+            log.error("  ❌ Failed to execute exit for rec %s: %s", rec.id, exc)
+            skipped.append({"exit_rec_id": str(rec.id), "reason": str(exc)})
+
+    return {
+        "exits": exits,
+        "skipped": skipped,
+        "exits_count": len(exits),
+        "skipped_count": len(skipped),
+    }
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Batch 3 — Paper Trade Entry")
     p.add_argument("--dry-run", action="store_true")
@@ -234,36 +315,36 @@ def main() -> int:
         log.info("Signal date (N-1): %s | Entry date (N): %s", signal_date, entry_date)
         log.info("Strategy: %s", PRIMARY_STRATEGY)
 
-        # Load BUY signals
+        # ── EXITS first (N-1 exit recommendations) — frees slots before entries ──
+        exit_result = execute_exits(db, signal_date, entry_date, args.dry_run)
+
+        # ── ENTRIES (N-1 BUY signals) ──
+        entry_result = {"entries_count": 0, "skipped": []}
         signals = get_buy_signals(db, signal_date)
         if not signals:
-            log.info("No eligible BUY signals for %s — nothing to trade", signal_date)
-            return 0
+            log.info("No eligible BUY signals for %s — no entries", signal_date)
+        else:
+            log.info("Eligible BUY signals: %d", len(signals))
+            for s in signals:
+                log.info("  Rank %s | rec=%s | lifecycle=%s", s.rank, s.id, s.lifecycle_state)
 
-        log.info("Eligible BUY signals: %d", len(signals))
-        for s in signals:
-            log.info("  Rank %s | rec=%s | lifecycle=%s", s.rank, s.id, s.lifecycle_state)
-
-        # Current portfolio state
-        open_before = count_open_positions(db)
-        slots_free = MAX_SLOTS - open_before
-        log.info("Portfolio: %d/%d slots used | %d free", open_before, MAX_SLOTS, slots_free)
-
-        if slots_free == 0:
-            log.info("Portfolio full — no entries possible today")
-            return 0
-
-        # Execute entries
-        result = execute_entries(db, signals, entry_date, args.dry_run)
+            open_before = count_open_positions(db)
+            slots_free = MAX_SLOTS - open_before
+            log.info("Portfolio: %d/%d slots used | %d free", open_before, MAX_SLOTS, slots_free)
+            if slots_free <= 0:
+                log.info("Portfolio full — no entries possible today")
+            else:
+                entry_result = execute_entries(db, signals, entry_date, args.dry_run)
 
         log.info("=" * 60)
         log.info("BATCH 3 COMPLETE")
-        log.info("  Entries executed : %d", result["entries_count"])
-        log.info("  Skipped          : %d", result["skipped_count"])
-        log.info("  Open positions   : %d / %d", result["open_positions_after"], MAX_SLOTS)
-        if result["skipped"]:
-            for s in result["skipped"]:
-                log.info("  Skip: rec=%s reason=%s", s["rec_id"], s["reason"])
+        log.info("  Exits executed   : %d", exit_result["exits_count"])
+        log.info("  Entries executed : %d", entry_result["entries_count"])
+        log.info("  Open positions   : %d / %d", count_open_positions(db), MAX_SLOTS)
+        for s in exit_result.get("skipped", []):
+            log.info("  Exit skip : rec=%s reason=%s", s.get("exit_rec_id"), s.get("reason"))
+        for s in entry_result.get("skipped", []):
+            log.info("  Entry skip: rec=%s reason=%s", s.get("rec_id"), s.get("reason"))
         log.info("=" * 60)
 
     except Exception as exc:
