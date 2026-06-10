@@ -11,7 +11,7 @@ from app.args.committee_evidence_enforcement import (
 )
 from app.args.llm.port import LlmPort
 from app.workspace_args.committee_contracts import CommitteeResult, CommitteeReviewOutput
-from app.workspace_args.evidence_validator import validate_committee_output
+from app.workspace_args.evidence_validator import _resolve_ref, validate_committee_output
 from app.workspace_args.models import InvestmentReviewPacket
 
 FORBIDDEN_EXTENSION_KEYS = frozenset(
@@ -206,6 +206,11 @@ def _to_validated_output(
     enforce_evidence_scope: bool,
 ) -> CommitteeReviewOutput:
     evidence = _normalize_evidence(parsed.get("supporting_evidence"))
+    # Drop hallucinated refs that don't resolve in the packet (e.g. QRC inventing
+    # validation:<uuid> or validation:recent). Otherwise a single bad ref degrades
+    # the whole committee output. _ensure_minimum_evidence backfills valid,
+    # packet-derived defaults below so the committee still cites real evidence.
+    evidence = [e for e in evidence if _resolve_ref(packet_payload, str(e.get("ref", "")))]
     evidence = _ensure_minimum_evidence(packet_payload, evidence, committee_code=committee_code)
     if enforce_evidence_scope:
         ok, reason = validate_committee_evidence_scope(committee_code, evidence)
