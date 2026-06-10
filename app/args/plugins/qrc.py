@@ -10,6 +10,20 @@ from app.workspace_args.committee_contracts import CommitteeResult
 from app.workspace_args.constants import COMMITTEE_QRC
 from app.workspace_args.models import InvestmentReviewPacket
 
+_PLAIN_LANGUAGE = (
+    "`findings` MUST be a single plain-English paragraph (a JSON string, NOT a nested object), readable by a "
+    "non-specialist investor. Cover, in plain words: how the strategy validated historically, how clearly the "
+    "return deciles separated, the rank-IC, the regime fit, and the stock-setup evidence — and interpret each "
+    "number (say whether it is weak / moderate / strong) instead of only quoting it. Spell out every code and "
+    "abbreviation on use: write regime labels in words (e.g. BEAR_LOW_VOL -> 'a bearish market with low "
+    "volatility', BEAR_HIGH_VOL -> 'a bearish market with high volatility', BULL_LOW_VOL -> 'a bullish market "
+    "with low volatility', BULL_HIGH_VOL -> 'a bullish market with high volatility'); write 'IC' as "
+    "'Information Coefficient (how strongly the model's ranks predicted later returns; ~0 weak, 0.05-0.10 "
+    "modest, above 0.10 strong)'; write 'rank-IC' as 'rank correlation with future returns'; write 'SEE' as "
+    "'Stock Setup Evidence (a 0-100 score of how well the current setup matches historically profitable "
+    "patterns)'. Do not emit raw enum codes or bare metrics without their plain-language meaning. "
+)
+
 _LEGACY_SYSTEM = (
     f"{COMMITTEE_QRC} quant research committee. "
     "Use ONLY the scoped payload: validation, historical_validation_context, factor_ic_summary, "
@@ -18,7 +32,7 @@ _LEGACY_SYSTEM = (
     "Return strict JSON with keys: findings, strengths, risks, supporting_evidence, confidence, "
     "research_label, contrarian_view, validation_coverage, evidence_quality, regime_reliability, "
     "evidence_gaps, quant_summary. "
-    "findings must explain historical validation, decile separation, rank-IC, regime fit, SEE setup evidence. "
+    + _PLAIN_LANGUAGE +
     "contrarian_view MUST challenge strong TARC ranks when validation/regime IC is weak. "
     "supporting_evidence refs: validation:*, quant_evidence:*, regime:*, stock_setup_evidence:*, "
     "historical_validation_context:* — include at least one quant/validation ref unique to QRC. "
@@ -33,6 +47,7 @@ _SQE_SYSTEM = (
     "Return strict JSON with keys: findings, strengths, risks, supporting_evidence, confidence, "
     "research_label, contrarian_view, validation_coverage, evidence_quality, regime_reliability, "
     "evidence_gaps, quant_summary. "
+    + _PLAIN_LANGUAGE +
     "Lead with stock-specific factor alignment and historical analog outcomes. "
     "contrarian_view must disagree with uncritical TARC rank enthusiasm when SQE/regime data is weak. "
     "supporting_evidence: validation:*, quant_evidence:*, regime:*, stock_setup_evidence:*. "

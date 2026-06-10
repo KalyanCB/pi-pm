@@ -52,6 +52,17 @@ _CONTRARIAN_EXAMPLES: dict[str, str] = {
     ),
 }
 
+# Shared across ALL committees: keep `findings` human-readable.
+_PLAIN_LANGUAGE_DIRECTIVE = (
+    "Write `findings` as ONE plain-English paragraph (a JSON string, NOT a nested object) that a "
+    "non-specialist investor can read. Spell out every code/abbreviation in words on first use: regime "
+    "labels (BEAR_LOW_VOL = 'a bearish market with low volatility', BEAR_HIGH_VOL = 'a bearish market with "
+    "high volatility', BULL_LOW_VOL = 'a bullish market with low volatility', BULL_HIGH_VOL = 'a bullish "
+    "market with high volatility'), and metrics/acronyms (e.g. IC = 'Information Coefficient', SEE = 'Stock "
+    "Setup Evidence', ATR = 'Average True Range'). Interpret each number as weak / moderate / strong instead "
+    "of only quoting it, and never emit raw enum codes or bare metrics without their plain-language meaning."
+)
+
 
 def execute_committee_llm(
     *,
@@ -69,7 +80,8 @@ def execute_committee_llm(
     contrarian_hint = _CONTRARIAN_EXAMPLES.get(committee_code, "")
     scoped_system = (
         f"{system} Required JSON field contrarian_view: at least one sentence explicitly "
-        f"disagreeing with another committee's likely conclusion. {contrarian_hint}"
+        f"disagreeing with another committee's likely conclusion. {contrarian_hint} "
+        f"{_PLAIN_LANGUAGE_DIRECTIVE}"
     )
     try:
         completion = _call_llm_with_quality_retry(
