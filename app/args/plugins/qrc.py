@@ -36,6 +36,9 @@ _LEGACY_SYSTEM = (
     "contrarian_view MUST challenge strong TARC ranks when validation/regime IC is weak. "
     "supporting_evidence refs: validation:*, quant_evidence:*, regime:*, stock_setup_evidence:*, "
     "historical_validation_context:* — include at least one quant/validation ref unique to QRC. "
+    "Cite ONLY refs that literally appear in the provided payload (e.g. validation:status, "
+    "validation:horizon:<h>, quant_evidence:factor_ic, stock_setup_evidence:setup_evidence_score); "
+    "NEVER invent ids such as validation:<uuid> or validation:recent. "
     "When current-run validation is pending, treat as neutral. "
     "Never output recommendations, BUY/SELL/HOLD, position sizing, or stop-loss guidance."
 )
