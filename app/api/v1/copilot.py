@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.api.auth_deps import CurrentUser, OwnerUser
@@ -28,6 +28,16 @@ def get_copilot_service(db: Session = Depends(get_db)) -> CopilotService:
 class AskRequest(BaseModel):
     question: str
     session_id: UUID | None = None
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def coerce_session_id(cls, v: object) -> UUID | None:
+        if v is None or v == "":
+            return None
+        try:
+            return UUID(str(v))
+        except (ValueError, AttributeError):
+            return uuid4()  # generate a fresh session rather than rejecting
 
 
 class CitationRead(BaseModel):
