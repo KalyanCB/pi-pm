@@ -1,51 +1,98 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Polyline, Defs, LinearGradient, Stop, Polygon } from 'react-native-svg';
+import Svg, { Polyline, Defs, LinearGradient, Stop, Polygon, Line, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '@pipm/theme';
 
 export interface SparklineChartProps {
   data: number[];
+  dates?: string[];        // ISO date strings aligned with data
   height?: number;
   color?: string;
   fill?: boolean;
   emptyLabel?: string;
+  showScale?: boolean;     // show Y-axis labels + gridlines
+  formatValue?: (v: number) => string;
 }
 
 const MAX_POINTS = 90;
+const Y_LABEL_W = 52;   // reserved left-margin for Y labels
+const X_LABEL_H = 16;   // reserved bottom margin for X labels
+
+function fmtLakh(v: number): string {
+  if (Math.abs(v) >= 10_00_000) return `₹${(v / 10_00_000).toFixed(1)}L`;
+  if (Math.abs(v) >= 1000) return `₹${(v / 1000).toFixed(0)}K`;
+  return `₹${v.toFixed(0)}`;
+}
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+}
 
 export function SparklineChart({
   data,
-  height = 80,
+  dates,
+  height = 120,
   color,
   fill = true,
   emptyLabel = 'No history available',
+  showScale = false,
+  formatValue,
 }: SparklineChartProps) {
   const theme = useTheme();
   const stroke = color ?? theme.colors.accent;
-  const width = 280;
+  const svgW = 280;
+  const plotW = showScale ? svgW - Y_LABEL_W : svgW;
+  const plotH = showScale ? height - X_LABEL_H : height;
+  const offsetX = showScale ? Y_LABEL_W : 0;
 
-  const { points, fillPoints, label } = useMemo(() => {
+  const fmt = formatValue ?? fmtLakh;
+
+  const { points, fillPoints, min, max, yTicks, xTicks, label } = useMemo(() => {
     const slice = data.slice(-MAX_POINTS);
+    const dateSlice = dates ? dates.slice(-MAX_POINTS) : [];
+
     if (slice.length < 2) {
-      return { points: '', fillPoints: '', label: emptyLabel };
+      return { points: '', fillPoints: '', min: 0, max: 0, yTicks: [], xTicks: [], label: emptyLabel };
     }
-    const min = Math.min(...slice);
-    const max = Math.max(...slice);
-    const range = max - min || 1;
-    const coords = slice.map((v, i) => {
-      const x = (i / (slice.length - 1)) * width;
-      const y = height - ((v - min) / range) * (height - 8) - 4;
-      return `${x},${y}`;
-    });
+
+    const minV = Math.min(...slice);
+    const maxV = Math.max(...slice);
+    const range = maxV - minV || 1;
+
+    const toX = (i: number) => offsetX + (i / (slice.length - 1)) * plotW;
+    const toY = (v: number) => plotH - ((v - minV) / range) * (plotH - 8) - 4;
+
+    const coords = slice.map((v, i) => `${toX(i)},${toY(v)}`);
     const last = slice[slice.length - 1]!;
-    const first = slice[0]!;
-    const summary = `Latest ${last.toFixed(2)}, range ${min.toFixed(2)}–${max.toFixed(2)}`;
+    const summary = `Latest ${last.toFixed(2)}, range ${minV.toFixed(2)}–${maxV.toFixed(2)}`;
+
+    // Y ticks: min, mid, max
+    const mid = (minV + maxV) / 2;
+    const yTicks = [
+      { v: maxV, y: toY(maxV) },
+      { v: mid,  y: toY(mid) },
+      { v: minV, y: toY(minV) },
+    ];
+
+    // X ticks: ~3 evenly spaced date labels
+    const xTicks: { label: string; x: number }[] = [];
+    if (dateSlice.length >= 2) {
+      const idxs = [0, Math.floor(slice.length / 2), slice.length - 1];
+      for (const i of idxs) {
+        if (dateSlice[i]) xTicks.push({ label: fmtDate(dateSlice[i]!), x: toX(i) });
+      }
+    }
+
     return {
       points: coords.join(' '),
-      fillPoints: `0,${height} ${coords.join(' ')} ${width},${height}`,
+      fillPoints: `${offsetX},${plotH} ${coords.join(' ')} ${offsetX + plotW},${plotH}`,
+      min: minV, max: maxV,
+      yTicks,
+      xTicks,
       label: summary,
     };
-  }, [data, height, emptyLabel, width]);
+  }, [data, dates, height, emptyLabel, plotW, plotH, offsetX, fmt]);
 
   if (data.length < 2) {
     return (
@@ -55,9 +102,11 @@ export function SparklineChart({
     );
   }
 
+  const totalH = showScale ? height : height;
+
   return (
     <View accessibilityLabel={label}>
-      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+      <Svg width="100%" height={totalH} viewBox={`0 0 ${svgW} ${totalH}`}>
         {fill && (
           <Defs>
             <LinearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
@@ -66,8 +115,42 @@ export function SparklineChart({
             </LinearGradient>
           </Defs>
         )}
+
+        {/* Y-axis gridlines + labels */}
+        {showScale && yTicks.map((t, i) => (
+          <React.Fragment key={i}>
+            <Line
+              x1={offsetX} y1={t.y} x2={offsetX + plotW} y2={t.y}
+              stroke={theme.colors.border} strokeWidth={0.5} strokeDasharray="3,3"
+            />
+            <SvgText
+              x={offsetX - 4} y={t.y + 3.5}
+              textAnchor="end" fontSize={9}
+              fill={theme.colors.textMuted}
+            >
+              {fmt(t.v)}
+            </SvgText>
+          </React.Fragment>
+        ))}
+
+        {/* Y-axis line */}
+        {showScale && (
+          <Line x1={offsetX} y1={0} x2={offsetX} y2={plotH} stroke={theme.colors.border} strokeWidth={0.5} />
+        )}
+
         {fill && <Polygon points={fillPoints} fill="url(#sparkFill)" />}
         <Polyline points={points} fill="none" stroke={stroke} strokeWidth={1.5} />
+
+        {/* X-axis date labels */}
+        {showScale && xTicks.map((t, i) => (
+          <SvgText
+            key={i} x={t.x} y={plotH + X_LABEL_H - 3}
+            textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}
+            fontSize={9} fill={theme.colors.textMuted}
+          >
+            {t.label}
+          </SvgText>
+        ))}
       </Svg>
     </View>
   );

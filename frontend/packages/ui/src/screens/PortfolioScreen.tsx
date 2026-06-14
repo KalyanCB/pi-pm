@@ -58,7 +58,7 @@ export function PortfolioScreen() {
     error,
     refetch,
   } = usePortfolioScreen(showClosed);
-  const { returnSeries, navSeries } = useNavHistory();
+  const { points, returnSeries, navSeries } = useNavHistory();
 
   // Derive unique filter options from loaded positions
   const openPositions = positions.filter((p) => p.position_status === 'OPEN');
@@ -470,7 +470,13 @@ export function PortfolioScreen() {
             <MetricValue value={performance.sharpe_ratio} format="number" />
             <Text style={[styles.perfLabel, { color: theme.colors.textMuted }]}>Sharpe</Text>
           </View>
-          <SparklineChart data={returnSeries.length > 1 ? returnSeries : navSeries} emptyLabel="Building performance history" />
+          <SparklineChart
+            data={navSeries}
+            dates={points.map((p) => p.as_of_date)}
+            height={160}
+            showScale
+            emptyLabel="Building performance history"
+          />
         </View>
       )}
 
