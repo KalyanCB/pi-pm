@@ -19,6 +19,31 @@ from app.copilot.retriever import RetrievalContext, retrieve
 from app.models.copilot import CopilotQueryLog
 
 
+def _unwrap_json_answer(text: str) -> str:
+    """If LLM wrapped its answer in a JSON envelope, extract the text value.
+
+    Only unwraps known text-envelope keys. If the JSON has data keys (UUIDs,
+    numbers, etc.) it is treated as valid plain-text and returned as-is.
+    """
+    import json
+
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            obj = json.loads(stripped)
+            for key in ("answer", "response", "text", "message", "content"):
+                if key in obj and isinstance(obj[key], str):
+                    return obj[key]
+            # Single-key object whose sole value is a plain sentence (not a UUID/number)
+            if len(obj) == 1:
+                only_val = next(iter(obj.values()))
+                if isinstance(only_val, str) and " " in only_val:
+                    return only_val
+        except (json.JSONDecodeError, AttributeError):
+            pass
+    return text
+
+
 class CopilotService:
     def __init__(
         self,
@@ -90,7 +115,7 @@ class CopilotService:
         completion = self._llm.complete(system=prompt.system, user=prompt.user)
 
         # 6. Validate citations
-        validated: ValidationResult = validate(completion.content)
+        validated: ValidationResult = validate(_unwrap_json_answer(completion.content))
 
         latency_ms = int((time.perf_counter() - started) * 1000)
 

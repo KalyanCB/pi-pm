@@ -35,6 +35,8 @@ def build_llm_port(cfg: AgentLlmConfig) -> LlmPort:
 
 
 def _build_openai_port(cfg: AgentLlmConfig) -> LlmPort:
+    # Copilot produces prose answers — skip JSON mode so the model writes plain text.
+    text_mode = cfg.agent_code == "copilot"
     return OpenAiCompatibleLlmPort(
         api_key=cfg.api_key or "",
         model=cfg.model,
@@ -42,6 +44,7 @@ def _build_openai_port(cfg: AgentLlmConfig) -> LlmPort:
         timeout_seconds=cfg.timeout_seconds,
         extra_headers=cfg.extra_headers,
         request_overrides=cfg.request_overrides,
+        text_mode=text_mode,
     )
 
 
