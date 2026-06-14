@@ -48,9 +48,9 @@ from app.portfolio.regime_stops import resolve_stop_pcts
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://pipm:pipm@localhost:5432/pipm")
 PORTFOLIO_ID = UUID("00000000-0000-4000-8000-000000000010")
 
-INITIAL_CAPITAL = 10_000_000.0          # ₹1 Cr (user-specified)
-MAX_SLOTS = 5                            # ADR-035 concentration
-MAX_TRADE_CAPITAL = INITIAL_CAPITAL / MAX_SLOTS   # ₹20L/slot
+INITIAL_CAPITAL = 1_000_000.0           # ₹10L (user-specified)
+MAX_SLOTS = 5                            # concentrate to 5 positions
+MAX_TRADE_CAPITAL = 100_000.0           # ₹1L max per slot (user-specified)
 START_DATE = "2022-01-01"
 END_DATE = os.getenv("REPLAY_END", date.today().isoformat())
 CONVICTION_MULT = {"EXCEPTIONAL": 1.15, "HIGH": 1.00, "MEDIUM": 0.75}
@@ -109,7 +109,7 @@ def setup_config(db: Session) -> PortfolioConfig:
         fee_per_leg=0.0,  # fees are % in-script (FEE_BPS)
         execution_mode="PAPER",
         notes=(
-            f"ADR-035 best-outcome replay {START_DATE}->{END_DATE} | ₹1Cr | 5 slots | "
+            f"ADR-035 best-outcome replay {START_DATE}->{END_DATE} | ₹10L | 5 slots | ₹1L/slot | "
             f"regime stops 6/8/2/3 | no time stop | fee {FEE_BPS}bps + slip {SLIPPAGE_BPS}bps"
         ),
     )
