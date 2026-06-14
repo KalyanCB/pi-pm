@@ -164,6 +164,20 @@ def _append_recommendation(
             "conviction_band": result.conviction_band,
             "conviction_components": result.conviction_components,
             "reason_codes": result.reason_codes,
+            # ADR-034: deterministic trade levels (BUY = actionable, WATCH = indicative)
+            "reference_close": float(result.reference_close)
+            if result.reference_close is not None
+            else None,
+            "atr_pct": float(result.atr_pct) if result.atr_pct is not None else None,
+            "entry_low": float(result.entry_low) if result.entry_low is not None else None,
+            "entry_high": float(result.entry_high) if result.entry_high is not None else None,
+            "stop_advisory": float(result.stop_advisory)
+            if result.stop_advisory is not None
+            else None,
+            "stop_critical": float(result.stop_critical)
+            if result.stop_critical is not None
+            else None,
+            "levels_basis": result.levels_basis,
             "portfolio_position_id": str(result.portfolio_position_id)
             if result.portfolio_position_id
             else None,
@@ -191,27 +205,51 @@ def _retrieve_why_recommended(
         source_ref("recommendation_runs", str(rec_run.id), recommendation_run_id=str(rec_run.id))
     )
 
-    q = select(RecommendationResult).where(
-        RecommendationResult.recommendation_run_id == rec_run.id,
-        RecommendationResult.action.in_(tuple(_BUY_ACTIONS)),
-    )
     if stock:
-        q = q.where(RecommendationResult.stock_id == stock.id)
+        # Specific stock — return whatever action it received (may be REJECT)
+        q = select(RecommendationResult).where(
+            RecommendationResult.recommendation_run_id == rec_run.id,
+            RecommendationResult.stock_id == stock.id,
+        )
     else:
-        q = q.order_by(desc(RecommendationResult.conviction_score)).limit(5)
+        # No stock — top BUY/WATCH across ALL strategies for the same date
+        same_date_runs = db.scalars(
+            select(RecommendationRun).where(
+                RecommendationRun.status == "completed",
+                RecommendationRun.as_of_date == rec_run.as_of_date,
+            )
+        ).all()
+        run_ids = [r.id for r in same_date_runs]
+        q = (
+            select(RecommendationResult)
+            .where(
+                RecommendationResult.recommendation_run_id.in_(run_ids),
+                RecommendationResult.action.in_(tuple(_BUY_ACTIONS)),
+            )
+            .order_by(desc(RecommendationResult.conviction_score))
+            .limit(10)
+        )
 
     results = db.scalars(q).all()
     if not results:
         ctx.sources.append(
             {
                 "recommendation_run_id": str(rec_run.id),
-                "note": "No BUY/WATCH recommendations found for the query scope.",
+                "note": "No recommendations found for the query scope.",
             }
         )
         return
 
-    for r in results:
-        _append_recommendation(ctx, rec_run, r, stock)
+    if stock:
+        for r in results:
+            _append_recommendation(ctx, rec_run, r, stock)
+    else:
+        # Bulk-resolve symbols so the LLM can name the stocks
+        sym_map = _symbol_map(db, [r.stock_id for r in results])
+        for r in results:
+            _append_recommendation(ctx, rec_run, r, None)
+            # Patch symbol into the last appended source
+            ctx.sources[-1]["symbol"] = sym_map.get(str(r.stock_id))
 
 
 def _retrieve_why_not_recommended(
@@ -373,97 +411,184 @@ def _retrieve_validation(db: Session, entities: ExtractedEntities, ctx: Retrieva
     )
 
 
-def _retrieve_exit(db: Session, entities: ExtractedEntities, ctx: RetrievalContext) -> None:
-    stock = _get_stock(db, entities.symbol)
-
-    q = (
-        select(RecommendationResult)
-        .where(RecommendationResult.action == "EXIT_APPROVED")
-        .order_by(desc(RecommendationResult.updated_at))
-        .limit(10)
+def _append_position_exit(
+    ctx: RetrievalContext, pos: PortfolioPosition, stock: Stock | None
+) -> None:
+    """Record an actual position exit (the real SELL): prices, P&L, exit reason."""
+    ctx.source_refs.append(
+        source_ref("portfolio_positions", str(pos.id), portfolio_position_id=str(pos.id))
     )
+    entry = float(pos.entry_price) if pos.entry_price is not None else None
+    exit_p = float(pos.exit_price) if pos.exit_price is not None else None
+    return_pct = (
+        round((exit_p - entry) / entry * 100, 2) if entry and exit_p and entry != 0 else None
+    )
+    ctx.sources.append(
+        {
+            "record_type": "position_exit",
+            "portfolio_position_id": str(pos.id),
+            "symbol": stock.symbol if stock else None,
+            "position_status": pos.position_status,
+            "entry_date": pos.entry_date.isoformat() if pos.entry_date else None,
+            "exit_date": pos.exit_date.isoformat() if pos.exit_date else None,
+            "entry_price": entry,
+            "exit_price": exit_p,
+            "return_pct": return_pct,
+            "realized_pnl": float(pos.realized_pnl) if pos.realized_pnl is not None else None,
+            "exit_reason": pos.exit_reason,
+            "quantity": float(pos.quantity) if pos.quantity is not None else None,
+            "conviction_band": pos.conviction_band,
+            "strategy_name": pos.strategy_name,
+        }
+    )
+
+
+def _retrieve_exit(db: Session, entities: ExtractedEntities, ctx: RetrievalContext) -> None:
+    """Trade history for a symbol: recommendations (BUY/WATCH/EXIT) + actual exits.
+
+    Covers an optional [from_date, to_date] window so questions like
+    "explain the BUY and SELL recommendations for X between 1-Jun and 10-Jun"
+    are answerable from real data — not just engine EXIT_APPROVED rows.
+    """
+    stock = _get_stock(db, entities.symbol)
+    appended = False
+
     if stock:
-        q = q.where(RecommendationResult.stock_id == stock.id)
-
-    results = db.scalars(q).all()
-    if not results:
-        ctx.sources.append({"note": "No EXIT_APPROVED recommendations found."})
-        return
-
-    for r in results:
-        rec_run = db.get(RecommendationRun, r.recommendation_run_id)
-        if rec_run:
-            _append_recommendation(ctx, rec_run, r, stock)
-        else:
-            ctx.source_refs.append(
-                source_ref("recommendation_results", str(r.id), recommendation_id=str(r.id))
+        # 1) Recommendation history for the symbol over the date range.
+        rq = (
+            select(RecommendationResult, RecommendationRun)
+            .join(
+                RecommendationRun,
+                RecommendationResult.recommendation_run_id == RecommendationRun.id,
             )
+            .where(RecommendationResult.stock_id == stock.id)
+        )
+        if entities.from_date:
+            rq = rq.where(RecommendationRun.as_of_date >= entities.from_date)
+        if entities.to_date:
+            rq = rq.where(RecommendationRun.as_of_date <= entities.to_date)
+        rq = rq.order_by(RecommendationRun.as_of_date, RecommendationRun.strategy_name).limit(80)
+        for result, rec_run in db.execute(rq).all():
+            _append_recommendation(ctx, rec_run, result, stock)
+            appended = True
+
+        # 2) Actual position exits (real SELLs: STOP_LOSS, FORCE_CLOSE, etc.).
+        pq = select(PortfolioPosition).where(
+            PortfolioPosition.stock_id == stock.id,
+            PortfolioPosition.exit_date.is_not(None),
+        )
+        if entities.from_date:
+            pq = pq.where(PortfolioPosition.exit_date >= entities.from_date)
+        if entities.to_date:
+            pq = pq.where(PortfolioPosition.exit_date <= entities.to_date)
+        pq = pq.order_by(PortfolioPosition.entry_date).limit(40)
+        for pos in db.scalars(pq).all():
+            _append_position_exit(ctx, pos, stock)
+            appended = True
+
+    # 3) Fallback — latest EXIT_APPROVED signals (original behaviour).
+    if not appended:
+        q = (
+            select(RecommendationResult)
+            .where(RecommendationResult.action == "EXIT_APPROVED")
+            .order_by(desc(RecommendationResult.updated_at))
+            .limit(10)
+        )
+        if stock:
+            q = q.where(RecommendationResult.stock_id == stock.id)
+        results = db.scalars(q).all()
+        if not results:
             ctx.sources.append(
-                {
-                    "recommendation_id": str(r.id),
-                    "action": r.action,
-                    "reason_codes": r.reason_codes,
-                }
+                {"note": "No exit/sell or recommendation history found for this symbol/range."}
             )
+            return
+        for r in results:
+            rec_run = db.get(RecommendationRun, r.recommendation_run_id)
+            if rec_run:
+                _append_recommendation(ctx, rec_run, r, stock)
 
 
 def _retrieve_committee(db: Session, entities: ExtractedEntities, ctx: RetrievalContext) -> None:
     stock = _get_stock(db, entities.symbol)
 
-    q = select(InvestmentReviewPacket).order_by(desc(InvestmentReviewPacket.built_at)).limit(1)
     if stock:
-        q = q.where(InvestmentReviewPacket.stock_id == stock.id)
+        # Specific stock — fetch its single latest packet (full detail)
+        packets = db.scalars(
+            select(InvestmentReviewPacket)
+            .where(InvestmentReviewPacket.stock_id == stock.id)
+            .order_by(desc(InvestmentReviewPacket.built_at))
+            .limit(1)
+        ).all()
+    else:
+        # No stock specified — show most recent 5 packets across different stocks
+        packets = db.scalars(
+            select(InvestmentReviewPacket)
+            .order_by(desc(InvestmentReviewPacket.built_at))
+            .limit(5)
+        ).all()
 
-    packet = db.scalar(q)
-    if not packet:
-        ctx.sources.append({"note": "No ARGS packet found."})
+    if not packets:
+        ctx.sources.append({"note": "No ARGS committee packet found in the corpus."})
         return
 
-    ctx.source_refs.append(source_ref("investment_review_packets", str(packet.id)))
+    # If "high concern" was the query intent but no flagged rows exist, say so
+    # and fall through to show the available committee data for context.
+    high_concern_total = db.scalar(
+        select(CommitteeReview).where(CommitteeReview.high_concern.is_(True)).limit(1)
+    )
+    if high_concern_total is None:
+        ctx.sources.append({
+            "note": "No high-concern committee flags found in the corpus. "
+                    "All recent committee reviews are shown below for context."
+        })
 
-    reviews = db.scalars(
-        select(CommitteeReview)
-        .where(CommitteeReview.packet_id == packet.id)
-        .order_by(CommitteeReview.committee_code)
-    ).all()
+    for packet in packets:
+        ctx.source_refs.append(source_ref("investment_review_packets", str(packet.id)))
 
-    for r in reviews:
-        ctx.source_refs.append(
-            source_ref(
-                "committee_reviews",
-                str(r.id),
-                committee_review_id=str(r.id),
-                recommendation_run_id=None,
+        reviews = db.scalars(
+            select(CommitteeReview)
+            .where(CommitteeReview.packet_id == packet.id)
+            .order_by(CommitteeReview.committee_code)
+        ).all()
+
+        for r in reviews:
+            ctx.source_refs.append(
+                source_ref(
+                    "committee_reviews",
+                    str(r.id),
+                    committee_review_id=str(r.id),
+                    recommendation_run_id=None,
+                )
             )
-        )
-        ctx.sources.append(
-            {
-                "committee_review_id": str(r.id),
-                "committee": r.committee_code,
-                "status": r.status,
-                "findings": r.findings,
-                "strengths": r.strengths or [],
-                "risks": r.risks or [],
-                "advisory_action": r.advisory_action,
-                "high_concern": r.high_concern,
-                "high_concern_reason": r.high_concern_reason,
-                "packet_id": str(packet.id),
-                "symbol": packet.symbol,
-            }
-        )
+            ctx.sources.append(
+                {
+                    "committee_review_id": str(r.id),
+                    "committee": r.committee_code,
+                    "status": r.status,
+                    "findings": r.findings,
+                    "strengths": r.strengths or [],
+                    "risks": r.risks or [],
+                    "advisory_action": r.advisory_action,
+                    "high_concern": r.high_concern,
+                    "high_concern_reason": r.high_concern_reason,
+                    "packet_id": str(packet.id),
+                    "symbol": packet.symbol,
+                }
+            )
 
-    cro = db.scalar(select(CroReview).where(CroReview.packet_id == packet.id))
-    if cro:
-        ctx.source_refs.append(source_ref("cro_reviews", str(cro.id)))
-        ctx.sources.append(
-            {
-                "cro_review_id": str(cro.id),
-                "rationale": cro.rationale,
-                "investment_committee_summary": cro.investment_committee_summary,
-                "cro_advisory_action": cro.cro_advisory_action,
-                "packet_id": str(packet.id),
-            }
-        )
+        cro = db.scalar(select(CroReview).where(CroReview.packet_id == packet.id))
+        if cro:
+            ctx.source_refs.append(source_ref("cro_reviews", str(cro.id)))
+            ctx.sources.append(
+                {
+                    "cro_review_id": str(cro.id),
+                    "rationale": cro.rationale,
+                    "investment_committee_summary": cro.investment_committee_summary,
+                    "cro_advisory_action": cro.cro_advisory_action,
+                    "packet_id": str(packet.id),
+                    "symbol": packet.symbol,
+                }
+            )
 
 
 def _retrieve_portfolio(db: Session, entities: ExtractedEntities, ctx: RetrievalContext) -> None:
@@ -637,58 +762,178 @@ def _retrieve_risk(db: Session, entities: ExtractedEntities, ctx: RetrievalConte
 
 
 def _retrieve_performance(db: Session, entities: ExtractedEntities, ctx: RetrievalContext) -> None:
+    import re as _re
+    from datetime import timedelta
+    from calendar import monthrange
+
     stock = _get_stock(db, entities.symbol)
+    period = entities.period_label  # e.g. "1Y", "6M", "2024", "Q1-2025", "2025-03", "YTD"
 
-    q = select(RecommendationOutcome).order_by(desc(RecommendationOutcome.entry_date)).limit(10)
+    # ── Closed positions (portfolio_positions WHERE status=CLOSED) ────────────
+    # recommendation_outcomes table is currently empty; use portfolio_positions.
+    pos_q = (
+        select(PortfolioPosition)
+        .where(PortfolioPosition.position_status == "CLOSED")
+        .order_by(desc(PortfolioPosition.realized_pnl))
+        .limit(20)
+    )
+    pos_q_asc = (
+        select(PortfolioPosition)
+        .where(PortfolioPosition.position_status == "CLOSED")
+        .order_by(PortfolioPosition.realized_pnl)
+        .limit(5)
+    )
     if stock:
-        q = q.where(RecommendationOutcome.symbol == stock.symbol.replace(".NS", ""))
+        pos_q = pos_q.where(PortfolioPosition.stock_id == stock.id)
+        pos_q_asc = pos_q_asc.where(PortfolioPosition.stock_id == stock.id)
 
-    outcomes = db.scalars(q).all()
-    for o in outcomes:
-        ctx.source_refs.append(
-            source_ref(
-                "recommendation_outcomes",
-                str(o.id),
-                recommendation_id=str(o.recommendation_result_id),
+    closed_positions = db.scalars(pos_q).all()
+    # Bottom performers (worst realized_pnl) — deduplicated against top list
+    bottom_ids = {p.id for p in closed_positions}
+    worst_positions = [p for p in db.scalars(pos_q_asc).all() if p.id not in bottom_ids]
+    if closed_positions:
+        wins = [p for p in closed_positions if p.realized_pnl and float(p.realized_pnl) > 0]
+        losses = [p for p in closed_positions if p.realized_pnl and float(p.realized_pnl) < 0]
+        total_pnl = sum(float(p.realized_pnl) for p in closed_positions if p.realized_pnl)
+        ctx.sources.append({
+            "note": f"Closed positions summary: {len(closed_positions)} total, "
+                    f"{len(wins)} wins, {len(losses)} losses. "
+                    f"Total realized PnL: {round(total_pnl, 2)}.",
+            "win_rate_pct": round(len(wins) / len(closed_positions) * 100, 1) if closed_positions else None,
+        })
+        # Bulk-fetch recommendation actions for these positions
+        rec_ids = [p.recommendation_result_id for p in closed_positions if p.recommendation_result_id]
+        _rec_action_map: dict = {}
+        if rec_ids:
+            from sqlalchemy import and_
+            recs = db.scalars(
+                select(RecommendationResult).where(RecommendationResult.id.in_(rec_ids))
+            ).all()
+            _rec_action_map = {r.id: r.action for r in recs}
+
+        for p in closed_positions[:15]:
+            ctx.source_refs.append(source_ref("portfolio_positions", str(p.id)))
+            action = _rec_action_map.get(p.recommendation_result_id) if p.recommendation_result_id else None
+            ctx.sources.append({
+                "record_type": "closed_position",
+                "portfolio_position_id": str(p.id),
+                "symbol": p.stock.symbol if p.stock else None,
+                "recommendation_action": action,
+                "entry_date": p.entry_date.isoformat() if p.entry_date else None,
+                "exit_date": p.exit_date.isoformat() if p.exit_date else None,
+                "entry_price": float(p.avg_cost) if p.avg_cost else None,
+                "exit_price": float(p.exit_price) if p.exit_price else None,
+                "realized_pnl": float(p.realized_pnl) if p.realized_pnl else None,
+                "exit_reason": p.exit_reason,
+                "quantity": p.quantity,
+            })
+
+        # Append worst performers separately so LLM can answer "worst ever" queries
+        if worst_positions:
+            ctx.sources.append({"note": "Bottom performers (lowest realized_pnl):"})
+            for p in worst_positions:
+                action = _rec_action_map.get(p.recommendation_result_id) if p.recommendation_result_id else None
+                ctx.sources.append({
+                    "record_type": "worst_closed_position",
+                    "portfolio_position_id": str(p.id),
+                    "symbol": p.stock.symbol if p.stock else None,
+                    "recommendation_action": action,
+                    "realized_pnl": float(p.realized_pnl) if p.realized_pnl else None,
+                    "exit_date": p.exit_date.isoformat() if p.exit_date else None,
+                    "exit_reason": p.exit_reason,
+                })
+
+    # ── NAV history — targeted to requested period ────────────────────────────
+    latest_nav = db.scalar(
+        select(PortfolioNavHistory).order_by(desc(PortfolioNavHistory.as_of_date)).limit(1)
+    )
+    if not latest_nav:
+        if not closed_positions:
+            ctx.sources.append({"note": "No performance data available yet."})
+        return
+
+    ctx.source_refs.append(source_ref("portfolio_nav_history", str(latest_nav.id)))
+    today = latest_nav.as_of_date
+
+    def _nav_summary(label: str, start_date: date, end_date: date) -> None:
+        rows = db.scalars(
+            select(PortfolioNavHistory)
+            .where(
+                PortfolioNavHistory.as_of_date >= start_date,
+                PortfolioNavHistory.as_of_date <= end_date,
             )
+            .order_by(PortfolioNavHistory.as_of_date)
+        ).all()
+        if not rows:
+            ctx.sources.append({"note": f"No NAV data found for period {label}."})
+            return
+        s, e = rows[0], rows[-1]
+        returns = [float(r.day_return_pct) for r in rows if r.day_return_pct]
+        cumulative = (
+            (float(e.total_equity) - float(s.total_equity)) / float(s.total_equity) * 100
+            if s.total_equity and e.total_equity
+            else None
         )
-        ctx.sources.append(
-            {
-                "outcome_id": str(o.id),
-                "recommendation_id": str(o.recommendation_result_id),
-                "symbol": o.symbol,
-                "strategy_name": o.strategy_name,
-                "conviction_band": o.conviction_band,
-                "outcome_status": o.outcome_status,
-                "entry_date": o.entry_date.isoformat(),
-                "exit_date": o.exit_date.isoformat() if o.exit_date else None,
-                "pnl_pct": float(o.pnl_pct) if o.pnl_pct else None,
-                "alpha_pct": float(o.alpha_pct) if o.alpha_pct else None,
-                "benchmark_return_pct": float(o.benchmark_return_pct)
-                if o.benchmark_return_pct
-                else None,
-                "target_hit": o.target_hit,
-                "stop_hit": o.stop_hit,
-                "exit_reason": o.exit_reason,
-                "committee_advisory": o.committee_advisory,
-            }
-        )
+        ctx.sources.append({
+            "period": label,
+            "start_date": s.as_of_date.isoformat(),
+            "end_date": e.as_of_date.isoformat(),
+            "start_equity": float(s.total_equity) if s.total_equity else None,
+            "end_equity": float(e.total_equity) if e.total_equity else None,
+            "cumulative_return_pct": round(cumulative, 4) if cumulative is not None else None,
+            "avg_daily_return_pct": round(sum(returns) / len(returns), 4) if returns else None,
+            "best_day_return_pct": round(max(returns), 4) if returns else None,
+            "worst_day_return_pct": round(min(returns), 4) if returns else None,
+            "up_days": sum(1 for r in returns if r > 0),
+            "down_days": sum(1 for r in returns if r < 0),
+            "trading_days_in_period": len(rows),
+            "source_table": "portfolio_nav_history",
+        })
 
-    nav_rows = db.scalars(
-        select(PortfolioNavHistory).order_by(desc(PortfolioNavHistory.as_of_date)).limit(5)
-    ).all()
-    for nav in nav_rows:
-        ctx.source_refs.append(source_ref("portfolio_nav_history", str(nav.id)))
-        ctx.sources.append(
-            {
-                "nav_as_of_date": nav.as_of_date.isoformat(),
-                "day_return_pct": float(nav.day_return_pct) if nav.day_return_pct else None,
-                "alpha_pct": float(nav.alpha_pct) if nav.alpha_pct else None,
-                "benchmark_return_pct": float(nav.benchmark_return_pct)
-                if nav.benchmark_return_pct
-                else None,
-            }
+    if period and period.isdigit() and len(period) == 4:
+        # Calendar year: "2024"
+        yr = int(period)
+        _nav_summary(period, date(yr, 1, 1), date(yr, 12, 31))
+
+    elif period and _re.match(r"^Q([1-4])-(\d{4})$", period):
+        # Quarter: "Q1-2025"
+        m = _re.match(r"^Q([1-4])-(\d{4})$", period)
+        q_num, yr = int(m.group(1)), int(m.group(2))
+        q_start_month = (q_num - 1) * 3 + 1
+        q_end_month = q_start_month + 2
+        _, last_day = monthrange(yr, q_end_month)
+        _nav_summary(period, date(yr, q_start_month, 1), date(yr, q_end_month, last_day))
+
+    elif period and _re.match(r"^\d{4}-\d{2}$", period):
+        # Month: "2025-03"
+        yr, mo = int(period[:4]), int(period[5:])
+        _, last_day = monthrange(yr, mo)
+        _nav_summary(period, date(yr, mo, 1), date(yr, mo, last_day))
+
+    elif period == "YTD":
+        _nav_summary("YTD", date(today.year, 1, 1), today)
+
+    elif period:
+        # Rolling window: "1Y", "6M", "3M", "1M"
+        unit_days = {"Y": 365, "M": 30, "W": 7}
+        try:
+            num = int(period[:-1])
+            unit = period[-1]
+            cutoff = today - timedelta(days=num * unit_days.get(unit, 30))
+            _nav_summary(f"last {period}", cutoff, today)
+        except (ValueError, IndexError):
+            _nav_summary("1Y", today - timedelta(days=365), today)
+
+    else:
+        # No period specified — show 1Y + all-time
+        _nav_summary("1Y", today - timedelta(days=365), today)
+        earliest = db.scalar(
+            select(PortfolioNavHistory.as_of_date)
+            .order_by(PortfolioNavHistory.as_of_date)
+            .limit(1)
         )
+        if earliest:
+            _nav_summary("all_time", earliest, today)
 
     if not ctx.sources:
         ctx.sources.append({"note": "No performance or outcome data found."})

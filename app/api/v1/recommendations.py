@@ -9,8 +9,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from app.api.deps import get_recommendation_service
 from app.api.auth_deps import OwnerUser
+from app.api.deps import get_recommendation_service
 from app.services.recommendation_service import RecommendationService
 
 router = APIRouter()
@@ -95,6 +95,15 @@ class RecommendationResultRead(BaseModel):
     reason_codes: list[str]
     recommendation_run_id: UUID
     portfolio_position_id: UUID | None = None
+
+    # ADR-034: deterministic trade levels (BUY)
+    reference_close: float | None = None
+    atr_pct: float | None = None
+    entry_low: float | None = None
+    entry_high: float | None = None
+    stop_advisory: float | None = None
+    stop_critical: float | None = None
+    levels_basis: str | None = None
 
     model_config = {"from_attributes": True}
 

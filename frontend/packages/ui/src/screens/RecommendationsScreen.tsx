@@ -254,6 +254,11 @@ export function RecommendationsScreen() {
               convictionScore={card.convictionScore}
               convictionBand={card.convictionBand}
               reasonCodes={card.reasonCodes}
+              entryLow={card.entryLow}
+              entryHigh={card.entryHigh}
+              stopAdvisory={card.stopAdvisory}
+              stopCritical={card.stopCritical}
+              levelsBasis={card.levelsBasis}
               committeeAdvisory={card.committeeAdvisory}
               committeeFindings={card.committeeFindings}
               lifecycleState={card.lifecycleState}

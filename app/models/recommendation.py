@@ -91,6 +91,16 @@ class RecommendationResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # ADR-032: recommendation confidence derived from RCEE edge state + sample days
     recommendation_confidence: Mapped[str | None] = mapped_column(String(32))
 
+    # ADR-034: deterministic trade levels (BUY) — computed at recommendation phase
+    # from freshly-ingested OHLCV. Engine stays price-blind; these are enrichment.
+    reference_close: Mapped[float | None] = mapped_column(Numeric(18, 6))
+    atr_pct: Mapped[float | None] = mapped_column(Numeric(10, 4))
+    entry_low: Mapped[float | None] = mapped_column(Numeric(18, 6))
+    entry_high: Mapped[float | None] = mapped_column(Numeric(18, 6))
+    stop_advisory: Mapped[float | None] = mapped_column(Numeric(18, 6))
+    stop_critical: Mapped[float | None] = mapped_column(Numeric(18, 6))
+    levels_basis: Mapped[str | None] = mapped_column(String(16))
+
     recommendation_run: Mapped[RecommendationRun] = relationship(
         "RecommendationRun", back_populates="results"
     )

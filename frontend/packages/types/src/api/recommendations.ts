@@ -63,6 +63,14 @@ export interface RecommendationResultRead {
   reason_codes: string[];
   recommendation_run_id: string;
   portfolio_position_id?: string | null;
+  // ADR-034: deterministic trade levels (BUY = actionable, WATCH = indicative)
+  reference_close?: number | null;
+  atr_pct?: number | null;
+  entry_low?: number | null;
+  entry_high?: number | null;
+  stop_advisory?: number | null;
+  stop_critical?: number | null;
+  levels_basis?: 'actionable' | 'indicative' | null;
 }
 
 export interface DailyRecommendationsRead {

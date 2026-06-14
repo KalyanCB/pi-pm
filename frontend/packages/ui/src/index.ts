@@ -24,6 +24,7 @@ export { RecommendationReasonList, type RecommendationReasonListProps } from './
 export { PortfolioPositionCard } from './molecules/PortfolioPositionCard';
 export { SectorPieCard, type SectorPieCardProps } from './molecules/SectorPieCard';
 export { ConcentrationCard, type ConcentrationCardProps } from './molecules/ConcentrationCard';
+export { TradeLevelsCard, type TradeLevelsCardProps } from './molecules/TradeLevelsCard';
 export { PositionPnlCard, type PositionPnlCardProps } from './molecules/PositionPnlCard';
 export { ConvictionMixCard, type ConvictionMixCardProps } from './molecules/ConvictionMixCard';
 export { CommitteeAdvisoryCard, type CommitteeAdvisoryCardProps } from './molecules/CommitteeAdvisoryCard';
@@ -34,6 +35,7 @@ export { RiskIndicator } from './molecules/RiskIndicator';
 export { TrustScoreCard } from './molecules/TrustScoreCard';
 export { TrustIndicatorStrip, type TrustIndicatorStripProps } from './molecules/TrustIndicatorStrip';
 export { CopilotMessage } from './molecules/CopilotMessage';
+export { CopilotProgress } from './molecules/CopilotProgress';
 export { CitationPanel } from './molecules/CitationPanel';
 export { LineagePanel, type LineagePanelProps } from './molecules/LineagePanel';
 export { CopilotSidePanel } from './molecules/CopilotSidePanel';

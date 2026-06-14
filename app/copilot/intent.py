@@ -43,8 +43,11 @@ class CopilotIntent(StrEnum):
 class ExtractedEntities:
     symbol: str | None = None
     as_of_date: date | None = None
+    from_date: date | None = None
+    to_date: date | None = None
     strategy_name: str | None = None
     run_id: UUID | None = None
+    period_label: str | None = None   # e.g. "1Y", "6M", "3M", "2024", "2025"
 
 
 @dataclass
@@ -68,7 +71,11 @@ _REFUSE_PATTERNS: list[tuple[re.Pattern, str]] = [
         "Trade execution is not supported. Use the HITL approval queue.",
     ),
     (
-        re.compile(r"\b(?:place|execute)\s+.*\b(?:order|trade)\b", re.I),
+        re.compile(r"\b(?:place|execute|send)\b.{0,30}\b(?:order|trade)\b", re.I),
+        "Trade execution is not supported. Use the HITL approval queue.",
+    ),
+    (
+        re.compile(r"\bexecute\s+a?\s*(?:buy|sell)\b", re.I),
         "Trade execution is not supported. Use the HITL approval queue.",
     ),
     (
@@ -91,7 +98,7 @@ _REFUSE_PATTERNS: list[tuple[re.Pattern, str]] = [
         "Prompt injection attempt detected. Request refused.",
     ),
     (
-        re.compile(r"\b(guarantee|promise|certain(ly)?)\s+(profit|return|gain)\b", re.I),
+        re.compile(r"\b(guarantee|promise|certain(ly)?)\s+.{0,20}\b(profit|return|gain|returns)\b", re.I),
         "Return guarantees are not in scope.",
     ),
     (
@@ -99,7 +106,7 @@ _REFUSE_PATTERNS: list[tuple[re.Pattern, str]] = [
         "Position sizing is handled by the Portfolio Engine, not the Copilot.",
     ),
     (
-        re.compile(r"\b(predict|forecast)\s+(?:market|price|nifty)\b", re.I),
+        re.compile(r"\b(predict|forecast)\b.{0,30}\b(market|price|stock|nifty|tomorrow|next\s+week)\b", re.I),
         "Market prediction is not in the corpus.",
     ),
 ]
@@ -125,13 +132,75 @@ _INTENT_PATTERNS: list[tuple[re.Pattern, CopilotIntent]] = [
         CopilotIntent.WHY_RECOMMENDED,
     ),
     (
-        re.compile(r"\bwhy\s+recommend\b", re.I),
+        re.compile(r"\bwhy\s+recommend(?:ed)?\b", re.I),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    (
+        # "current recommendation on/for X", "what is the recommendation on X"
+        re.compile(r"\b(?:current\s+)?recommendation\s+(?:on|for|of|status)\b", re.I),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    (
+        # "what is/are the recommendation(s)", "show recent recommendations"
+        re.compile(r"\brecommendations?\b.*\b(today|recent|latest|current|now)\b", re.I),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    (
+        re.compile(r"\b(recent|latest|today'?s?|current)\b.*\brecommendations?\b", re.I),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    (
+        re.compile(r"\bwhat\s+(?:are|is)\s+(?:the\s+)?(?:recent\s+|latest\s+|current\s+)?recommendations?\b", re.I),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    (
+        # "what is the recommendation for X"
+        re.compile(r"\bwhat\s+is\s+(?:the\s+)?(?:current\s+)?recommendation\b", re.I),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    (
+        # "what action did system give X", "what signal for X"
+        re.compile(r"\b(?:recommendation|signal|action)\s+(?:on|for)\b", re.I),
         CopilotIntent.WHY_RECOMMENDED,
     ),
     (
         # "why is X a BUY", "why did X get BUY/WATCH"
         re.compile(r"\bwhy\b[\w.\s']*\b(?:a\s+)?(?:buy|watch)\b", re.I),
         CopilotIntent.WHY_RECOMMENDED,
+    ),
+    # Watchlist / stocks under watch (before generic positions)
+    (
+        re.compile(
+            r"\b(watch[\s-]?list|stocks?\s+(?:under\s+|on\s+)?watch|under\s+watch|"
+            r"buy[\s-]?list|currently\s+(?:on\s+)?watch)\b",
+            re.I,
+        ),
+        CopilotIntent.WHY_RECOMMENDED,
+    ),
+    # Win rate / hit rate (before generic performance — avoids EXPLAIN_POSITIONS)
+    (
+        re.compile(r"\b(win[\s-]?rate|hit[\s-]?rate|batting\s+average|success[\s-]?rate)\b", re.I),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    # Quarter-based performance (before explain_portfolio)
+    (
+        re.compile(r"\bQ[1-4]\b|\b(first|second|third|fourth)\s+quarter\b", re.I),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    # YTD
+    (
+        re.compile(r"\b(ytd|year[\s-]to[\s-]date|so\s+far\s+this\s+year|this\s+year\s+so\s+far)\b", re.I),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    # Month + year → monthly performance (before generic portfolio)
+    (
+        re.compile(
+            r"\b(january|february|march|april|june|july|august|september|october|november|december)\b"
+            r".*\b20\d{2}\b|\b20\d{2}\b.*"
+            r"\b(january|february|march|april|june|july|august|september|october|november|december)\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
     ),
     # Exit STRATEGY / policy / framework (before specific exit-signal patterns)
     (
@@ -222,12 +291,50 @@ _INTENT_PATTERNS: list[tuple[re.Pattern, CopilotIntent]] = [
         ),
         CopilotIntent.EXPLAIN_REGIME,
     ),
-    # Positions (before portfolio)
+    # Closed / profitable past positions → performance outcomes (before open-position patterns)
+    (
+        re.compile(
+            r"\b(profitable|best|top)\b.*\b(positions?|trades?|holdings?|recommendation)\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    (
+        re.compile(r"\b(closed|past|exited|historical)\b.*\b(positions?|trades?|holdings?)\b", re.I),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    # "positions closed at loss/win" or "how many closed at a loss"
+    (
+        re.compile(r"\bclosed?\b.*\b(loss|win|profit|gain)\b|\b(loss|win|profit)\b.*\bclosed?\b", re.I),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    # Worst recommendation / outcome
+    (
+        re.compile(r"\b(worst|best)\b.*\b(recommendation|trade|outcome|result)\b", re.I),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    # Open positions (before portfolio)
     (
         re.compile(r"\b(positions?|holdings?)\b", re.I),
         CopilotIntent.EXPLAIN_POSITIONS,
     ),
-    # Portfolio
+    # Portfolio performance / returns / PnL — must come BEFORE generic portfolio pattern
+    (
+        re.compile(
+            r"\bportfolio\b.*\b(perform\w*|return\w*|pnl|profit|loss|alpha|gain|growth|"
+            r"how\s+did|track\s+record|result\w*|month\w*|year\w*|week\w*|period|history|trend)\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    (
+        re.compile(
+            r"\b(perform\w*|return\w*|pnl|alpha|gain|growth|track\s+record)\b.*\bportfolio\b",
+            re.I,
+        ),
+        CopilotIntent.EXPLAIN_PERFORMANCE,
+    ),
+    # Portfolio state (NAV, positions, config, exposure)
     (
         re.compile(
             r"\b(portfolio|allocation|exposure|nav|equity|cash|deployable|"
@@ -276,6 +383,50 @@ _SYMBOL_WITH_SUFFIX = re.compile(r"\b([A-Za-z][A-Za-z0-9&-]{1,15})\.NS\b", re.I)
 # words like "Explain"/"about" are never mistaken for a symbol.
 _SYMBOL_UPPER = re.compile(r"\b([A-Z][A-Z0-9&-]{1,15})\b")
 _DATE_PATTERN = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
+# Natural-language dates: "1-Jun", "10 June", "Jun 1", "June 10".
+_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"],
+        start=1,
+    )
+}
+_DAYMON_PATTERN = re.compile(r"\b(\d{1,2})[\s-]+([A-Za-z]{3,9})\b")  # 1-Jun / 10 June
+_MONDAY_PATTERN = re.compile(r"\b([A-Za-z]{3,9})[\s-]+(\d{1,2})\b")  # Jun 1 / June 10
+_YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
+
+
+def _extract_dates(question: str) -> list[date]:
+    """All dates found in the question, in order of appearance (deduped).
+
+    Accepts ISO (2026-06-01) and natural forms (1-Jun, June 10), inferring the
+    year from a 4-digit year in the question, else the current year.
+    """
+    year_m = _YEAR_PATTERN.search(question)
+    year = int(year_m.group(1)) if year_m else date.today().year
+    found: list[tuple[int, date]] = []
+    for m in _DATE_PATTERN.finditer(question):
+        try:
+            found.append((m.start(), date.fromisoformat(m.group(1))))
+        except ValueError:
+            pass
+    for rx, day_first in ((_DAYMON_PATTERN, True), (_MONDAY_PATTERN, False)):
+        for m in rx.finditer(question):
+            day_s, mon_s = (m.group(1), m.group(2)) if day_first else (m.group(2), m.group(1))
+            month = _MONTHS.get(mon_s[:3].lower())
+            if not month:
+                continue
+            try:
+                found.append((m.start(), date(year, month, int(day_s))))
+            except ValueError:
+                pass
+    seen: set[date] = set()
+    out: list[date] = []
+    for _, dt in sorted(found, key=lambda x: x[0]):
+        if dt not in seen:
+            seen.add(dt)
+            out.append(dt)
+    return out
 _STRATEGY_PATTERN = re.compile(
     r"\b(momentum_v1|breakout_v1|reversal_v1|low_vol_v1)\b", re.I
 )
@@ -357,12 +508,12 @@ def _extract_entities(question: str) -> ExtractedEntities:
     if m:
         entities.strategy_name = m.group(1).lower()
 
-    m = _DATE_PATTERN.search(question)
-    if m:
-        try:
-            entities.as_of_date = date.fromisoformat(m.group(1))
-        except ValueError:
-            pass
+    dates = _extract_dates(question)
+    if len(dates) >= 2:
+        entities.from_date = dates[0]
+        entities.to_date = dates[-1]
+    elif len(dates) == 1:
+        entities.as_of_date = dates[0]
 
     # 1) Explicit ".NS" suffix wins (e.g. "sbin.ns", "TRENT.NS").
     suffixed = _SYMBOL_WITH_SUFFIX.search(question)
@@ -377,7 +528,95 @@ def _extract_entities(question: str) -> ExtractedEntities:
             entities.symbol = f"{c}.NS"
             break
 
+    # 3) Extract period label for performance queries
+    entities.period_label = _extract_period(question)
+
     return entities
+
+
+_CALENDAR_YEAR = re.compile(r"\b(20\d{2})\b")
+_ROLLING_PERIOD = re.compile(
+    r"\b(?:last|past|previous|trailing)\s+"
+    r"(one|two|three|six|1|2|3|6|12)\s*(year|month|week)s?\b",
+    re.I,
+)
+_QUARTER_PATTERN = re.compile(
+    r"\bQ([1-4])\b.*\b(20\d{2})\b|\b(20\d{2})\b.*\bQ([1-4])\b|"
+    r"\b(first|second|third|fourth)\s+quarter\b.*\b(20\d{2})\b|\b(20\d{2})\b.*\b(first|second|third|fourth)\s+quarter\b",
+    re.I,
+)
+_MONTH_YEAR_PATTERN = re.compile(
+    r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\b"
+    r"[\s,]+\b(20\d{2})\b|\b(20\d{2})\b[\s,]+\b(january|february|march|april|may|june|july|august|"
+    r"september|october|november|december)\b",
+    re.I,
+)
+_MONTH_NAMES = {
+    "january": "01", "february": "02", "march": "03", "april": "04",
+    "may": "05", "june": "06", "july": "07", "august": "08",
+    "september": "09", "october": "10", "november": "11", "december": "12",
+}
+_QUARTER_ORDINALS = {"first": "1", "second": "2", "third": "3", "fourth": "4"}
+_PERIOD_KEYWORDS = {
+    "one year": "1Y", "1 year": "1Y", "12 month": "1Y", "12months": "1Y",
+    "six month": "6M", "6 month": "6M", "half year": "6M",
+    "three month": "3M", "3 month": "3M",
+    "one month": "1M", "1 month": "1M",
+    "two year": "2Y", "2 year": "2Y",
+    "three year": "3Y", "3 year": "3Y",
+    "ytd": "YTD", "year to date": "YTD", "year-to-date": "YTD",
+}
+_WORD_TO_NUM = {"one": "1", "two": "2", "three": "3", "six": "6", "twelve": "12"}
+
+
+def _extract_period(question: str) -> str | None:
+    q = question.lower()
+
+    # YTD keywords (check before calendar year so "this year" wins)
+    if any(kw in q for kw in ("ytd", "year to date", "year-to-date", "so far this year", "this year so far")):
+        return "YTD"
+
+    # Quarter: "Q1 2025", "first quarter 2024"
+    m = _QUARTER_PATTERN.search(question)
+    if m:
+        groups = m.groups()
+        yr = next((g for g in groups if g and re.match(r"20\d{2}", g)), None)
+        q_num = next((g for g in groups if g and re.match(r"[1-4]", g)), None)
+        if q_num is None:
+            ordinal = next((g for g in groups if g and g.lower() in _QUARTER_ORDINALS), None)
+            if ordinal:
+                q_num = _QUARTER_ORDINALS[ordinal.lower()]
+        if q_num and yr:
+            return f"Q{q_num}-{yr}"
+
+    # Month + year: "March 2025", "2024 June"
+    m = _MONTH_YEAR_PATTERN.search(question)
+    if m:
+        groups = m.groups()
+        month_str = next((g for g in groups if g and g.lower() in _MONTH_NAMES), None)
+        yr_str = next((g for g in groups if g and re.match(r"20\d{2}", g)), None)
+        if month_str and yr_str:
+            return f"{yr_str}-{_MONTH_NAMES[month_str.lower()]}"
+
+    # Calendar year (e.g. "in 2024", "for 2025")
+    m = _CALENDAR_YEAR.search(question)
+    if m:
+        return m.group(1)
+
+    # Rolling period (e.g. "last one year", "past 6 months")
+    m = _ROLLING_PERIOD.search(q)
+    if m:
+        num_word = m.group(1).lower()
+        num = _WORD_TO_NUM.get(num_word, num_word)
+        unit = m.group(2).lower()
+        unit_map = {"year": "Y", "month": "M", "week": "W"}
+        return f"{num}{unit_map.get(unit, unit[0].upper())}"
+
+    # Keyword scan
+    for kw, label in _PERIOD_KEYWORDS.items():
+        if kw in q:
+            return label
+    return None
 
 
 def classify(question: str) -> ClassificationResult:

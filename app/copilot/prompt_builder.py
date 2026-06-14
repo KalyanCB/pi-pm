@@ -36,18 +36,26 @@ GR-05: Keep answers concise. Use bullet points for multi-part answers.
 GR-06: Reference lineage IDs when present: recommendation_run_id, recommendation_id,
         portfolio_position_id, committee_review_id.
 
-== OUTPUT FORMAT (MANDATORY) ==
-- Respond in concise PLAIN-TEXT prose. DO NOT return a JSON object.
-- For EVERY value or fact you state, append an inline citation in this exact
-  form: [source: table.field = value]  (e.g. [source: recommendation_results.conviction_score = 74]).
-- Use the field names exactly as they appear in the CONTEXT JSON.
-- End with a "Citations:" line listing the sources used.
+== OUTPUT FORMAT (MANDATORY — violation = rejected response) ==
+⚠ WRITE PLAIN ENGLISH PROSE ONLY. Do NOT output JSON, code blocks, or raw objects.
+⚠ If your response starts with "{" or ends with "}", it WILL be rejected.
+- Write 2–5 sentences or bullet points explaining the data to the user in plain language.
+- For every number or label you mention, cite it inline: [source: table.field = value].
+  Example: "The conviction score is 74 [source: recommendation_results.conviction_score = 74]."
+- End with a "Citations:" line listing the table.field sources referenced.
+- GOOD: "TRENT received a WATCH action [source: recommendation_results.action = WATCH] because..."
+- BAD: {"action": "WATCH", "reason_codes": [...]}
 """
 
 _INTENT_INSTRUCTIONS: dict[CopilotIntent, str] = {
     CopilotIntent.WHY_RECOMMENDED: (
         "Explain why the stock received its recommendation action (BUY/WATCH). "
         "Cite reason_codes and conviction_components from recommendation_results. "
+        "If trade levels are present (entry_low, entry_high, stop_advisory, "
+        "stop_critical), state the entry range and stop-loss range and cite each "
+        "value. Note levels_basis: 'actionable' (BUY) is an enter-if-approved plan; "
+        "'indicative' (WATCH) is guidance only, NOT an order. Do not invent levels "
+        "if the fields are null. "
         "Reference recommendation_id and recommendation_run_id."
     ),
     CopilotIntent.WHY_NOT_RECOMMENDED: (
@@ -56,8 +64,13 @@ _INTENT_INSTRUCTIONS: dict[CopilotIntent, str] = {
         "Reference recommendation_id and recommendation_run_id."
     ),
     CopilotIntent.EXPLAIN_EXIT: (
-        "Explain the EXIT_APPROVED signal and its reason_codes. "
-        "Reference recommendation_id and portfolio_position_id if present."
+        "Explain the stock's BUY/SELL and exit history over the requested period, in chronological order. "
+        "For each recommendation record cite as_of_date, strategy_name, action (BUY/WATCH/EXIT_APPROVED), "
+        "rank, conviction_band and reason_codes. "
+        "For each actual exit (record_type=position_exit) cite entry_date/exit_date, entry_price/exit_price, "
+        "return_pct, realized_pnl and exit_reason (e.g. STOP_LOSS, FORCE_CLOSE). "
+        "Reference recommendation_id and portfolio_position_id. "
+        "Do not invent prices, dates, or P&L not present in the corpus."
     ),
     CopilotIntent.EXPLAIN_CONVICTION: (
         "Explain the conviction score and band. "
@@ -65,8 +78,10 @@ _INTENT_INSTRUCTIONS: dict[CopilotIntent, str] = {
         "Do NOT add a committee sub-score — conviction is deterministic only."
     ),
     CopilotIntent.EXPLAIN_COMMITTEE: (
-        "Summarise what each committee found. Quote findings verbatim. "
-        "Reference committee_review_id for each committee cited. "
+        "Summarise committee findings. If the context contains multiple stocks, give ONE bullet "
+        "per stock showing its symbol, committee advisory actions, and any high-concern flags — "
+        "do NOT focus on just one stock. If a single stock was asked about, quote findings verbatim. "
+        "Reference committee_review_id for each cited review. "
         "Note that committee labels are advisory only and do NOT change the recommendation action."
     ),
     CopilotIntent.EXPLAIN_PORTFOLIO: (
@@ -78,8 +93,15 @@ _INTENT_INSTRUCTIONS: dict[CopilotIntent, str] = {
         "Do not assess risk beyond what is in the corpus."
     ),
     CopilotIntent.EXPLAIN_PERFORMANCE: (
-        "Summarise recommendation outcomes and portfolio NAV performance. "
-        "Cite pnl_pct, alpha_pct, win/loss from recommendation_outcomes and portfolio_nav_history."
+        "Summarise portfolio performance using the context provided. "
+        "First summarise the NAV window: period label, start equity, end equity, cumulative return %, "
+        "best/worst days, up/down day counts. "
+        "Then report the win rate and closed-position summary if present: total closed, wins, losses, "
+        "total realized PnL, and highlight the best and worst performers by realized_pnl. "
+        "If no closed positions exist, say so and rely on NAV data. "
+        "If period-filtered NAV shows no rows, say 'No data available for that period.' "
+        "Cite realized_pnl, cumulative_return_pct, win_rate_pct, total_equity from the context. "
+        "Do NOT say 'not in corpus' if nav_history or closed_position rows are present — use them."
     ),
     CopilotIntent.EXPLAIN_RANK: (
         "Explain why the stock received its rank and score. "

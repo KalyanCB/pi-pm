@@ -126,6 +126,29 @@ class Settings(BaseSettings):
     # PO must explicitly enable. Never auto-enabled.
     auto_exit_on_critical_stop: bool = False
 
+    # ── ADR-035: Regime-dynamic stops & time-stop removal (flag-off default) ───
+    # When enabled, the advisory stop is resolved per-day from the market regime
+    # (regime_history, ^NSEI) via regime_stop_map; critical = advisory + offset.
+    # Defaults preserve current behaviour (static advisory/critical, time stop on).
+    regime_dynamic_stops_enabled: bool = False
+    regime_stop_map: str = (
+        '{"BULL_LOW_VOL": -6.0, "BULL_HIGH_VOL": -8.0, '
+        '"BEAR_LOW_VOL": -2.0, "BEAR_HIGH_VOL": -3.0}'
+    )
+    regime_stop_fallback_pct: float = -4.0   # no regime row / unknown label
+    regime_critical_offset_pct: float = -2.0  # critical = advisory + this
+    # ADR-035 D2: master switch for the 30-day time stop (engine R-EXIT-04 +
+    # T2 exit monitor EXIT_TIME). True = current behaviour.
+    time_stop_enabled: bool = True
+
+    # ── ADR-034: Recommendation trade levels (deterministic, BUY) ──────────────
+    # Entry range + stop-loss range decorated onto BUY recommendations at the
+    # recommendation phase. Stops reuse advisory_stop_pct / critical_stop_pct above.
+    recommendation_trade_levels_enabled: bool = True
+    recommendation_atr_period: int = 14
+    recommendation_entry_band_atr_mult: float = 0.5      # half-width = mult × ATR
+    recommendation_entry_band_pct_fallback: float = 1.0  # used when ATR unavailable
+
 
 def parse_cors_origins(value: str) -> list[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]

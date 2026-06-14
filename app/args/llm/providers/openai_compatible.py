@@ -20,6 +20,7 @@ class OpenAiCompatibleLlmPort:
         timeout_seconds: int = 60,
         extra_headers: dict[str, str] | None = None,
         request_overrides: dict[str, Any] | None = None,
+        text_mode: bool = False,
     ) -> None:
         if not api_key:
             raise ValueError("OpenAI-compatible provider requires an API key")
@@ -29,6 +30,7 @@ class OpenAiCompatibleLlmPort:
         self._timeout = timeout_seconds
         self._extra_headers = extra_headers or {}
         self._request_overrides = request_overrides or {}
+        self._text_mode = text_mode
 
     def complete(self, *, system: str, user: str, model: str | None = None) -> LlmCompletion:
         use_model = model or self._model
@@ -39,7 +41,7 @@ class OpenAiCompatibleLlmPort:
                 {"role": "user", "content": user},
             ],
             "temperature": 0,
-            "response_format": {"type": "json_object"},
+            **({} if self._text_mode else {"response_format": {"type": "json_object"}}),
             **self._request_overrides,
         }
         headers = {
@@ -59,7 +61,7 @@ class OpenAiCompatibleLlmPort:
         choice = body["choices"][0]["message"]["content"]
         usage = body.get("usage") or {}
         return LlmCompletion(
-            content=_extract_json_content(choice),
+            content=choice if self._text_mode else _extract_json_content(choice),
             model=body.get("model") or use_model,
             input_tokens=int(usage.get("prompt_tokens") or 0),
             output_tokens=int(usage.get("completion_tokens") or 0),
