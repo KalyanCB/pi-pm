@@ -81,6 +81,8 @@ class IntradayExitMonitorService:
         self._quote = quote_provider or LastCloseQuoteProvider(db)
 
         s = get_settings()
+        # Explicit ctor overrides win; otherwise ADR-035 may resolve per-run.
+        self._stops_explicit = advisory_stop_pct is not None or critical_stop_pct is not None
         self._advisory_stop = advisory_stop_pct if advisory_stop_pct is not None else s.advisory_stop_pct
         self._critical_stop = critical_stop_pct if critical_stop_pct is not None else s.critical_stop_pct
         self._trailing_stop = trailing_stop_pct
@@ -99,6 +101,20 @@ class IntradayExitMonitorService:
         session_date: the trading session date for dedup (defaults to today).
         """
         sdate = session_date or date.today()
+
+        # ADR-035: regime-dynamic stops — resolve once per run from the latest
+        # regime label (no-op while the flag is off or ctor overrides were given).
+        settings = get_settings()
+        if settings.regime_dynamic_stops_enabled and not self._stops_explicit:
+            from app.db.repositories.regime_analytics_repository import (
+                RegimeAnalyticsRepository,
+            )
+            from app.portfolio.regime_stops import resolve_stop_pcts
+
+            self._advisory_stop, self._critical_stop = resolve_stop_pcts(
+                RegimeAnalyticsRepository(self.db), as_of=sdate, settings=settings
+            )
+
         positions = self._get_open_positions()
 
         new_recs = 0

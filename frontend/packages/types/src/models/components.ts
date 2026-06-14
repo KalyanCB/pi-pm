@@ -15,6 +15,12 @@ export interface RecommendationCardProps {
   layout?: 'card' | 'row';
   embedded?: boolean;
   onPress?: () => void;
+  // ADR-034 trade levels (compact line on the list card)
+  entryLow?: number | null;
+  entryHigh?: number | null;
+  stopAdvisory?: number | null;
+  stopCritical?: number | null;
+  levelsBasis?: 'actionable' | 'indicative' | null;
 }
 
 export interface PortfolioPositionCardProps {

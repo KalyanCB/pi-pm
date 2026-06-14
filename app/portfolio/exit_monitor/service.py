@@ -38,6 +38,7 @@ from app.portfolio.exit_monitor.triggers import (
     check_time_stop,
     check_trailing_stop,
 )
+from app.portfolio.regime_stops import resolve_stop_pcts
 
 
 class ExitMonitorService:
@@ -83,7 +84,7 @@ class ExitMonitorService:
                 continue
 
             context = self._build_position_context(pos, as_of)
-            fired_triggers = self._evaluate_triggers(pos, context, cfg, regime_posture)
+            fired_triggers = self._evaluate_triggers(pos, context, cfg, regime_posture, as_of)
 
             if not fired_triggers:
                 continue
@@ -261,17 +262,21 @@ class ExitMonitorService:
         ctx: dict,
         cfg: PortfolioConfig | None,
         regime_posture: str,
+        as_of: date | None = None,
     ) -> list:
+        settings = get_settings()
         single_cap = float(cfg.single_name_cap_pct * 100) if cfg else 18.0
-        # ADR-033: advisory stop from Settings (not hardcoded -8.0)
-        stop_loss = get_settings().advisory_stop_pct
+        # ADR-033: advisory stop from Settings; ADR-035: regime-resolved when the
+        # regime_dynamic_stops_enabled flag is on (static otherwise).
+        stop_loss, _critical = resolve_stop_pcts(
+            self.regime_repo, as_of=as_of, settings=settings
+        )
         trailing = 5.0
 
         results = [
             check_rank_drop(ctx.get("current_rank"), None),
             check_alpha_decay(ctx.get("unrealized_pnl_pct"), ctx.get("days_held", 0)),
             check_regime_change(regime_posture, None),
-            check_time_stop(ctx.get("days_held", 0)),
             check_stop_loss(ctx.get("unrealized_pnl_pct"), stop_loss),
             check_trailing_stop(ctx.get("unrealized_pnl_pct"), ctx.get("max_gain_pct"), trailing),
             check_concentration(float(pos.weight_pct) if pos.weight_pct else None, single_cap),
@@ -280,4 +285,7 @@ class ExitMonitorService:
                 float(pos.market_value) if pos.market_value else None,
             ),
         ]
+        # ADR-035 D2: the 30-day time stop is policy-gated (PRD §5 amendment).
+        if settings.time_stop_enabled:
+            results.append(check_time_stop(ctx.get("days_held", 0)))
         return [r for r in results if r.fired]

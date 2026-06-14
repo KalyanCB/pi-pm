@@ -33,6 +33,12 @@ export interface RecommendationCardModel {
   runId: string;
   lifecycleState: string | null;
   execution: RecommendationExecutionContext | null;
+  // ADR-034 trade levels
+  entryLow: number | null;
+  entryHigh: number | null;
+  stopAdvisory: number | null;
+  stopCritical: number | null;
+  levelsBasis: 'actionable' | 'indicative' | null;
 }
 
 function pickStrategyResults(
@@ -168,6 +174,11 @@ export function useRecommendationCards() {
         runId: r.recommendation_run_id,
         lifecycleState: r.lifecycle_state,
         execution,
+        entryLow: r.entry_low ?? null,
+        entryHigh: r.entry_high ?? null,
+        stopAdvisory: r.stop_advisory ?? null,
+        stopCritical: r.stop_critical ?? null,
+        levelsBasis: r.levels_basis ?? null,
       };
     });
   }, [tab, strategyBlock, symbolMap, advisoryBySymbol, findingsBySymbol]);

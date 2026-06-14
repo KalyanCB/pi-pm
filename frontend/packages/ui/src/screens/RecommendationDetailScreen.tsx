@@ -15,6 +15,7 @@ import { ErrorState } from '../feedback/ErrorState';
 import { Badge } from '../atoms/Badge';
 import { ConvictionBadge } from '../molecules/ConvictionBadge';
 import { RecommendationReasonList } from '../molecules/RecommendationReasonList';
+import { TradeLevelsCard } from '../molecules/TradeLevelsCard';
 import { CommitteeAdvisoryCard } from '../molecules/CommitteeAdvisoryCard';
 import { TrustIndicatorStrip } from '../molecules/TrustIndicatorStrip';
 import { ReviewStepper } from '../molecules/ReviewStepper';
@@ -89,6 +90,16 @@ export function RecommendationDetailScreen({ symbol, runId }: RecommendationDeta
             <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>WHY RECOMMENDED</Text>
             <RecommendationReasonList reasonCodes={result.reason_codes} />
           </View>
+
+          <TradeLevelsCard
+            entryLow={result.entry_low}
+            entryHigh={result.entry_high}
+            stopAdvisory={result.stop_advisory}
+            stopCritical={result.stop_critical}
+            referenceClose={result.reference_close}
+            atrPct={result.atr_pct}
+            basis={result.levels_basis}
+          />
 
           {committeeAdvisory && (
             <View style={[styles.section, { borderColor: theme.colors.border }]}>

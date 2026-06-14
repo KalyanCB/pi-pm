@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import Settings, get_settings
 from app.core.constants import (
     CONVICTION_CONFIG_VERSION,
     CONVICTION_ENGINE_VERSION,
@@ -19,6 +20,7 @@ from app.db.repositories.exit_research_metric_repository import ExitResearchMetr
 from app.db.repositories.factor_performance_metric_repository import (
     FactorPerformanceMetricRepository,
 )
+from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_result_repository import RankingResultRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
@@ -26,21 +28,26 @@ from app.db.repositories.recommendation_repository import RecommendationReposito
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
 from app.models.paper_trade import PaperTrade
 from app.models.portfolio_position import PortfolioPosition
+from app.models.ranking_run import RankingRun
 from app.models.recommendation import (
     RecommendationApproval,
     RecommendationOutcome,
     RecommendationResult,
     RecommendationRun,
 )
-from app.models.ranking_run import RankingRun
 from app.recommendation import engine as rec_engine
 from app.recommendation.engine import (
     EngineConfig,
     ExitSignal,
     RankingResultRow,
+    RecommendationRow,
     ValidationSummary,
 )
-
+from app.recommendation.trade_levels import (
+    TradeLevels,
+    atr_pct_from_bars,
+    compute_trade_levels,
+)
 
 _DEFAULT_CONFIG_BLOB: dict[str, Any] = {
     "engine_version": CONVICTION_ENGINE_VERSION,
@@ -67,6 +74,8 @@ class RecommendationService:
         regime_repo: RegimeAnalyticsRepository | None = None,
         exit_metric_repo: ExitResearchMetricRepository | None = None,
         recommendation_repo: RecommendationRepository | None = None,
+        market_data_repo: MarketDataRepository | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.db = db
         self.ranking_run_repo = ranking_run_repo or RankingRunRepository(db)
@@ -76,6 +85,8 @@ class RecommendationService:
         self.regime_repo = regime_repo or RegimeAnalyticsRepository(db)
         self.exit_metric_repo = exit_metric_repo or ExitResearchMetricRepository(db)
         self.recommendation_repo = recommendation_repo or RecommendationRepository(db)
+        self.market_data_repo = market_data_repo or MarketDataRepository(db)
+        self.settings = settings or get_settings()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -132,21 +143,30 @@ class RecommendationService:
                 exit_signals=exit_signals,
             )
 
-            db_results = [
-                RecommendationResult(
-                    recommendation_run_id=rec_run.id,
-                    stock_id=r.stock_id,
-                    rank=r.rank,
-                    composite_score=r.composite_score,
-                    action=r.action,
-                    lifecycle_state=r.lifecycle_state,
-                    conviction_score=r.conviction_score,
-                    conviction_band=r.conviction_band,
-                    conviction_components=r.conviction_components,
-                    reason_codes=r.reason_codes,
+            db_results = []
+            for r in result_rows:
+                levels = self._compute_trade_levels(r, ranking_run.as_of_date)
+                db_results.append(
+                    RecommendationResult(
+                        recommendation_run_id=rec_run.id,
+                        stock_id=r.stock_id,
+                        rank=r.rank,
+                        composite_score=r.composite_score,
+                        action=r.action,
+                        lifecycle_state=r.lifecycle_state,
+                        conviction_score=r.conviction_score,
+                        conviction_band=r.conviction_band,
+                        conviction_components=r.conviction_components,
+                        reason_codes=r.reason_codes,
+                        reference_close=levels.reference_close if levels else None,
+                        atr_pct=levels.atr_pct if levels else None,
+                        entry_low=levels.entry_low if levels else None,
+                        entry_high=levels.entry_high if levels else None,
+                        stop_advisory=levels.stop_advisory if levels else None,
+                        stop_critical=levels.stop_critical if levels else None,
+                        levels_basis=levels.basis if levels else None,
+                    )
                 )
-                for r in result_rows
-            ]
             self.recommendation_repo.bulk_insert_results(db_results)
             self.recommendation_repo.complete_run(rec_run)
         except Exception as exc:
@@ -154,6 +174,59 @@ class RecommendationService:
             raise
 
         return rec_run
+
+    def _compute_trade_levels(
+        self, row: RecommendationRow, as_of_date: date
+    ) -> TradeLevels | None:
+        """ADR-034: deterministic entry range + stop-loss range.
+
+        Computed from the freshly-ingested OHLCV available at the recommendation
+        phase. The engine stays price-blind, so all price logic lives here. Stops
+        reuse the exit monitor's advisory/critical percentages so pre-trade and
+        in-trade stops are consistent.
+
+        BUY  → ``levels_basis = "actionable"`` (enter now if approved).
+        WATCH → ``levels_basis = "indicative"`` (a plan for if/when it becomes
+        actionable — e.g. a REGIME_BLOCK / PORTFOLIO_FULL name that is otherwise
+        qualified). REJECT and all other actions get no levels.
+        """
+        if not self.settings.recommendation_trade_levels_enabled:
+            return None
+        if row.action == RecommendationAction.BUY:
+            basis = "actionable"
+        elif row.action == RecommendationAction.WATCH:
+            basis = "indicative"
+        else:
+            return None
+
+        period = self.settings.recommendation_atr_period
+        bars = self.market_data_repo.get_by_stock_and_date_range(
+            row.stock_id, end_date=as_of_date, limit=period + 5
+        )
+        if not bars:
+            return None
+        latest = max(bars, key=lambda b: b.date)
+        if latest.close is None:
+            return None
+
+        # ADR-035: displayed stops come from the same resolver the exit monitor
+        # uses (regime-mapped when flag on, static ADR-033 values otherwise).
+        from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
+        from app.portfolio.regime_stops import resolve_stop_pcts
+
+        advisory_pct, critical_pct = resolve_stop_pcts(
+            RegimeAnalyticsRepository(self.db), as_of=as_of_date, settings=self.settings
+        )
+
+        return compute_trade_levels(
+            reference_close=float(latest.close),
+            atr_pct=atr_pct_from_bars(bars, period=period),
+            advisory_stop_pct=advisory_pct,
+            critical_stop_pct=critical_pct,
+            entry_band_atr_mult=self.settings.recommendation_entry_band_atr_mult,
+            entry_band_pct_fallback=self.settings.recommendation_entry_band_pct_fallback,
+            basis=basis,
+        )
 
     def get_latest(
         self, strategy_name: str, as_of_date: date | None = None
@@ -351,6 +424,9 @@ class RecommendationService:
             factor_ic_median=factor_ic,
             rank_v2_promoted=rank_v2_promoted,
             regime_fit=regime_fit,
+            # ADR-035 D2: time stop (R-EXIT-04) is policy-gated; disabling it
+            # pushes the threshold out of reach so holds are unbounded.
+            max_holding_days=30 if self.settings.time_stop_enabled else 10**9,
         )
 
     def _resolve_regime_posture(self, ranking_run: RankingRun) -> str:

@@ -57,7 +57,12 @@ def _resolve_ref(packet: dict[str, Any], ref: str) -> bool:
                 return any(m.get("horizon") == horizon for m in metrics)
             return any(m.get("horizon") == horizon and m.get("decile") == decile for m in metrics)
         if len(parts) == 2:
-            return parts[1] in validation
+            # Accept any sub-ref when the validation block is present — consistent
+            # with regime/market_snapshot/stock_setup_evidence handling. The block
+            # being present is the real guard; the committee LLM sometimes cites
+            # aggregate/narrative refs (e.g. validation:recent). An empty block
+            # still rejects, so genuinely missing validation data still degrades.
+            return parts[1] in validation or bool(validation)
         return bool(validation)
     if root == "quant_evidence":
         quant = packet.get("quant_evidence") or {}

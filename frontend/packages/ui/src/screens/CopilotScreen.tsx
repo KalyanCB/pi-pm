@@ -6,7 +6,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -17,6 +16,7 @@ import { CopilotMessage } from '../molecules/CopilotMessage';
 import { LineagePanel } from '../molecules/LineagePanel';
 import { CopilotQuickQuestions } from '../molecules/CopilotQuickQuestions';
 import { CitationPanel } from '../molecules/CitationPanel';
+import { CopilotProgress } from '../molecules/CopilotProgress';
 
 export function CopilotScreen() {
   const theme = useTheme();
@@ -72,7 +72,7 @@ export function CopilotScreen() {
               {msg.lineage && <LineagePanel lineage={msg.lineage} />}
             </View>
           ))}
-          {isPending && <ActivityIndicator color={theme.colors.accent} style={styles.pending} />}
+          {isPending && <CopilotProgress style={styles.pending} />}
           {error && (
             <Text style={[styles.error, { color: theme.colors.highConcern }]}>
               {error instanceof Error ? error.message : 'Request failed'}

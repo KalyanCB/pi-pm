@@ -397,6 +397,19 @@ class PortfolioService:
     def mark_to_market(self, as_of_date: date | None = None) -> int:
         """Update market_value and unrealized_pnl for all open positions."""
         positions = self._current_positions()
+
+        # ADR-035: stop_loss_price is dynamic under regime stops — refresh it from
+        # today's regime-resolved advisory %. No-op while the flag is off.
+        from app.core.config import get_settings
+        from app.portfolio.regime_stops import resolve_stop_pcts
+
+        settings = get_settings()
+        advisory_pct: float | None = None
+        if settings.regime_dynamic_stops_enabled:
+            advisory_pct, _ = resolve_stop_pcts(
+                self.regime_repo, as_of=as_of_date, settings=settings
+            )
+
         updated = 0
         for pos in positions:
             stock = self.db.get(Stock, pos.stock_id)
@@ -408,6 +421,8 @@ class PortfolioService:
             last_price = float(latest.close)
             pos.market_value = float(pos.quantity) * last_price
             pos.unrealized_pnl = (last_price - float(pos.avg_cost)) * float(pos.quantity)
+            if advisory_pct is not None and pos.avg_cost:
+                pos.stop_loss_price = round(float(pos.avg_cost) * (1 + advisory_pct / 100), 4)
             pos.as_of = datetime.now(UTC)
             updated += 1
         if updated:

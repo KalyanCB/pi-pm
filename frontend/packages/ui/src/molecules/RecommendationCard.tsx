@@ -20,9 +20,17 @@ export function RecommendationCard({
   layout = 'card',
   embedded = false,
   onPress,
+  entryLow,
+  entryHigh,
+  stopAdvisory,
+  stopCritical,
+  levelsBasis,
 }: RecommendationCardProps) {
   const theme = useTheme();
   const isRow = layout === 'row';
+  const hasLevels = entryLow != null && entryHigh != null;
+  const inr = (v: number | null | undefined) =>
+    v == null ? '—' : `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
   const content = (
     <View
@@ -61,6 +69,14 @@ export function RecommendationCard({
         )}
         <ConvictionBadge score={convictionScore} band={convictionBand} size="sm" />
       </View>
+      {hasLevels && (
+        <Text style={[styles.levels, { color: theme.colors.textSecondary }]}>
+          Entry {inr(entryLow)}–{inr(entryHigh)}
+          {stopAdvisory != null ? `  ·  SL ${inr(stopAdvisory)}` : ''}
+          {stopCritical != null ? ` / ${inr(stopCritical)}` : ''}
+          {levelsBasis === 'indicative' ? '  (indicative)' : ''}
+        </Text>
+      )}
       <RecommendationReasonList reasonCodes={reasonCodes} />
       {committeeAdvisory && isRow && (
         <>
@@ -131,5 +147,9 @@ const styles = StyleSheet.create({
   },
   cro: {
     fontSize: 11,
+  },
+  levels: {
+    fontSize: 11,
+    fontFamily: 'monospace',
   },
 });

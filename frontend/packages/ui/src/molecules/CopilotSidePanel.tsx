@@ -6,13 +6,13 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import { useTheme } from '@pipm/theme';
 import { useAskCopilot, useCopilotStore, useUiStore } from '@pipm/hooks';
 import { CopilotMessage } from './CopilotMessage';
 import { LineagePanel } from './LineagePanel';
 import { CopilotQuickQuestions } from './CopilotQuickQuestions';
+import { CopilotProgress } from './CopilotProgress';
 
 export function CopilotSidePanel() {
   const theme = useTheme();
@@ -77,7 +77,7 @@ export function CopilotSidePanel() {
             {msg.lineage && <LineagePanel lineage={msg.lineage} />}
           </View>
         ))}
-        {isPending && <ActivityIndicator color={theme.colors.accent} />}
+        {isPending && <CopilotProgress />}
       </ScrollView>
 
       <View style={[styles.inputRow, { borderTopColor: theme.colors.border }]}>

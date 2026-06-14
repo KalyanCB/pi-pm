@@ -83,7 +83,7 @@ export function PortfolioPositionCard({
           </View>
           <View style={styles.metric}>
             <Text style={[styles.label, { color: theme.colors.textMuted }]}>Realized P&L</Text>
-            <MetricValue value={realizedPnl} format="currency" colorize size="sm" />
+            <MetricValue value={realizedPnl ?? null} format="currency" colorize size="sm" />
           </View>
           {entryPrice != null && exitPrice != null && (
             <View style={styles.metric}>
