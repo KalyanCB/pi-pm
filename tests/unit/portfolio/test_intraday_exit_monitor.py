@@ -298,6 +298,10 @@ def test_t2_monitor_tags_daily_tier():
 
     svc = ExitMonitorService(db)
     # Patch helpers to produce a deterministic fired trigger (time stop)
+    mock_settings = MagicMock()
+    mock_settings.time_stop_enabled = True
+    mock_settings.advisory_stop_pct = -8.0
+    mock_settings.regime_dynamic_stops_enabled = False
     with patch.object(svc, "_build_position_context", return_value={
         "days_held": 35,  # > 30 day time stop
         "current_rank": None,
@@ -305,7 +309,9 @@ def test_t2_monitor_tags_daily_tier():
         "max_gain_pct": None,
         "last_price": None,
         "avg_daily_volume": None,
-    }), patch.object(svc, "_resolve_regime_posture", return_value="neutral"):
+    }), patch.object(svc, "_resolve_regime_posture", return_value="neutral"), \
+       patch("app.portfolio.exit_monitor.service.get_settings", return_value=mock_settings), \
+       patch("app.portfolio.exit_monitor.service.resolve_stop_pcts", return_value=(-8.0, -10.0)):
         recs = svc.run(as_of_date=date(2026, 6, 11))
 
     assert len(recs) == 1
