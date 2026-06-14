@@ -3,8 +3,8 @@
 Pi-PM Paper Trade Replay v3 — ADR-035 best-outcome config, through the REAL DB.
 
 Config (ADR-035 evidence base):
-  Capital        : ₹1,00,00,000 (1 Cr)
-  Slots          : 5 concurrent | ₹20,00,000 base per slot (capital/slots)
+  Capital        : ₹5,00,000 initial + ₹50,000/month SIP (1st trading day)
+  Slots          : 5 concurrent | slot cap = total_invested / 5 (scales with SIP)
   Stop-loss      : REGIME-DYNAMIC via app.portfolio.regime_stops resolver
                    (BULL_LOW −6 / BULL_HIGH −8 / BEAR_LOW −2 / BEAR_HIGH −3,
                    fallback −4) — requires REGIME_DYNAMIC_STOPS_ENABLED=true
@@ -48,9 +48,9 @@ from app.portfolio.regime_stops import resolve_stop_pcts
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://pipm:pipm@localhost:5432/pipm")
 PORTFOLIO_ID = UUID("00000000-0000-4000-8000-000000000010")
 
-INITIAL_CAPITAL = 1_000_000.0           # ₹10L (user-specified)
+INITIAL_CAPITAL = 500_000.0             # ₹5L starting capital
 MAX_SLOTS = 5                            # concentrate to 5 positions
-MAX_TRADE_CAPITAL = 100_000.0           # ₹1L max per slot (user-specified)
+MONTHLY_SIP = 50_000.0                  # ₹50K added on 1st trading day of each month
 START_DATE = "2022-01-01"
 END_DATE = os.getenv("REPLAY_END", date.today().isoformat())
 CONVICTION_MULT = {"EXCEPTIONAL": 1.15, "HIGH": 1.00, "MEDIUM": 0.75}
@@ -109,8 +109,9 @@ def setup_config(db: Session) -> PortfolioConfig:
         fee_per_leg=0.0,  # fees are % in-script (FEE_BPS)
         execution_mode="PAPER",
         notes=(
-            f"ADR-035 best-outcome replay {START_DATE}->{END_DATE} | ₹10L | 5 slots | ₹1L/slot | "
-            f"regime stops 6/8/2/3 | no time stop | fee {FEE_BPS}bps + slip {SLIPPAGE_BPS}bps"
+            f"ADR-035 best-outcome replay {START_DATE}->{END_DATE} | ₹5L + ₹50K/mo SIP | "
+            f"5 slots | dynamic slot cap | regime stops 6/8/2/3 | no time stop | "
+            f"fee {FEE_BPS}bps + slip {SLIPPAGE_BPS}bps"
         ),
     )
     db.add(cfg)
@@ -252,8 +253,8 @@ def run_replay() -> None:
     engine = create_engine(DATABASE_URL)
     with Session(engine) as db:
         print("\n=== PI-PM PAPER TRADE REPLAY v3 — ADR-035 BEST OUTCOME ===")
-        print(f"    Capital : ₹{INITIAL_CAPITAL:,.0f} | {MAX_SLOTS} slots | "
-              f"₹{MAX_TRADE_CAPITAL:,.0f}/slot")
+        print(f"    Capital : ₹{INITIAL_CAPITAL:,.0f} initial | ₹{MONTHLY_SIP:,.0f}/mo SIP | "
+              f"{MAX_SLOTS} slots | dynamic slot cap")
         print(f"    Costs   : fee {FEE_BPS}bps/side + slippage {SLIPPAGE_BPS}bps/side")
         print("    Stops   : regime-dynamic (resolver) | realistic fills | no time stop")
         print(f"    Period  : {START_DATE} → {END_DATE}\n")
@@ -277,16 +278,31 @@ def run_replay() -> None:
         regime_repo = RegimeAnalyticsRepository(db)
 
         cash = INITIAL_CAPITAL
+        total_invested = INITIAL_CAPITAL    # tracks cumulative capital (initial + SIPs)
         open_positions: list[dict] = []
         completed: list[dict] = []
         total_fees = 0.0
         stop_count = 0
         day_count = 0
+        sip_count = 0
         peak_nav = INITIAL_CAPITAL
         max_dd = 0.0
+        prev_month: int | None = None
 
         for today in trading_days:
             day_count += 1
+
+            # ── 0. Monthly SIP injection (first trading day of each new month) ──
+            if prev_month is not None and today.month != prev_month:
+                cash += MONTHLY_SIP
+                total_invested += MONTHLY_SIP
+                sip_count += 1
+                record_cash(db, "SIP_ADDITION", MONTHLY_SIP, today,
+                            f"Monthly SIP #{sip_count} ₹{MONTHLY_SIP:,.0f}")
+            prev_month = today.month
+
+            # slot cap scales with total invested capital (100% deployable at all times)
+            slot_cap = total_invested / MAX_SLOTS
 
             # ── 1. Regime-dynamic stop exits (realistic slipped-close fills) ──
             advisory_pct, _ = resolve_stop_pcts(regime_repo, as_of=today, settings=settings)
@@ -345,7 +361,7 @@ def run_replay() -> None:
                         continue
                     entry_px = slip(close, "BUY")
                     mult = CONVICTION_MULT.get(sig["conviction_band"], 0.75)
-                    alloc = min(MAX_TRADE_CAPITAL * mult, cash * 0.98)
+                    alloc = min(slot_cap * mult, cash * 0.98)
                     if alloc < entry_px:
                         continue
                     qty = alloc / entry_px
@@ -445,7 +461,8 @@ def run_replay() -> None:
                 db.commit()
             if day_count % 250 == 0:
                 print(f"  [{today}] {len(open_positions)} open | NAV ₹{mtm:,.0f} | "
-                      f"cash ₹{cash:,.0f} | stops={stop_count} | DD {max_dd:.1f}%")
+                      f"cash ₹{cash:,.0f} | slot_cap ₹{slot_cap:,.0f} | "
+                      f"SIPs={sip_count} | stops={stop_count} | DD {max_dd:.1f}%")
 
         db.commit()
 
@@ -453,8 +470,9 @@ def run_replay() -> None:
         final_nav = mtm
         wins = [t for t in completed if t["pnl"] > 0]
         losses = [t for t in completed if t["pnl"] <= 0]
-        total_pnl = final_nav - INITIAL_CAPITAL
+        total_pnl = final_nav - total_invested
         years = (trading_days[-1] - date.fromisoformat(START_DATE)).days / 365.25
+        # CAGR on initial capital (simple; for IRR use XIRR with cash flow dates)
         cagr = ((final_nav / INITIAL_CAPITAL) ** (1 / years) - 1) * 100 if years > 0 else 0
         gl = abs(sum(t["pnl"] for t in losses))
         pf = sum(t["pnl"] for t in wins) / gl if gl > 0 else 999.0
@@ -464,8 +482,11 @@ def run_replay() -> None:
         print("  REPLAY v3 COMPLETE — ADR-035 BEST OUTCOME (system tables updated)")
         print("=" * W)
         print(f"  Final NAV       : ₹{final_nav:>14,.0f}")
-        print(f"  Total P&L       : ₹{total_pnl:>+14,.0f}  ({total_pnl/INITIAL_CAPITAL*100:+.2f}%)")
-        print(f"  CAGR            : {cagr:>+13.2f}%  ({years:.1f} yrs)")
+        print(f"  Total invested  : ₹{total_invested:>14,.0f}  "
+              f"(₹{INITIAL_CAPITAL:,.0f} + {sip_count} SIPs × ₹{MONTHLY_SIP:,.0f})")
+        print(f"  Total P&L       : ₹{total_pnl:>+14,.0f}  "
+              f"({total_pnl/total_invested*100:+.2f}% on invested)")
+        print(f"  CAGR on initial : {cagr:>+13.2f}%  ({years:.1f} yrs)")
         print(f"  Max Drawdown    : {max_dd:>13.2f}%")
         print(f"  Closed trades   : {len(completed)} ({len(wins)}W/{len(losses)}L, "
               f"win {len(wins)/len(completed)*100 if completed else 0:.1f}%)  PF {pf:.2f}x")
