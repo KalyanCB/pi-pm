@@ -17,6 +17,8 @@ class Settings(BaseSettings):
 
     yahoo_request_timeout_seconds: int = 30
     market_data_default_period: str = "1y"
+    # "yahoo" | "kite" — selects the OHLCV data provider for ingestion
+    market_data_provider: str = "yahoo"
 
     ranking_default_strategy: str = "momentum_v1"
     ranking_default_strategy_version: str = "1.0.0"

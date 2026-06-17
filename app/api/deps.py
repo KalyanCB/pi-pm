@@ -137,6 +137,25 @@ def get_yahoo_provider(settings: Settings = Depends(get_settings_dep)) -> YahooF
     return YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds)
 
 
+def get_market_data_provider(
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings_dep),
+):
+    """Return the configured OHLCV provider (kite or yahoo)."""
+    if settings.market_data_provider == "kite":
+        from app.providers.kite import token_store
+        from app.providers.kite.client import KiteConnectProvider
+        if not settings.kite_api_key:
+            raise RuntimeError("KITE_API_KEY not set — cannot use kite provider")
+        access_token = token_store.get_token(db) or settings.kite_access_token
+        if not access_token:
+            raise RuntimeError(
+                "No Kite access token found. Visit /api/v1/ops/kite/login to authenticate."
+            )
+        return KiteConnectProvider(api_key=settings.kite_api_key, access_token=access_token)
+    return YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds)
+
+
 def get_stock_service(stock_repo: StockRepository = Depends(get_stock_repository)) -> StockService:
     return StockService(stock_repo)
 
@@ -154,7 +173,7 @@ def get_market_data_service(
     ingestion_run_repo: IngestionRunRepository = Depends(get_ingestion_run_repository),
     ingestion_batch_repo: IngestionBatchRepository = Depends(get_ingestion_batch_repository),
     lineage_repo: RunLineageRepository = Depends(get_run_lineage_repository),
-    provider: YahooFinanceProvider = Depends(get_yahoo_provider),
+    provider=Depends(get_market_data_provider),
 ) -> MarketDataService:
     return MarketDataService(
         db,
