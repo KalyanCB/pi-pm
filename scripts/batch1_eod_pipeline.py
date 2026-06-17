@@ -115,6 +115,44 @@ def phase_daily_batch(client: httpx.Client, target: date, dry_run: bool) -> dict
     return result
 
 
+def phase_exit_monitor(client: httpx.Client, target: date, dry_run: bool) -> dict:
+    """Phase 6: T2 EOD exit monitor — generates PENDING exit recommendations for Batch 3."""
+    log.info("Phase 6: T2 exit monitor → PENDING exit recs for %s", target)
+    if dry_run:
+        log.info("  [dry-run] skipping exit monitor POST")
+        return {"dry_run": True}
+
+    resp = client.post(
+        "/api/v1/portfolio/exits/run",
+        params={"as_of_date": target.isoformat()},
+    )
+    if resp.status_code == 404:
+        # Fallback: trigger via daily-batch with portfolio phase only
+        log.info("  exits/run not found, triggering via daily-batch portfolio phase")
+        payload = {
+            "target_date": target.isoformat(),
+            "assume_session_done": True,
+            "phases": {"portfolio": True, "recommendations": False},
+            "portfolio_phases": {
+                "exit_monitor": True,
+                "paper_trading": False,
+                "nav_snapshot": False,
+                "reconcile": False,
+                "recompute": False,
+            },
+        }
+        resp = client.post("/api/v1/ops/daily-batch/runs", json=payload)
+
+    if resp.status_code not in (200, 201):
+        log.warning("Exit monitor call returned %d — %s", resp.status_code, resp.text[:200])
+        return {"error": resp.status_code}
+
+    result = resp.json()
+    candidates = result.get("generated") or result.get("candidates") or len(result.get("exit_recommendation_ids", []))
+    log.info("  Exit monitor generated %s PENDING recommendations", candidates)
+    return result
+
+
 def phase_committee(client: httpx.Client, target: date, ranking_run_id: str, dry_run: bool) -> dict:
     log.info("Phase 5: AI committee review for %s (strategy=%s)", target, PRIMARY_STRATEGY)
     if dry_run:
@@ -190,10 +228,18 @@ def main() -> int:
             log.error("Committee FAILED: %s", exc)
             return 1
 
+        # Phase 6: T2 EOD exit monitor (generates PENDING exit recs for Batch 3)
+        try:
+            exit_result = phase_exit_monitor(client, target, args.dry_run)
+        except Exception as exc:
+            log.warning("Exit monitor FAILED (non-fatal): %s", exc)
+            exit_result = {"error": str(exc)}
+
         log.info("=" * 60)
         log.info("BATCH 1 COMPLETE | target=%s", target)
         log.info("  Batch status : %s", batch_result.get("status", "?"))
         log.info("  Committee    : %s", committee_result.get("status", "done"))
+        log.info("  Exit monitor : %s", exit_result)
         log.info("  Ready for Batch 3 on next trading day")
         log.info("=" * 60)
     return 0
