@@ -79,6 +79,7 @@ export interface PerformanceMetrics {
 
 export interface ExitRecommendation {
   id: string;
+  portfolio_position_id: string | null;
   symbol: string | null;
   status: string;
   urgency: string;
@@ -88,4 +89,5 @@ export interface ExitRecommendation {
   days_held: number | null;
   unrealized_pnl_pct: number | null;
   as_of_date: string;
+  monitor_tier: string | null;
 }

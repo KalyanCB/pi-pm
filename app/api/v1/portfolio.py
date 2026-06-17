@@ -435,6 +435,7 @@ def get_exits(
         out.append(
             {
                 "id": str(r.id),
+                "portfolio_position_id": str(r.portfolio_position_id) if r.portfolio_position_id else None,
                 "symbol": stock.symbol if stock else None,
                 "status": r.status,
                 "urgency": r.urgency,
@@ -446,6 +447,7 @@ def get_exits(
                 if r.unrealized_pnl_pct is not None
                 else None,
                 "as_of_date": r.as_of_date.isoformat(),
+                "monitor_tier": r.monitor_tier,
             }
         )
     return out

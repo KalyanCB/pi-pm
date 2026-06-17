@@ -76,7 +76,24 @@ export function RecommendationsScreen() {
   const rejectExit = useRejectExit();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const exitMonitorCount = exitMonitor.data?.length ?? 0;
+  // Group exit recs by portfolio_position_id (or symbol) → one card per position
+  const groupedExits = useMemo(() => {
+    const all = exitMonitor.data ?? [];
+    const map = new Map<string, typeof all>();
+    for (const r of all) {
+      const key = r.portfolio_position_id ?? r.symbol ?? r.id;
+      const group = map.get(key) ?? [];
+      group.push(r);
+      map.set(key, group);
+    }
+    // Sort each group: CRITICAL first, then pick highest-urgency as primary
+    const order = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'];
+    return Array.from(map.values()).map((group) =>
+      group.slice().sort((a, b) => order.indexOf(b.urgency) - order.indexOf(a.urgency))
+    );
+  }, [exitMonitor.data]);
+
+  const exitMonitorCount = groupedExits.length;
   const displayTabCounts = useMemo(
     () => ({
       ...tabCounts,
@@ -204,24 +221,29 @@ export function RecommendationsScreen() {
             </Text>
           )}
           <View style={styles.list}>
-            {(exitMonitor.data ?? []).map((exit) => (
-              <ExitMonitorCard
-                key={exit.id}
-                exit={exit}
-                onConfirm={
-                  exit.status === 'PENDING' && isViewingLatest
-                    ? () => confirmExit.mutate(exit.id)
-                    : undefined
-                }
-                onReject={
-                  exit.status === 'PENDING' && isViewingLatest
-                    ? () => rejectExit.mutate({ exitId: exit.id })
-                    : undefined
-                }
-                confirming={confirmExit.isPending}
-                rejecting={rejectExit.isPending}
-              />
-            ))}
+            {groupedExits.map((group) => {
+              const primary = group[0]!;
+              const pendingRec = group.find((r) => r.status === 'PENDING');
+              return (
+                <ExitMonitorCard
+                  key={primary.portfolio_position_id ?? primary.id}
+                  exit={primary}
+                  allTiers={group}
+                  onConfirm={
+                    pendingRec && isViewingLatest
+                      ? () => confirmExit.mutate(pendingRec.id)
+                      : undefined
+                  }
+                  onReject={
+                    pendingRec && isViewingLatest
+                      ? () => rejectExit.mutate({ exitId: pendingRec.id })
+                      : undefined
+                  }
+                  confirming={confirmExit.isPending}
+                  rejecting={rejectExit.isPending}
+                />
+              );
+            })}
           </View>
         </View>
       )}
