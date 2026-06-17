@@ -5,6 +5,17 @@ import type { PortfolioPositionCardProps } from '@pipm/types';
 import { MetricValue } from '../atoms/MetricValue';
 import { Badge } from '../atoms/Badge';
 
+function fmt(v: number | null | undefined, decimals = 2): string {
+  if (v == null) return '—';
+  return `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+}
+
+function fmtPct(v: number | null | undefined): { text: string; positive: boolean | null } {
+  if (v == null) return { text: '—', positive: null };
+  const sign = v > 0 ? '+' : '';
+  return { text: `${sign}${v.toFixed(2)}%`, positive: v > 0 ? true : v < 0 ? false : null };
+}
+
 export function PortfolioPositionCard({
   symbol,
   quantity,
@@ -15,7 +26,6 @@ export function PortfolioPositionCard({
   convictionBand,
   sector,
   onPress,
-  // Closed position fields
   positionStatus,
   exitPrice,
   exitDate,
@@ -28,109 +38,161 @@ export function PortfolioPositionCard({
   const theme = useTheme();
   const isClosed = positionStatus === 'CLOSED';
 
+  // Derived values
+  const investedPerShare = avgCost ?? entryPrice;
+  const currentPrice = marketValue != null && quantity > 0 ? marketValue / quantity : null;
+  const unrealizedPct =
+    investedPerShare != null && investedPerShare > 0 && currentPrice != null
+      ? ((currentPrice - investedPerShare) / investedPerShare) * 100
+      : null;
+  const realizedPct =
+    entryPrice != null && entryPrice > 0 && exitPrice != null
+      ? ((exitPrice - entryPrice) / entryPrice) * 100
+      : null;
+
+  const pnlColor = (pos: boolean | null) =>
+    pos === true ? theme.colors.positive : pos === false ? theme.colors.negative : theme.colors.textSecondary;
+
   const content = (
     <View
       style={[
         styles.card,
         {
-          backgroundColor: isClosed
-            ? theme.colors.backgroundPanel
-            : theme.colors.backgroundElevated,
-          borderColor: isClosed ? theme.colors.border : theme.colors.border,
+          backgroundColor: isClosed ? theme.colors.backgroundPanel : theme.colors.backgroundElevated,
+          borderColor: theme.colors.border,
           opacity: isClosed ? 0.85 : 1,
         },
       ]}
     >
+      {/* ── Header ── */}
       <View style={styles.header}>
         <Text style={[styles.symbol, { color: isClosed ? theme.colors.textMuted : theme.colors.textPrimary }]}>
           {symbol ?? '—'}
         </Text>
-        {isClosed && (
+        {isClosed ? (
           <Badge label="EXITED" variant="default" size="sm" />
-        )}
-        {!isClosed && convictionBand && (
-          <Badge label={convictionBand} variant="info" size="sm" />
+        ) : (
+          convictionBand && <Badge label={convictionBand} variant="info" size="sm" />
         )}
         {strategyName && (
-          <Text style={[styles.strategy, { color: theme.colors.textMuted }]}>
+          <Text style={[styles.chip, { color: theme.colors.textMuted }]}>
             {strategyName.replace('_v1', '')}
           </Text>
         )}
         {sector && (
-          <Text style={[styles.sector, { color: theme.colors.textMuted }]}>{sector}</Text>
+          <Text style={[styles.chip, { color: theme.colors.textMuted, marginLeft: 'auto' }]}>{sector}</Text>
         )}
       </View>
 
       {isClosed ? (
-        // ── Closed position: show entry → exit P&L ──────────────────────────
-        <View style={styles.metrics}>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Qty</Text>
-            <MetricValue value={quantity} format="number" size="sm" />
-          </View>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Entry</Text>
-            <Text style={[styles.mono, { color: theme.colors.textSecondary }]}>
-              {entryPrice != null ? Number(entryPrice).toFixed(2) : '—'}
-            </Text>
-          </View>
-          <Text style={[styles.arrow, { color: theme.colors.textMuted }]}>→</Text>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Exit</Text>
-            <Text style={[styles.mono, { color: theme.colors.textSecondary }]}>
-              {exitPrice != null ? exitPrice.toFixed(2) : '—'}
-            </Text>
-          </View>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Realized P&L</Text>
-            <MetricValue value={realizedPnl ?? null} format="currency" colorize size="sm" />
-          </View>
-          {entryPrice != null && exitPrice != null && (
-            <View style={styles.metric}>
-              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Return</Text>
-              <MetricValue
-                value={((exitPrice - entryPrice) / entryPrice) * 100}
-                format="percent"
-                colorize
-                size="sm"
-              />
+        // ── Closed: highlight return % alongside realized P&L ──
+        <>
+          <View style={styles.primaryRow}>
+            {/* Realized P&L ₹ */}
+            <View style={styles.primaryBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Realized P&L</Text>
+              <MetricValue value={realizedPnl ?? null} format="currency" colorize size="sm" />
             </View>
-          )}
-          {exitReason && (
-            <View style={styles.metric}>
-              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Exit</Text>
-              <Text style={[styles.mono, { color: theme.colors.textMuted, fontSize: 11 }]}>
-                {exitReason.replace(/_/g, ' ')}
+            {/* Return % */}
+            {realizedPct != null && (
+              <View style={styles.primaryBlock}>
+                <Text style={[styles.label, { color: theme.colors.textMuted }]}>Return</Text>
+                <Text style={[styles.bigPct, { color: pnlColor(realizedPct > 0 ? true : realizedPct < 0 ? false : null) }]}>
+                  {fmtPct(realizedPct).text}
+                </Text>
+              </View>
+            )}
+            {/* Qty */}
+            <View style={styles.primaryBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Qty</Text>
+              <MetricValue value={quantity} format="number" size="sm" />
+            </View>
+          </View>
+
+          {/* Price row: entry → exit */}
+          <View style={styles.priceRow}>
+            <View style={styles.priceBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Invested</Text>
+              <Text style={[styles.price, { color: theme.colors.textSecondary }]}>
+                {fmt(investedPerShare)}
               </Text>
             </View>
-          )}
-        </View>
+            <Text style={[styles.arrow, { color: theme.colors.textMuted }]}>→</Text>
+            <View style={styles.priceBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Exited</Text>
+              <Text style={[styles.price, { color: theme.colors.textSecondary }]}>
+                {fmt(exitPrice)}
+              </Text>
+            </View>
+            {exitReason && (
+              <View style={[styles.priceBlock, { marginLeft: 'auto' }]}>
+                <Text style={[styles.label, { color: theme.colors.textMuted }]}>Reason</Text>
+                <Text style={[styles.reasonText, { color: theme.colors.textMuted }]}>
+                  {exitReason.replace(/_/g, ' ')}
+                </Text>
+              </View>
+            )}
+          </View>
+        </>
       ) : (
-        // ── Open position: show live P&L ────────────────────────────────────
-        <View style={styles.metrics}>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Qty</Text>
-            <MetricValue value={quantity} format="number" size="sm" />
+        // ── Open: highlight market value + unrealized P&L % ──
+        <>
+          <View style={styles.primaryRow}>
+            {/* Market value */}
+            <View style={styles.primaryBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Value</Text>
+              <MetricValue value={marketValue} format="currency" size="sm" />
+            </View>
+            {/* Unrealized P&L ₹ */}
+            <View style={styles.primaryBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Unrealized P&L</Text>
+              <MetricValue value={unrealizedPnl} format="currency" colorize size="sm" />
+            </View>
+            {/* P&L % */}
+            {unrealizedPct != null && (
+              <View style={styles.primaryBlock}>
+                <Text style={[styles.label, { color: theme.colors.textMuted }]}>P&L %</Text>
+                <Text style={[styles.bigPct, { color: pnlColor(unrealizedPct > 0 ? true : unrealizedPct < 0 ? false : null) }]}>
+                  {fmtPct(unrealizedPct).text}
+                </Text>
+              </View>
+            )}
+            {/* Weight */}
+            <View style={[styles.primaryBlock, { marginLeft: 'auto' }]}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Wt</Text>
+              <MetricValue value={weightPct} format="percent" size="sm" />
+            </View>
           </View>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Mkt Val</Text>
-            <MetricValue value={marketValue} format="currency" size="sm" />
+
+          {/* Price row: invested → current */}
+          <View style={styles.priceRow}>
+            <View style={styles.priceBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Qty</Text>
+              <Text style={[styles.price, { color: theme.colors.textSecondary }]}>
+                {quantity != null ? quantity.toFixed(2) : '—'}
+              </Text>
+            </View>
+            <View style={styles.priceBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Avg Cost</Text>
+              <Text style={[styles.price, { color: theme.colors.textSecondary }]}>
+                {fmt(investedPerShare)}
+              </Text>
+            </View>
+            <Text style={[styles.arrow, { color: theme.colors.textMuted }]}>→</Text>
+            <View style={styles.priceBlock}>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Current</Text>
+              <Text style={[styles.price, { color: theme.colors.textPrimary }]}>
+                {fmt(currentPrice)}
+              </Text>
+            </View>
           </View>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Unrealized P&L</Text>
-            <MetricValue value={unrealizedPnl} format="currency" colorize size="sm" />
-          </View>
-          <View style={styles.metric}>
-            <Text style={[styles.label, { color: theme.colors.textMuted }]}>Wt%</Text>
-            <MetricValue value={weightPct} format="percent" size="sm" />
-          </View>
-        </View>
+        </>
       )}
 
+      {/* ── Date strip ── */}
       <Text style={[styles.dates, { color: theme.colors.textMuted }]}>
         {entryDate ?? ''}
         {isClosed && exitDate ? ` → ${exitDate}` : ''}
-        {!isClosed ? `  ·  entry ₹${entryPrice != null ? Number(entryPrice).toFixed(2) : '—'}` : ''}
       </Text>
     </View>
   );
@@ -163,23 +225,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: 'monospace',
   },
-  strategy: {
+  chip: {
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  sector: {
-    fontSize: 11,
-    marginLeft: 'auto',
-  },
-  metrics: {
+  primaryRow: {
     flexDirection: 'row',
     gap: 16,
     flexWrap: 'wrap',
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
-  metric: {
+  primaryBlock: {
+    gap: 2,
+  },
+  bigPct: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: 'monospace',
+  },
+  priceRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  priceBlock: {
     gap: 2,
   },
   label: {
@@ -187,14 +259,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  mono: {
+  price: {
     fontSize: 13,
     fontFamily: 'monospace',
   },
   arrow: {
     fontSize: 14,
-    alignSelf: 'center',
     marginTop: 10,
+  },
+  reasonText: {
+    fontSize: 10,
+    textTransform: 'uppercase',
   },
   dates: {
     fontSize: 11,
