@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     kite_api_key: str = ""
     kite_api_secret: str = ""
     kite_access_token: str = ""
+    # Headless token refresh (daily cron)
+    kite_user_id: str = ""
+    kite_password: str = ""
+    kite_totp_secret: str = ""
 
     # ── Human-In-The-Loop (HITL) feature flag ────────────────────────────────
     # True  = require explicit human approval before any BUY is executed (default, production)
