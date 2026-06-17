@@ -103,6 +103,8 @@ class KiteConnectProvider:
 
     def fetch_metadata(self, symbol: str) -> YahooStockMetadata:
         """Fetch stock metadata. Kite instruments list is the source."""
+        if symbol.startswith("^"):
+            return self._get_yahoo().fetch_metadata(symbol)
         from app.providers.kite import instruments
         instruments.ensure_loaded(self._kite)
         token = instruments.get_token(symbol)
@@ -134,6 +136,8 @@ class KiteConnectProvider:
         )
 
     def fetch_history(self, symbol: str, period: IngestPeriod) -> list[YahooOHLCVBar]:
+        if symbol.startswith("^"):
+            return self._get_yahoo().fetch_history(symbol, period)
         days = _period_to_days(period)
         end = datetime.now(UTC).date()
         start = end - timedelta(days=days)
@@ -145,6 +149,10 @@ class KiteConnectProvider:
         start_date: date,
         end_date: date | None = None,
     ) -> list[YahooOHLCVBar]:
+        # Index symbols (^NSEI, ^BSESN …) are not in Kite equity instruments
+        if symbol.startswith("^"):
+            return self._get_yahoo().fetch_history_since(symbol, start_date, end_date)
+
         from app.providers.kite import instruments
         instruments.ensure_loaded(self._kite)
 
