@@ -88,7 +88,7 @@ def phase_daily_batch(client: httpx.Client, target: date, dry_run: bool) -> dict
     payload = {
         "target_date": target.isoformat(),
         "assume_session_done": True,
-        "phases": {"recommendations": True},
+        "phases": {"ingest": True, "recommendations": True},
     }
     resp = client.post("/api/v1/ops/daily-batch/runs", json=payload)
     resp.raise_for_status()
