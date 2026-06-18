@@ -281,6 +281,7 @@ export function RecommendationsScreen() {
               stopAdvisory={card.stopAdvisory}
               stopCritical={card.stopCritical}
               levelsBasis={card.levelsBasis}
+              ltp={card.ltp}
               committeeAdvisory={card.committeeAdvisory}
               committeeFindings={card.committeeFindings}
               lifecycleState={card.lifecycleState}

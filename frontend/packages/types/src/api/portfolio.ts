@@ -31,6 +31,7 @@ export interface PortfolioPosition {
   exit_date: string | null;
   realized_pnl: number | null;
   exit_reason: string | null;
+  ltp?: number | null;
 }
 
 export interface PortfolioSummary {

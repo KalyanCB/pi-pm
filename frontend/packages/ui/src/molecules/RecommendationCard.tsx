@@ -25,6 +25,7 @@ export function RecommendationCard({
   stopAdvisory,
   stopCritical,
   levelsBasis,
+  ltp,
 }: RecommendationCardProps) {
   const theme = useTheme();
   const isRow = layout === 'row';
@@ -69,6 +70,11 @@ export function RecommendationCard({
         )}
         <ConvictionBadge score={convictionScore} band={convictionBand} size="sm" />
       </View>
+      {ltp != null && (
+        <Text style={[styles.ltp, { color: theme.colors.textPrimary }]}>
+          LTP {inr(ltp)}
+        </Text>
+      )}
       {hasLevels && (
         <Text style={[styles.levels, { color: theme.colors.textSecondary }]}>
           Entry {inr(entryLow)}–{inr(entryHigh)}
@@ -151,5 +157,10 @@ const styles = StyleSheet.create({
   levels: {
     fontSize: 11,
     fontFamily: 'monospace',
+  },
+  ltp: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    fontWeight: '600',
   },
 });

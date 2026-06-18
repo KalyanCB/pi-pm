@@ -39,6 +39,7 @@ export interface RecommendationCardModel {
   stopAdvisory: number | null;
   stopCritical: number | null;
   levelsBasis: 'actionable' | 'indicative' | null;
+  ltp: number | null;
 }
 
 function pickStrategyResults(
@@ -179,6 +180,7 @@ export function useRecommendationCards() {
         stopAdvisory: r.stop_advisory ?? null,
         stopCritical: r.stop_critical ?? null,
         levelsBasis: r.levels_basis ?? null,
+        ltp: r.ltp ?? null,
       };
     });
   }, [tab, strategyBlock, symbolMap, advisoryBySymbol, findingsBySymbol]);

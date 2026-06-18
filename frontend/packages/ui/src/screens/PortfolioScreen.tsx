@@ -441,6 +441,7 @@ export function PortfolioScreen() {
               entryPrice={p.entry_price}
               strategyName={p.strategy_name}
               exitReason={p.exit_reason}
+              ltp={p.ltp}
             />
           ))}
 

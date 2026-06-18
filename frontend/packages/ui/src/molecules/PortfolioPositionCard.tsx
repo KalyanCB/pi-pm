@@ -34,13 +34,14 @@ export function PortfolioPositionCard({
   entryPrice,
   strategyName,
   exitReason,
+  ltp,
 }: PortfolioPositionCardProps) {
   const theme = useTheme();
   const isClosed = positionStatus === 'CLOSED';
 
-  // Derived values
+  // Derived values — prefer live LTP over market_value / qty
   const investedPerShare = avgCost ?? entryPrice;
-  const currentPrice = marketValue != null && quantity > 0 ? marketValue / quantity : null;
+  const currentPrice = ltp ?? (marketValue != null && quantity > 0 ? marketValue / quantity : null);
   const unrealizedPct =
     investedPerShare != null && investedPerShare > 0 && currentPrice != null
       ? ((currentPrice - investedPerShare) / investedPerShare) * 100
@@ -180,7 +181,7 @@ export function PortfolioPositionCard({
             </View>
             <Text style={[styles.arrow, { color: theme.colors.textMuted }]}>→</Text>
             <View style={styles.priceBlock}>
-              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Current</Text>
+              <Text style={[styles.label, { color: theme.colors.textMuted }]}>{ltp != null ? 'LTP' : 'Current'}</Text>
               <Text style={[styles.price, { color: theme.colors.textPrimary }]}>
                 {fmt(currentPrice)}
               </Text>

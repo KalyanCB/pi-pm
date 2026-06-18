@@ -21,6 +21,7 @@ export interface RecommendationCardProps {
   stopAdvisory?: number | null;
   stopCritical?: number | null;
   levelsBasis?: 'actionable' | 'indicative' | null;
+  ltp?: number | null;
 }
 
 export interface PortfolioPositionCardProps {
@@ -42,6 +43,7 @@ export interface PortfolioPositionCardProps {
   entryPrice?: number | null;
   strategyName?: string | null;
   exitReason?: string | null;
+  ltp?: number | null;
 }
 
 export interface TrustScoreCardProps {

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.api.auth_deps import OwnerUser
-from app.api.deps import get_recommendation_service
+from app.api.deps import get_db, get_recommendation_service
 from app.services.recommendation_service import RecommendationService
 
 router = APIRouter()
@@ -104,6 +104,9 @@ class RecommendationResultRead(BaseModel):
     stop_advisory: float | None = None
     stop_critical: float | None = None
     levels_basis: str | None = None
+
+    # Live LTP from Kite (populated at read time when MARKET_DATA_PROVIDER=kite)
+    ltp: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -224,6 +227,7 @@ def get_daily(
     action: str | None = Query(
         default=None, description="Filter by action: BUY, WATCH, HOLD, REJECT"
     ),
+    db=Depends(get_db),
     service: RecommendationService = Depends(get_recommendation_service),
 ) -> DailyRecommendationsRead:
     """All strategies' recommendations for a given date in one call."""
@@ -243,6 +247,23 @@ def get_daily(
             detail=f"No recommendation runs found for {as_of_date}",
         )
 
+    # Bulk LTP for all recommended symbols (best-effort, Kite only)
+    ltp_map: dict[str, float] = {}
+    try:
+        from app.core.config import get_settings
+        if get_settings().market_data_provider == "kite":
+            from app.providers.kite.quote import bulk_ltp
+            all_symbols = [
+                r.stock.symbol
+                for results in daily.values()
+                for r in results
+                if r.stock and r.stock.symbol
+            ]
+            if all_symbols:
+                ltp_map = bulk_ltp(list(set(all_symbols)), db)
+    except Exception:
+        pass
+
     strategies: list[DailyStrategyResults] = []
     total = buy_count = watch_count = 0
 
@@ -257,12 +278,19 @@ def get_daily(
         execution_context = {
             k: RecommendationExecutionContextRead(**v) for k, v in raw_ctx.items()
         }
+        # Inject LTP into each result read model
+        enriched = []
+        for r in results:
+            sym = r.stock.symbol if r.stock else None
+            row = RecommendationResultRead.model_validate(r)
+            row.ltp = ltp_map.get(sym) if sym else None
+            enriched.append(row)
         strategies.append(
             DailyStrategyResults(
                 strategy_name=strategy_name,
                 as_of_date=resolved_date,
                 recommendation_run_id=rec_run.id,
-                results=results,  # type: ignore[arg-type]
+                results=enriched,
                 execution_context=execution_context,
             )
         )

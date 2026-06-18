@@ -106,6 +106,7 @@ def get_summary(
 @router.get("/positions")
 def get_positions(
     include_closed: bool = False,
+    db=Depends(get_db),
     svc: PortfolioService = Depends(_svc),
 ) -> list[dict]:
     """Positions with P&L. Pass include_closed=true to include exited positions."""
@@ -116,6 +117,23 @@ def get_positions(
         basis = svc.nav_basis()
     except ValueError:
         basis = 0.0
+
+    # Bulk LTP fetch for open positions when Kite is the active provider.
+    ltp_map: dict[str, float] = {}
+    try:
+        from app.core.config import get_settings
+        settings = get_settings()
+        if settings.market_data_provider == "kite":
+            from app.providers.kite.quote import bulk_ltp
+            open_symbols = [
+                p.stock.symbol for p in positions
+                if p.position_status == "OPEN" and p.stock
+            ]
+            if open_symbols:
+                ltp_map = bulk_ltp(open_symbols, db)
+    except Exception:
+        pass  # LTP is best-effort; don't break positions on Kite errors
+
     out = []
     for p in positions:
         stock = p.stock
@@ -125,10 +143,12 @@ def get_positions(
             weight_pct = float(p.weight_pct)
         else:
             weight_pct = None
+        symbol = stock.symbol if stock else None
+        ltp = ltp_map.get(symbol) if symbol else None
         out.append(
             {
                 "id": str(p.id),
-                "symbol": stock.symbol if stock else None,
+                "symbol": symbol,
                 "quantity": float(p.quantity),
                 "avg_cost": float(p.avg_cost),
                 "entry_price": float(p.entry_price) if p.entry_price else None,
@@ -144,6 +164,7 @@ def get_positions(
                 "exit_date": p.exit_date.isoformat() if p.exit_date else None,
                 "realized_pnl": float(p.realized_pnl) if p.realized_pnl else None,
                 "exit_reason": p.exit_reason,
+                "ltp": ltp,
             }
         )
     return out

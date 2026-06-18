@@ -71,6 +71,7 @@ export interface RecommendationResultRead {
   stop_advisory?: number | null;
   stop_critical?: number | null;
   levels_basis?: 'actionable' | 'indicative' | null;
+  ltp?: number | null;
 }
 
 export interface DailyRecommendationsRead {
