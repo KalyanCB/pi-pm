@@ -133,6 +133,15 @@ def get_request_token(user_id: str, password: str, totp_secret: str, api_key: st
         raise RuntimeError("No redirect location found after TOTP — check credentials or TOTP secret")
 
     log.info("Redirect URL: %s", location)
+
+    # Zerodha may redirect to connect/finish?sess_id=... before the final callback.
+    # Follow that hop to get the real request_token.
+    if "connect/finish" in location:
+        finish_url = location if location.startswith("http") else f"https://kite.zerodha.com{location}"
+        resp3 = session.get(finish_url, allow_redirects=False, timeout=15)
+        location = resp3.headers.get("Location", location)
+        log.info("Final redirect URL: %s", location)
+
     parsed = urlparse(location)
     params = parse_qs(parsed.query)
 
