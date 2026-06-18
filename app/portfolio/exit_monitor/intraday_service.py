@@ -35,7 +35,7 @@ from app.models.portfolio_analytics import ExitRecommendation
 from app.models.portfolio_position import PortfolioPosition
 from app.models.stock import Stock
 from app.portfolio.exit_monitor.notification import NotificationEvent, build_notification
-from app.portfolio.exit_monitor.quote_provider import LastCloseQuoteProvider, QuoteProvider
+from app.portfolio.exit_monitor.quote_provider import KiteQuoteProvider, LastCloseQuoteProvider, QuoteProvider
 from app.portfolio.exit_monitor.triggers import check_stop_loss, check_trailing_stop
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,17 @@ class IntradayExitMonitorService:
         paper_trade_service=None,  # injected; avoids circular import at module level
     ) -> None:
         self.db = db
-        self._quote = quote_provider or LastCloseQuoteProvider(db)
+        if quote_provider is not None:
+            self._quote = quote_provider
+        elif get_settings().market_data_provider == "kite" and get_settings().intraday_exit_monitor_enabled:
+            try:
+                self._quote = KiteQuoteProvider(db)
+                logger.info("IntradayExitMonitor: using KiteQuoteProvider for live LTP")
+            except Exception as exc:
+                logger.warning("KiteQuoteProvider init failed, falling back to LastClose: %s", exc)
+                self._quote = LastCloseQuoteProvider(db)
+        else:
+            self._quote = LastCloseQuoteProvider(db)
 
         s = get_settings()
         # Explicit ctor overrides win; otherwise ADR-035 may resolve per-run.
