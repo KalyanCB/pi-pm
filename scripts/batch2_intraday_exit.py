@@ -48,7 +48,7 @@ from app.models.market_data import MarketData
 from app.models.portfolio_position import PortfolioPosition
 from app.portfolio.exit_monitor.intraday_service import IntradayExitMonitorService
 from app.portfolio.exit_monitor.service import ExitMonitorService
-from app.portfolio.exit_monitor.quote_provider import LastCloseQuoteProvider
+from app.portfolio.exit_monitor.quote_provider import KiteQuoteProvider, LastCloseQuoteProvider
 
 
 def get_db() -> Session:
@@ -102,7 +102,18 @@ def main() -> int:
 
         # ── T1: price-based stop triggers ─────────────────────────────────
         log.info("Running T1 intraday price monitor ...")
-        quote_provider = LastCloseQuoteProvider(db)
+        from app.core.config import get_settings
+        settings = get_settings()
+        if settings.market_data_provider == "kite":
+            try:
+                quote_provider = KiteQuoteProvider(db)
+                log.info("T1 using KiteQuoteProvider (live LTP)")
+            except Exception as exc:
+                log.warning("KiteQuoteProvider init failed, using LastClose: %s", exc)
+                quote_provider = LastCloseQuoteProvider(db)
+        else:
+            quote_provider = LastCloseQuoteProvider(db)
+            log.info("T1 using LastCloseQuoteProvider (EOD proxy)")
         t1 = IntradayExitMonitorService(db, quote_provider=quote_provider)
         t1_result = t1.run(session_date=today)
         log.info(
