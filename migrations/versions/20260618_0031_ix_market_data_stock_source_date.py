@@ -1,15 +1,15 @@
 """Add composite index on market_data(stock_id, source, date) for ranking query performance.
 
-Revision ID: 0031
-Revises: 0030
+Revision ID: 20260618_0031
+Revises: 20260617_0030
 """
 from __future__ import annotations
 
 from alembic import op
 
 
-revision = "0031"
-down_revision = "0030"
+revision = "20260618_0031"
+down_revision = "20260617_0030"
 branch_labels = None
 depends_on = None
 
