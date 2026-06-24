@@ -21,8 +21,10 @@ _INITIAL_CAPITAL = 1_000_000.0  # ₹10L
 
 @router.get("/replay-status", response_class=HTMLResponse)
 def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
+    # ranking_runs has a row per (strategy, day) and runs every day incl. the
+    # 2020 warm-up, so distinct as_of_date tracks progress across both phases.
     prog = db.execute(
-        text("SELECT COUNT(*) AS n, MAX(as_of_date) AS d FROM daily_batch_runs")
+        text("SELECT COUNT(DISTINCT as_of_date) AS n, MAX(as_of_date) AS d FROM ranking_runs")
     ).fetchone()
     processed = prog.n or 0
     cur_date = prog.d
