@@ -18,9 +18,8 @@ def upgrade() -> None:
     op.create_index(
         "ix_market_data_stock_source_date",
         "market_data",
-        ["stock_id", "source", op.f("date DESC")],
+        ["stock_id", "source", "date"],
         unique=False,
-        postgresql_concurrently=True,
     )
 
 
