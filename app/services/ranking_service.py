@@ -17,7 +17,7 @@ from app.db.repositories.ranking_result_repository import RankingResultRepositor
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.stock_repository import StockRepository
 from app.db.repositories.universe_repository import UniverseRepository
-from app.market_data.cache import MarketDataCache
+from app.market_data.cache import GlobalBarStore, MarketDataCache
 from app.models.ranking_run import RankingRun
 from app.ranking.engine import RankingEngine
 from app.ranking.loader import MarketDataLoader
@@ -62,6 +62,7 @@ class RankingService:
         self.universe_repo = universe_repo
         self.strategy_registry = strategy_registry
         self.traceability_service = traceability_service
+        self.global_bar_store: GlobalBarStore | None = None
 
     def run_ranking(self, payload: RankingRunRequest) -> RankingRun:
         return self.run_ranking_with_outcome(payload).run
@@ -118,7 +119,18 @@ class RankingService:
             benchmark=benchmark_symbol,
         )
 
-        market_data_cache = MarketDataCache(self.universe_filter_service.market_data_repo)
+        if self.global_bar_store is not None:
+            market_data_cache = self.global_bar_store.as_cache(self.universe_filter_service.market_data_repo)
+        else:
+            market_data_cache = MarketDataCache(self.universe_filter_service.market_data_repo)
+
+        # Bulk-preload all universe stocks in one query instead of N+1 per stock
+        universe_stocks = self.universe_repo.list_stocks_in_universe(universe_code)
+        all_stock_ids = [s.id for s in universe_stocks]
+        market_data_cache.bulk_preload(
+            all_stock_ids, as_of_date, source=filter_config.market_data_source
+        )
+
         tradable_universe = self.universe_filter_service.build_tradable_universe(
             as_of_date, filter_config, market_data_cache
         )

@@ -26,6 +26,13 @@ from app.models.exit_research import (
     ExitResearchPolicyMetric,
     ExitResearchRun,
 )
+from app.models.fil import (
+    CompanyNewsEvent,
+    FilConvictionBoost,
+    FilWatchListEntry,
+    SectorClassification,
+    SectorNewsEvent,
+)
 from app.models.factor_analytics import (
     FactorDailyMetric,
     FactorPerformanceMetric,
@@ -154,4 +161,9 @@ __all__ = [
     "Portfolio",
     "UserPortfolioMembership",
     "RefreshToken",
+    "CompanyNewsEvent",
+    "FilWatchListEntry",
+    "FilConvictionBoost",
+    "SectorClassification",
+    "SectorNewsEvent",
 ]

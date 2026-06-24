@@ -111,6 +111,7 @@ class RecommendationService:
         ranking_rows = self._load_ranking_rows(ranking_run_id)
         exit_signals = self._load_exit_signals(ranking_run)
         active_position_stock_ids = self._load_active_position_stock_ids(ranking_run)
+        cooldown_stock_ids = self._load_cooldown_stock_ids(ranking_run)
 
         input_hash = rec_engine._compute_input_hash(
             ranking_run_id,
@@ -141,6 +142,7 @@ class RecommendationService:
                 config=config,
                 active_position_stock_ids=active_position_stock_ids,
                 exit_signals=exit_signals,
+                cooldown_stock_ids=cooldown_stock_ids,
             )
 
             db_results = []
@@ -481,7 +483,18 @@ class RecommendationService:
             regime_label = (ranking_run.regime_label or "").upper() or None
             if not regime_label:
                 return None
-            config = RCEEConfig()
+            # ADR-036: regime-aware EDGE_PRESENT sample floor from Settings.
+            rare = {
+                r.strip().upper()
+                for r in (self.settings.rcee_rare_regimes or "").split(",")
+                if r.strip()
+            }
+            config = RCEEConfig(
+                edge_present_sample_days=self.settings.rcee_edge_present_sample_days,
+                edge_present_sample_days_by_regime={
+                    reg: self.settings.rcee_rare_regime_sample_days for reg in rare
+                },
+            )
             return load_regime_fit(
                 db=self.db,
                 strategy_name=ranking_run.strategy_name,
@@ -536,6 +549,35 @@ class RecommendationService:
                 )
             ).all()
             return {pos.stock_id for pos in open_positions}
+        except Exception:
+            return set()
+
+    def _load_cooldown_stock_ids(self, ranking_run: RankingRun) -> set[UUID]:
+        """Return stock_ids in re-entry cooldown (P-16: both EXIT_ALPHA_DECAY and
+        EXIT_STOP_LOSS now 3d — relaxed from 7d so a shaken-out name that re-breaks
+        out within ~3 days can be re-bought)."""
+        try:
+            from datetime import timedelta
+            from sqlalchemy import case, and_
+            as_of = ranking_run.as_of_date
+            # Single query: include row if exit_date is within the reason-specific window
+            rows = self.db.scalars(
+                select(PortfolioPosition.stock_id).where(
+                    PortfolioPosition.strategy_name == ranking_run.strategy_name,
+                    PortfolioPosition.position_status == "CLOSED",
+                    PortfolioPosition.exit_date <= as_of,
+                    PortfolioPosition.exit_reason.in_(["EXIT_STOP_LOSS", "EXIT_ALPHA_DECAY"]),
+                    case(
+                        # Relaxed 7→3d: a shakeout that re-breaks out within ~3 days
+                        # should be re-bought (the resumed-breakout re-entry design),
+                        # while still blocking same-week churn on names that keep falling.
+                        (PortfolioPosition.exit_reason == "EXIT_STOP_LOSS",
+                         PortfolioPosition.exit_date >= as_of - timedelta(days=3)),
+                        else_=PortfolioPosition.exit_date >= as_of - timedelta(days=3),
+                    ),
+                )
+            ).all()
+            return set(rows)
         except Exception:
             return set()
 

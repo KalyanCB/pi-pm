@@ -122,7 +122,10 @@ class ReplayDayProcessor:
                 if exit_price is None:
                     logger.warning("No price for %s on exit day %s — holding", pos.symbol, as_of_date)
                     continue
-                exit_reason = fired[0].trigger_code
+                # Most-severe trigger wins the label (e.g. stop-loss over rank-drop on
+                # a gap-down day) — see _primary_exit_reason in paper_trade_service.
+                from app.services.paper_trade_service import _primary_exit_reason
+                exit_reason = _primary_exit_reason([t.trigger_code for t in fired])
                 trade = portfolio.close_position(
                     pos.stock_id,
                     exit_date=as_of_date,

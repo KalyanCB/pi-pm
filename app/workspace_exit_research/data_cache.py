@@ -19,7 +19,7 @@ def market_data_to_bars(rows: list[MarketData]) -> list[PriceBar]:
     return [
         PriceBar(
             date=row.date,
-            close=Decimal(str(row.close)),
+            close=float(row.close),
             volume=int(row.volume) if row.volume is not None else None,
         )
         for row in sorted_rows

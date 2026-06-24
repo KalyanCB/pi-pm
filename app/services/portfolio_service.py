@@ -29,10 +29,20 @@ _CONVICTION_WEIGHTS: dict[str, float] = {
 }
 
 _DEFAULT_REGIME_SLOTS: dict[str, dict] = {
-    "risk_on": {"max_positions": 8, "max_buy_per_day": 2},
-    "neutral": {"max_positions": 6, "max_buy_per_day": 1},
-    "defensive": {"max_positions": 4, "max_buy_per_day": 0},
-    "crisis": {"max_positions": 2, "max_buy_per_day": 0},
+    "risk_on":        {"max_positions": 8, "max_buy_per_day": 2},
+    "limited_risk_on":{"max_positions": 7, "max_buy_per_day": 2},  # P-12: BULL_HIGH_VOL upgrade
+    "neutral":        {"max_positions": 6, "max_buy_per_day": 1},
+    "defensive":      {"max_positions": 4, "max_buy_per_day": 0},
+    "crisis":         {"max_positions": 2, "max_buy_per_day": 0},
+}
+
+# P-08: regime-dependent capital deployment ceiling
+_REGIME_DEPLOY_PCT: dict[str, float] = {
+    "risk_on":         0.92,
+    "limited_risk_on": 0.80,
+    "neutral":         0.85,
+    "defensive":       0.65,
+    "crisis":          0.50,
 }
 
 
@@ -154,7 +164,9 @@ class PortfolioService:
             cash_available = max(0.0, total_equity - market_value)
             cash_pct = cash_available / total_equity if total_equity else 0
 
-        deployable = total_equity * float(cfg.deploy_pct)
+        # P-08: regime-dependent deploy ceiling overrides the flat cfg.deploy_pct
+        _regime_deploy = _REGIME_DEPLOY_PCT.get(regime_posture, float(cfg.deploy_pct))
+        deployable = total_equity * _regime_deploy
 
         active_count = len(positions)
         max_positions = slots["max_positions"]
@@ -271,9 +283,10 @@ class PortfolioService:
         last_price: float,
         symbol: str | None = None,
         sector: str | None = None,
+        as_of_date: date | None = None,
     ) -> PositionAllocation:
         cfg = self.get_config()
-        summary = self.get_summary()
+        summary = self.get_summary(as_of_date=as_of_date)
 
         slot_budget = summary.deployable_capital / max(summary.max_positions, 1)
 
@@ -373,6 +386,7 @@ class PortfolioService:
         *,
         exit_price: float,
         exit_date: date,
+        exit_reason: str | None = None,
     ) -> PortfolioPosition:
         pos = self.db.scalar(
             select(PortfolioPosition).where(
@@ -391,17 +405,24 @@ class PortfolioService:
         pos.market_value = float(pos.quantity) * exit_price
         pos.is_current = False
         pos.position_status = "CLOSED"
+        if exit_reason is not None:
+            pos.exit_reason = exit_reason
         self.db.flush()
         return pos
 
     def mark_to_market(self, as_of_date: date | None = None) -> int:
-        """Update market_value and unrealized_pnl for all open positions."""
-        positions = self._current_positions()
+        """Update market_value and unrealized_pnl for all open positions.
 
-        # ADR-035: stop_loss_price is dynamic under regime stops — refresh it from
-        # today's regime-resolved advisory %. No-op while the flag is off.
+        Fetches close prices for all positions in one batch query instead of
+        one query per position.
+        """
+        positions = self._current_positions()
+        if not positions:
+            return 0
+
         from app.core.config import get_settings
         from app.portfolio.regime_stops import resolve_stop_pcts
+        from app.models.market_data import MarketData
 
         settings = get_settings()
         advisory_pct: float | None = None
@@ -410,29 +431,43 @@ class PortfolioService:
                 self.regime_repo, as_of=as_of_date, settings=settings
             )
 
+        # Batch fetch latest close for all position stocks in one query.
+        # Use DISTINCT ON with date DESC as the leading sort key per stock.
+        stock_ids = [pos.stock_id for pos in positions]
+        as_of = as_of_date or date.today()
+        from sqlalchemy import func as sqlfunc
+        subq = (
+            select(MarketData.stock_id, sqlfunc.max(MarketData.date).label("max_date"))
+            .where(MarketData.stock_id.in_(stock_ids), MarketData.date <= as_of)
+            .group_by(MarketData.stock_id)
+            .subquery()
+        )
+        rows = self.db.execute(
+            select(MarketData.stock_id, MarketData.close)
+            .join(subq, (MarketData.stock_id == subq.c.stock_id) & (MarketData.date == subq.c.max_date))
+        ).all()
+        price_map: dict = {row.stock_id: float(row.close) for row in rows}
+
         updated = 0
+        now = datetime.now(UTC)
         for pos in positions:
-            stock = self.db.get(Stock, pos.stock_id)
-            if stock is None:
+            last_price = price_map.get(pos.stock_id)
+            if last_price is None:
                 continue
-            latest = self.market_data_repo.get_latest_market_data(pos.stock_id)
-            if latest is None:
-                continue
-            last_price = float(latest.close)
             pos.market_value = float(pos.quantity) * last_price
             pos.unrealized_pnl = (last_price - float(pos.avg_cost)) * float(pos.quantity)
             if advisory_pct is not None and pos.avg_cost:
                 pos.stop_loss_price = round(float(pos.avg_cost) * (1 + advisory_pct / 100), 4)
-            pos.as_of = datetime.now(UTC)
+            pos.as_of = now
             updated += 1
         if updated:
             self._recompute_weights()
             self.db.flush()
         return updated
 
-    def recompute(self) -> dict:
+    def recompute(self, as_of_date: date | None = None) -> dict:
         """Admin rebuild — mark-to-market + weight recompute."""
-        updated = self.mark_to_market()
+        updated = self.mark_to_market(as_of_date)
         return {"positions_updated": updated}
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -455,9 +490,14 @@ class PortfolioService:
             if regime is None:
                 return "neutral"
             label = (regime.regime_label or "").upper()
-            if "BEAR" in label or "HIGH_VOL" in label:
+            if label == "BEAR_HIGH_VOL":
                 return "defensive"
-            if "BULL" in label and "LOW_VOL" in label:
+            if label == "BULL_HIGH_VOL":
+                # P-12: BULL_HIGH_VOL has strong RCEE edge — upgrade to limited_risk_on
+                return "limited_risk_on"
+            if label == "BEAR_LOW_VOL":
+                return "neutral"
+            if label == "BULL_LOW_VOL":
                 return "risk_on"
             return "neutral"
         except Exception:

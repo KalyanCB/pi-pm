@@ -113,6 +113,7 @@ def main() -> int:
             ingest=True,
             rankings=True,
             validation=True,
+            recommendations=True,
             regime_history=True,
             regime_performance=True,
             factor_ic=True,

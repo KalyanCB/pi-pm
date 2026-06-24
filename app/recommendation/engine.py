@@ -34,6 +34,7 @@ from app.core.constants import (
     REC_REASON_RANK_OUTSIDE_POOL,
     REC_REASON_RANK_POOL_TOP20,
     REC_REASON_REGIME_BLOCK,
+    REC_REASON_PROVISIONAL_EDGE,
     REC_REASON_REGIME_NO_EDGE,
     REC_REASON_VALIDATION_PENDING,
     ConvictionBand,
@@ -137,14 +138,17 @@ def run(
     config: EngineConfig,
     active_position_stock_ids: set[UUID] | None = None,
     exit_signals: dict[UUID, ExitSignal] | None = None,
+    cooldown_stock_ids: set[UUID] | None = None,
 ) -> tuple[list[RecommendationRow], str]:
     """Return (results, input_hash).
 
     exit_signals: per stock_id exit signal derived from exit research data.
                   Only relevant for stocks already in active_position_stock_ids.
+    cooldown_stock_ids: stock_ids stopped out recently — suppress BUY for 5 trading days.
     """
     active_positions = active_position_stock_ids or set()
     exit_signals = exit_signals or {}
+    cooldown_stocks = cooldown_stock_ids or set()
 
     edge_state = config.regime_fit.edge_state.value if config.regime_fit else None
     input_hash = _compute_input_hash(
@@ -166,6 +170,7 @@ def run(
 
     for rr in sorted_results:
         is_active = rr.stock_id in active_positions
+        in_cooldown = rr.stock_id in cooldown_stocks and not is_active
         exit_signal = exit_signals.get(rr.stock_id, ExitSignal()) if is_active else ExitSignal()
 
         action, lifecycle, reason_codes, conviction, confidence = _evaluate(
@@ -178,6 +183,11 @@ def run(
             buy_count=buy_count,
             exceptional_count=exceptional_count,
         )
+
+        # Re-entry cooldown: downgrade BUY → WATCH for 5 trading days after stop-loss exit
+        if action == RecommendationAction.BUY and in_cooldown:
+            action = RecommendationAction.WATCH
+            reason_codes = list(reason_codes) + ["RECENT_STOP_EXIT"]
 
         if action == RecommendationAction.BUY:
             buy_count += 1
@@ -270,12 +280,16 @@ def _evaluate(
                 conviction,
                 RecommendationConfidence.EARLY,
             )
+        if config.regime_fit.edge_state == EdgeState.EDGE_PROVISIONAL:
+            # P-04: tentative early-sample edge — allowed to trade (falls through to
+            # the BUY path) but tagged so it is auditable and downstream sizing/limits
+            # can treat it more cautiously than confirmed EDGE_PRESENT.
+            reason_codes.append(REC_REASON_PROVISIONAL_EDGE)
     else:
         # Fallback: legacy R-ENTRY-02 when RCEE not available (regime_fit=None)
-        if validation.status == "insufficient_data":
-            conviction = _conviction_for(rr, validation, config, top20_scores, "none")
-            reason_codes.append(REC_REASON_VALIDATION_PENDING)
-            return RecommendationAction.WATCH, None, reason_codes, conviction, None
+        # validation.status=="insufficient_data" is always true in backtest/replay — fall
+        # through to conviction scoring so RCEE works from day 1.
+        pass
 
     conviction = _conviction_for(rr, validation, config, top20_scores, "none")
 

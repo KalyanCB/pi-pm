@@ -39,8 +39,8 @@ class ConsolidationBreakoutFactor:
     @classmethod
     def _range_compression(cls, bars: list[PriceBar]) -> Decimal | None:
         window = bars[-cls.range_window :]
-        high = max(b.close for b in window)
-        low = min(b.close for b in window)
+        high = Decimal(str(max(b.close for b in window)))
+        low = Decimal(str(min(b.close for b in window)))
         avg = simple_moving_average(bars, cls.range_window)
         if avg is None or avg <= 0:
             return None
@@ -63,4 +63,4 @@ class ConsolidationBreakoutFactor:
         rolling_high = rolling_max_close(bars, cls.high_lookback)
         if rolling_high is None or rolling_high <= 0:
             return None
-        return bars[-1].close / rolling_high
+        return Decimal(str(bars[-1].close)) / rolling_high

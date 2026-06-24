@@ -19,7 +19,7 @@ from app.db.repositories.ranking_result_repository import RankingResultRepositor
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.ranking_validation_repository import RankingValidationRepository
 from app.db.repositories.stock_repository import StockRepository
-from app.market_data.cache import MarketDataCache
+from app.market_data.cache import GlobalBarStore, MarketDataCache
 from app.models.ranking_validation_report import RankingValidationReport
 from app.services.traceability_service import TraceabilityService
 from app.validation.constants import (
@@ -30,7 +30,7 @@ from app.validation.constants import (
 )
 
 _BACKFILL_REUSE_STATUSES = frozenset(
-    {VALIDATION_STATUS_COMPLETED, VALIDATION_STATUS_INSUFFICIENT_DATA}
+    {VALIDATION_STATUS_COMPLETED}
 )
 from app.validation.forward_returns import compute_forward_returns
 from app.validation.models import StockForwardReturns
@@ -71,6 +71,7 @@ class SignalValidationService:
         self.stock_repo = stock_repo
         self.market_data_repo = market_data_repo
         self.traceability_service = traceability_service
+        self.global_bar_store: GlobalBarStore | None = None
 
     def validate_run(
         self, run_id: UUID, *, force_recompute: bool = False
@@ -84,6 +85,7 @@ class SignalValidationService:
         *,
         universe_code: str | None = None,
         force_recompute: bool = False,
+        target_dates: set[date] | None = None,
     ) -> ValidationBackfillResult:
         if end_date < start_date:
             raise ValidationError("end_date must be on or after start_date")
@@ -92,27 +94,84 @@ class SignalValidationService:
             start_date,
             end_date,
             universe_code=universe_code,
+            target_dates=target_dates,
         )
         validated = 0
         reused = 0
         failed = 0
+        _src = self.settings.ranking_market_data_source
 
+        # Use end_date as "today" so retry windows work correctly in backtests/replays.
+        # In live mode end_date == date.today(), so behaviour is unchanged.
+        reference_date = end_date
+
+        # Bulk fetch ALL existing validation reports in one query (avoids N+1)
+        all_run_ids = [run.id for run in runs]
+        existing_by_run = self.validation_repo.get_many_by_ranking_run_ids(all_run_ids)
+
+        # Group runs by as_of_date so we bulk-preload market data once per date
+        # (all strategies on same date share through_date = as_of_date + 180 days)
+        from collections import defaultdict as _dd
+        runs_by_date: dict[date, list] = _dd(list)
         for run in runs:
-            existing = self.validation_repo.get_by_ranking_run_id(run.id)
-            if (
-                existing is not None
-                and existing.status in _BACKFILL_REUSE_STATUSES
-                and not force_recompute
-            ):
-                self.traceability_service.ensure_validation_traceability(existing, run)
-                reused += 1
+            runs_by_date[run.as_of_date].append(run)
+
+        for as_of_date, date_runs in sorted(runs_by_date.items()):
+            through_date = as_of_date + timedelta(days=MAX_FORWARD_TRADING_DAYS * 3)
+            if self.global_bar_store is not None:
+                shared_cache = self.global_bar_store.as_cache(self.market_data_repo)
+            else:
+                shared_cache = MarketDataCache(self.market_data_repo)
+
+            # Determine which runs actually need processing (skip completed/reused)
+            runs_to_validate = []
+            for run in date_runs:
+                existing = existing_by_run.get(run.id)
+                if existing is not None and not force_recompute:
+                    if existing.status == VALIDATION_STATUS_COMPLETED:
+                        self.traceability_service.ensure_validation_traceability(existing, run)
+                        reused += 1
+                        continue
+                    if existing.status == VALIDATION_STATUS_INSUFFICIENT_DATA:
+                        days_since = (reference_date - run.as_of_date).days
+                        _RETRY_WINDOWS = [(7, 9), (14, 16), (28, 32), (88, 92)]
+                        in_window = any(lo <= days_since <= hi for lo, hi in _RETRY_WINDOWS)
+                        if not in_window:
+                            reused += 1
+                            continue
+                runs_to_validate.append(run)
+
+            if not runs_to_validate:
                 continue
 
+            # Bulk preload all stocks for this date in ONE query (skipped when global store is set).
+            if self.global_bar_store is None:
+                all_stock_ids: list = []
+                for run in runs_to_validate:
+                    results_rows = self.ranking_result_repo.list_by_run_id(run.id)
+                    all_stock_ids.extend(r.stock_id for r in results_rows)
+                seen: set = set()
+                unique_ids = [sid for sid in all_stock_ids if not (sid in seen or seen.add(sid))]
+                if unique_ids:
+                    shared_cache.bulk_preload_extended(
+                        unique_ids,
+                        through_date=through_date,
+                        source=_src,
+                        start_date=as_of_date - timedelta(days=10),
+                    )
+
+            # Inject shared cache so compute_run reuses preloaded bars without N+1 queries
+            _prev_cache = getattr(self, "_shared_cache", None)
+            self._shared_cache = shared_cache
             try:
-                self.validate_run(run.id, force_recompute=force_recompute)
-                validated += 1
-            except ValidationError:
-                failed += 1
+                for run in runs_to_validate:
+                    try:
+                        self.validate_run(run.id, force_recompute=force_recompute)
+                        validated += 1
+                    except (ValidationError, Exception):
+                        failed += 1
+            finally:
+                self._shared_cache = _prev_cache
 
         return ValidationBackfillResult(
             runs_found=len(runs),
@@ -160,20 +219,22 @@ class SignalValidationService:
             snapshot_by_stock = {snap.stock_id: snap for snap in snapshots}
 
             through_date = run.as_of_date + timedelta(days=MAX_FORWARD_TRADING_DAYS * 3)
-            cache = MarketDataCache(self.market_data_repo)
+            cache = getattr(self, "_shared_cache", None) or MarketDataCache(self.market_data_repo)
             high_vol_threshold = Decimal(str(self.settings.validation_high_vol_threshold))
+            _src = self.settings.ranking_market_data_source
 
             benchmark_stock = self.stock_repo.get_by_symbol(run.benchmark_symbol)
             regime = None
             if benchmark_stock is not None:
-                bench_bars = cache.load_extended_series(benchmark_stock.id, through_date)
+                bench_bars = cache.load_extended_series(benchmark_stock.id, through_date, source=_src)
                 regime = classify_regime(bench_bars, run.as_of_date, high_vol_threshold)
+
 
             stock_returns: list[StockForwardReturns] = []
             symbol_map = {result.stock_id: self._symbol(result.stock_id) for result in results}
 
             for result in results:
-                bars = cache.load_extended_series(result.stock_id, through_date)
+                bars = cache.load_extended_series(result.stock_id, through_date, source=_src)
                 returns = compute_forward_returns(bars, run.as_of_date, VALIDATION_HORIZONS)
                 snapshot = snapshot_by_stock[result.stock_id]
                 self.ranking_performance_repo.update_returns(snapshot, returns)
@@ -186,6 +247,8 @@ class SignalValidationService:
                         returns=returns,
                     )
                 )
+            # Single flush for all 600 snapshot updates instead of one per stock
+            self.db.flush()
 
             report_data = build_validation_report(
                 run_id,

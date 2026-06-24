@@ -47,17 +47,62 @@ def test_edge_present_all_gates_pass():
 
 
 def test_no_edge_ic_below_threshold():
-    """ic_lower_95=-0.05 → NO_EDGE regardless of other gates."""
-    row = _mock_row(ic_lower_95=-0.05, hit_rate=0.60, sample_count=100)
+    """ic_lower_95=-0.05 AND no expectancy edge → NO_EDGE."""
+    row = _mock_row(
+        ic_lower_95=-0.05, hit_rate=0.60, sample_count=100, expectancy_after_costs=-0.01
+    )
     result = evaluate(strategy_regime_row=row, config=RCEEConfig())
     assert result.edge_state == EdgeState.NO_EDGE
 
 
-def test_edge_weak_marginal_ic():
-    """ic_lower_95=0.005 (below EDGE_PRESENT 0.010 but >= EDGE_WEAK 0.000),
-    hit_rate=0.52, sample_days=40 → EDGE_WEAK."""
-    row = _mock_row(ic_lower_95=0.005, hit_rate=0.52, sample_count=40)
+def test_edge_present_via_expectancy_route_when_ic_negative():
+    """P-18: negative 20-day IC but positive expectancy-after-costs over an adequate
+    sample → EDGE_PRESENT (the reversal_v1 BEAR_LOW_VOL case). The IC gate alone would
+    have vetoed it; the expectancy route unblocks the short-horizon strategy."""
+    row = _mock_row(
+        strategy_name="reversal_v1", regime_label="BEAR_LOW_VOL",
+        ic_lower_95=-0.034, hit_rate=0.36, sample_count=139,
+        expectancy_after_costs=0.0423,
+    )
     result = evaluate(strategy_regime_row=row, config=RCEEConfig())
+    assert result.edge_state == EdgeState.EDGE_PRESENT
+    assert result.gate_results["edge_present_expectancy"] is True
+    assert result.gate_results["edge_present_ic"] is False
+
+
+def test_no_edge_expectancy_route_needs_sample_floor():
+    """P-18: positive expectancy but thin sample → not EDGE_PRESENT (floor still applies)."""
+    row = _mock_row(
+        ic_lower_95=-0.05, hit_rate=0.36, sample_count=10, expectancy_after_costs=0.05
+    )
+    result = evaluate(strategy_regime_row=row, config=RCEEConfig())
+    assert result.edge_state != EdgeState.EDGE_PRESENT
+
+
+def test_edge_provisional_early_window():
+    """P-04: ic_lower_95=0.005, hit_rate=0.52, sample_count=40 (in the 25-60 early
+    window) → EDGE_PROVISIONAL (tradeable, breaks the cold-start deadlock)."""
+    row = _mock_row(ic_lower_95=0.005, hit_rate=0.52, sample_count=40,
+                    expectancy_after_costs=-0.01)
+    result = evaluate(strategy_regime_row=row, config=RCEEConfig())
+    assert result.edge_state == EdgeState.EDGE_PROVISIONAL
+
+
+def test_edge_weak_after_window_closes():
+    """Same marginal IC but past the provisional window (n>=60) and below the
+    EDGE_PRESENT floor → EDGE_WEAK (provisional no longer available)."""
+    row = _mock_row(ic_lower_95=0.005, hit_rate=0.52, sample_count=75,
+                    expectancy_after_costs=-0.01)
+    result = evaluate(strategy_regime_row=row, config=RCEEConfig())
+    assert result.edge_state == EdgeState.EDGE_WEAK
+
+
+def test_provisional_disabled_falls_to_weak():
+    """provisional_allowed=False (live mode) → early window reverts to EDGE_WEAK."""
+    from app.recommendation.regime_edge_engine import RCEEConfig as _Cfg
+    row = _mock_row(ic_lower_95=0.005, hit_rate=0.52, sample_count=40,
+                    expectancy_after_costs=-0.01)
+    result = evaluate(strategy_regime_row=row, config=_Cfg(provisional_allowed=False))
     assert result.edge_state == EdgeState.EDGE_WEAK
 
 
@@ -85,6 +130,10 @@ def test_gate_results_audit_trail():
         "edge_present_ic",
         "edge_present_hit_rate",
         "edge_present_sample_days",
+        "edge_present_expectancy",
+        "edge_provisional_ic",
+        "edge_provisional_hit_rate",
+        "edge_provisional_sample_window",
         "edge_weak_ic",
         "edge_weak_hit_rate",
         "edge_weak_sample_days",
@@ -110,8 +159,10 @@ def test_threshold_config_captured():
 
 
 def test_no_edge_when_hit_rate_too_low():
-    """Good IC but hit_rate=0.40 → fails EDGE_PRESENT and EDGE_WEAK hit_rate gates → NO_EDGE."""
-    row = _mock_row(ic_lower_95=0.02, hit_rate=0.40, sample_count=100)
+    """Good IC but hit_rate=0.40 and no expectancy edge → NO_EDGE."""
+    row = _mock_row(
+        ic_lower_95=0.02, hit_rate=0.40, sample_count=100, expectancy_after_costs=-0.01
+    )
     result = evaluate(strategy_regime_row=row, config=RCEEConfig())
     assert result.edge_state == EdgeState.NO_EDGE
     assert result.gate_results["edge_present_hit_rate"] is False
@@ -134,7 +185,9 @@ def test_unknown_returns_empty_gate_results():
 
 
 def test_none_ic_lower_treated_as_negative_inf():
-    """ic_lower_95=None → treated as -inf → NO_EDGE."""
-    row = _mock_row(ic_lower_95=None, hit_rate=0.60, sample_count=100)
+    """ic_lower_95=None and no expectancy edge → treated as -inf → NO_EDGE."""
+    row = _mock_row(
+        ic_lower_95=None, hit_rate=0.60, sample_count=100, expectancy_after_costs=-0.01
+    )
     result = evaluate(strategy_regime_row=row, config=RCEEConfig())
     assert result.edge_state == EdgeState.NO_EDGE

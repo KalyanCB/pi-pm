@@ -4,7 +4,8 @@ import hashlib
 import json
 import logging
 import time
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, timedelta
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -70,8 +71,10 @@ class DailyBatchService:
         run_repo: DailyBatchRunRepository | None = None,
         artifact_repo: DailyBatchArtifactRepository | None = None,
         recommendation_service: RecommendationService | None = None,
+        db_factory=None,
     ) -> None:
         self.db = db
+        self._db_factory = db_factory  # callable() → Session; enables parallel ranking
         self.market_data_service = market_data_service
         self.backtest_service = backtest_service
         self.validation_service = validation_service
@@ -219,12 +222,7 @@ class DailyBatchService:
 
             if request.phases.rankings and any(plan.ranking_gaps.values()):
                 self._set_phase(run, DailyBatchPhase.RANKINGS, base_pct)
-                phase_results["rankings"] = self._run_rankings(
-                    run.id,
-                    request,
-                    plan,
-                    trace,
-                )
+                phase_results["rankings"] = self._run_rankings(run.id, request, plan, trace)
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RANKINGS]
 
             if request.phases.validation and (
@@ -233,11 +231,32 @@ class DailyBatchService:
                 or request.force_from_date
             ):
                 self._set_phase(run, DailyBatchPhase.VALIDATION, base_pct)
+                # Validation looks backward at runs whose forward-return windows have
+                # closed. Retry windows are: 7-9d, 14-16d, 28-32d, 88-92d after
+                # as_of_date. Instead of scanning the full 90-day lookback every day,
+                # only load runs that fall in an active retry window today — this keeps
+                # the query set small (3 strategies × ~3 days per window = ~9 runs)
+                # rather than 3 × 90 = 270. Also cap lookback to 365 days.
+                today = plan.target_trading_day
+                _RETRY_WINDOWS = [(7, 9), (14, 16), (28, 32), (88, 92)]
+                window_dates = set()
+                for lo, hi in _RETRY_WINDOWS:
+                    for offset in range(lo, hi + 1):
+                        d = today - timedelta(days=offset)
+                        if d >= request.holdout_start_date:
+                            window_dates.add(d)
+                # Always include today's run (new runs start as insufficient_data)
+                window_dates.add(today)
+                val_start = max(
+                    request.holdout_start_date,
+                    today - timedelta(days=365),
+                )
                 result = self.validation_service.backfill(
-                    plan.from_date,
+                    val_start,
                     plan.target_trading_day,
                     universe_code=request.universe_code,
-                    force_recompute=request.force_recompute or request.force_from_date,
+                    force_recompute=request.force_recompute,
+                    target_dates=window_dates,
                 )
                 phase_results["validation"] = {
                     "runs_found": result.runs_found,
@@ -250,7 +269,7 @@ class DailyBatchService:
                         universe_code=request.universe_code,
                         strategy_name=spec.strategy_name,
                         strategy_version=spec.strategy_version,
-                        start_date=plan.from_date,
+                        start_date=val_start,
                         end_date=plan.target_trading_day,
                     )
                     for report in reports:
@@ -260,38 +279,64 @@ class DailyBatchService:
             if request.phases.recommendations:
                 self._set_phase(run, DailyBatchPhase.RECOMMENDATIONS, base_pct)
                 phase_results["recommendations"] = {}
-                for spec in request.strategies:
-                    ranking_runs = self.ranking_run_repo.list_completed_in_range(
-                        universe_code=request.universe_code,
-                        strategy_name=spec.strategy_name,
-                        strategy_version=spec.strategy_version,
-                        start_date=plan.from_date,
-                        end_date=plan.target_trading_day,
-                    )
-                    for rr in ranking_runs:
-                        try:
-                            rec_run = self.recommendation_service.run_for_ranking_run(rr.id)
-                            trace.record_recommendation_run(
-                                run.id,
-                                rec_run.id,
-                                strategy_name=spec.strategy_name,
-                                status=rec_run.status,
-                            )
-                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
-                                {
+
+                def _rec_for_spec(spec):
+                    thread_db = self._db_factory() if self._db_factory else self.db
+                    try:
+                        from app.services.recommendation_service import RecommendationService
+                        t_rec_svc = RecommendationService(thread_db)
+                        rr_repo = RankingRunRepository(thread_db)
+                        ranking_runs = rr_repo.list_completed_in_range(
+                            universe_code=request.universe_code,
+                            strategy_name=spec.strategy_name,
+                            strategy_version=spec.strategy_version,
+                            start_date=plan.from_date,
+                            end_date=plan.target_trading_day,
+                        )
+                        results = []
+                        for rr in ranking_runs:
+                            try:
+                                rec_run = t_rec_svc.run_for_ranking_run(rr.id)
+                                thread_db.commit()
+                                results.append({
                                     "ranking_run_id": str(rr.id),
                                     "recommendation_run_id": str(rec_run.id),
                                     "status": rec_run.status,
-                                }
-                            )
-                        except Exception as exc:
-                            phase_results["recommendations"].setdefault(spec.strategy_name, []).append(
-                                {
+                                })
+                            except Exception as exc:
+                                results.append({
                                     "ranking_run_id": str(rr.id),
                                     "status": "failed",
                                     "error": str(exc),
-                                }
+                                })
+                        return spec.strategy_name, results
+                    finally:
+                        if self._db_factory:
+                            thread_db.close()
+
+                if self._db_factory and len(request.strategies) > 1:
+                    with ThreadPoolExecutor(max_workers=len(request.strategies)) as pool:
+                        futures = {pool.submit(_rec_for_spec, spec): spec for spec in request.strategies}
+                        for fut in as_completed(futures):
+                            strat_name, results = fut.result()
+                            phase_results["recommendations"][strat_name] = results
+                else:
+                    for spec in request.strategies:
+                        strat_name, results = _rec_for_spec(spec)
+                        phase_results["recommendations"][strat_name] = results
+
+                # Record traceability on main thread after parallel completes
+                for spec in request.strategies:
+                    for entry in phase_results["recommendations"].get(spec.strategy_name, []):
+                        if "recommendation_run_id" in entry:
+                            from uuid import UUID as _UUID
+                            trace.record_recommendation_run(
+                                run.id,
+                                _UUID(entry["recommendation_run_id"]),
+                                strategy_name=spec.strategy_name,
+                                status=entry["status"],
                             )
+
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.RECOMMENDATIONS]
 
             # Cross-strategy deduplication: if same symbol gets BUY from multiple
@@ -322,6 +367,36 @@ class DailyBatchService:
                     self.db.commit()
 
             # ── T2 Daily Exit Monitor (ADR-033) ──────────────────────────────
+            # ── Regime History (must run BEFORE portfolio/paper-trading) ─────────
+            # Paper pilot reads today's regime to select the active strategy
+            # (BULL→breakout_v1, BEAR→reversal_v1, NEUTRAL→momentum_v1).
+            # If regime_history runs after paper_trading, get_current(as_of_date=today)
+            # returns None and the pilot always falls back to momentum_v1.
+            if request.phases.regime_history and plan.regime_history_needed:
+                self._set_phase(run, DailyBatchPhase.REGIME_HISTORY, base_pct)
+                # Only compute regime for the current target day — prior days are already
+                # stored from previous batch runs. Running from holdout_start each day
+                # is O(n²) and dominates replay time at scale.
+                history_result = self.regime_service.backfill_regime_history(
+                    start_date=plan.target_trading_day,
+                    end_date=plan.target_trading_day,
+                    benchmark_symbol=request.benchmark_symbol,
+                )
+                trace.record_regime_history_backfill(
+                    run.id,
+                    run.id,
+                    rows_written=history_result.rows_written,
+                )
+                phase_results["regime_history"] = {
+                    "trading_days_attempted": history_result.trading_days_attempted,
+                    "rows_written": history_result.rows_written,
+                    "rows_skipped": history_result.rows_skipped,
+                    "start_date": plan.target_trading_day.isoformat(),
+                    "end_date": plan.target_trading_day.isoformat(),
+                }
+                self.db.commit()
+                base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.REGIME_HISTORY]
+
             # Runs whenever phases.portfolio=true, independent of paper pilot
             # and HITL gate. This closes the gap where HITL_ENABLED=true
             # silently skipped exit monitoring (ADR-033 implementation gap #3).
@@ -362,37 +437,19 @@ class DailyBatchService:
                     phase_results["paper_trading"] = paper_result
                     self.db.commit()
 
-            regime_history_start = max(
-                request.holdout_start_date,
-                plan.from_date,
+            # Regime performance is an expensive full-history SQL scan (~9s).
+            # IC stats don't move meaningfully day-to-day — only recompute on
+            # Mondays (or the first day of the replay run) to cap cost at ~9s/week.
+            _regime_perf_day = plan.target_trading_day
+            _run_regime_perf = (
+                _regime_perf_day.weekday() == 0  # Monday
+                or request.force_recompute
             )
-            if request.phases.regime_history and plan.regime_history_needed:
-                self._set_phase(run, DailyBatchPhase.REGIME_HISTORY, base_pct)
-                history_result = self.regime_service.backfill_regime_history(
-                    start_date=regime_history_start,
-                    end_date=plan.target_trading_day,
-                    benchmark_symbol=request.benchmark_symbol,
-                )
-                trace.record_regime_history_backfill(
-                    run.id,
-                    run.id,
-                    rows_written=history_result.rows_written,
-                )
-                phase_results["regime_history"] = {
-                    "trading_days_attempted": history_result.trading_days_attempted,
-                    "rows_written": history_result.rows_written,
-                    "rows_skipped": history_result.rows_skipped,
-                    "start_date": regime_history_start.isoformat(),
-                    "end_date": plan.target_trading_day.isoformat(),
-                }
-                self.db.commit()
-                base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.REGIME_HISTORY]
-
-            if request.phases.regime_performance and plan.regime_performance_needed:
+            if request.phases.regime_performance and plan.regime_performance_needed and _run_regime_perf:
                 self._set_phase(run, DailyBatchPhase.REGIME_PERFORMANCE, base_pct)
                 phase_results["regime_performance"] = {}
                 for spec in request.strategies:
-                    rows = self.regime_service.refresh_strategy_regime_performance(
+                    rows = self.regime_service.refresh_from_market_data(
                         strategy_name=spec.strategy_name,
                         strategy_version=spec.strategy_version,
                         horizon=DEFAULT_REGIME_PERFORMANCE_HORIZON,
@@ -408,6 +465,7 @@ class DailyBatchService:
                         "horizon": DEFAULT_REGIME_PERFORMANCE_HORIZON,
                     }
                 self.db.commit()
+            if request.phases.regime_performance:
                 base_pct += self._PHASE_WEIGHTS[DailyBatchPhase.REGIME_PERFORMANCE]
 
             factor_start = plan.factor_ic_window_start or plan.from_date
@@ -770,8 +828,10 @@ class DailyBatchService:
         plan,
         trace: DailyBatchTraceabilityRecorder,
     ) -> dict:
-        results: dict = {}
         force = request.force_regenerate_rankings or request.force_from_date
+
+        # Build work items — skip strategies with no gaps
+        work = []
         for spec in request.strategies:
             key = f"{spec.strategy_name}:{spec.strategy_version}"
             gaps = plan.ranking_gaps.get(key, [])
@@ -779,6 +839,12 @@ class DailyBatchService:
                 continue
             start = min(gaps) if gaps else plan.from_date
             end = max(gaps) if gaps else plan.target_trading_day
+            work.append((spec, start, end))
+
+        if not work:
+            return {}
+
+        def _rank_strategy(spec, start, end):
             gen_request = GenerateRankingsRequest(
                 universe_code=request.universe_code,
                 start_date=start,
@@ -788,24 +854,99 @@ class DailyBatchService:
                 benchmark_symbol=request.benchmark_symbol,
                 force_regenerate=force,
             )
-            outcome = self.backtest_service.generate_rankings(gen_request)
-            results[spec.strategy_name] = {
-                "runs_created": outcome.runs_created,
-                "runs_reused": outcome.runs_reused,
-                "runs_failed": outcome.runs_failed,
-                "failed_dates": [d.isoformat() for d in outcome.failed_dates],
-            }
+            # Use a dedicated session per thread when factory is available.
+            # Reuse stateless objects (settings, strategy_registry) from the main
+            # backtest_service to avoid rebuilding the full service graph per thread.
+            if self._db_factory is not None:
+                thread_db = self._db_factory()
+                try:
+                    from app.db.repositories.market_data_repository import MarketDataRepository
+                    from app.db.repositories.ranking_performance_repository import RankingPerformanceRepository
+                    from app.db.repositories.ranking_result_repository import RankingResultRepository
+                    from app.db.repositories.ranking_run_repository import RankingRunRepository
+                    from app.db.repositories.run_lineage_repository import RunLineageRepository
+                    from app.db.repositories.stock_repository import StockRepository
+                    from app.db.repositories.universe_repository import UniverseRepository
+                    from app.db.repositories.ingestion_run_repository import IngestionRunRepository
+                    from app.db.repositories.ranking_factor_contribution_repository import RankingFactorContributionRepository
+                    from app.db.repositories.validation_metrics_repository import ValidationMetricsRepository
+                    from app.services.traceability_service import TraceabilityService
+                    from app.services.universe_filter_service import UniverseFilterService
+                    from app.services.ranking_service import RankingService
+                    from app.backtest.ranking_replayer import RankingReplayer
+
+                    base = self.backtest_service.ranking_service
+                    t_stock = StockRepository(thread_db)
+                    t_universe = UniverseRepository(thread_db)
+                    t_mdr = MarketDataRepository(thread_db)
+                    t_filter_svc = UniverseFilterService(t_universe, t_mdr)
+                    t_trace_svc = TraceabilityService(
+                        thread_db,
+                        RankingFactorContributionRepository(thread_db),
+                        ValidationMetricsRepository(thread_db),
+                        RunLineageRepository(thread_db),
+                        IngestionRunRepository(thread_db),
+                    )
+                    t_ranking_svc = RankingService(
+                        thread_db,
+                        base.settings,
+                        t_filter_svc,
+                        RankingRunRepository(thread_db),
+                        RankingResultRepository(thread_db),
+                        RankingPerformanceRepository(thread_db),
+                        t_stock,
+                        t_universe,
+                        base.strategy_registry,
+                        t_trace_svc,
+                    )
+                    t_ranking_svc.global_bar_store = base.global_bar_store  # share read-only store
+                    outcome = RankingReplayer(t_ranking_svc).generate(
+                        gen_request,
+                        [gen_request.start_date],
+                        universe_code=gen_request.universe_code,
+                        strategy_name=gen_request.strategy_name,
+                        strategy_version=gen_request.strategy_version,
+                        benchmark_symbol=gen_request.benchmark_symbol,
+                    )
+                finally:
+                    thread_db.close()
+            else:
+                outcome = self.backtest_service.generate_rankings(gen_request)
+            return spec, start, end, outcome
+
+        results: dict = {}
+        if self._db_factory is not None and len(work) > 1:
+            with ThreadPoolExecutor(max_workers=len(work)) as pool:
+                futures = {pool.submit(_rank_strategy, spec, start, end): spec for spec, start, end in work}
+                for future in as_completed(futures):
+                    spec, start, end, outcome = future.result()
+                    results[spec.strategy_name] = {
+                        "runs_created": outcome.runs_created,
+                        "runs_reused": outcome.runs_reused,
+                        "runs_failed": outcome.runs_failed,
+                        "failed_dates": [d.isoformat() for d in outcome.failed_dates],
+                    }
+        else:
+            for spec, start, end in work:
+                _, _, _, outcome = _rank_strategy(spec, start, end)
+                results[spec.strategy_name] = {
+                    "runs_created": outcome.runs_created,
+                    "runs_reused": outcome.runs_reused,
+                    "runs_failed": outcome.runs_failed,
+                    "failed_dates": [d.isoformat() for d in outcome.failed_dates],
+                }
+
+        # Record traceability (single-threaded, uses main session)
+        for spec, start, end in work:
             runs = self.ranking_run_repo.list_completed_in_range(
-                start,
-                end,
+                start, end,
                 universe_code=request.universe_code,
                 strategy_name=spec.strategy_name,
                 strategy_version=spec.strategy_version,
             )
             for ranking_run in runs:
                 trace.record_ranking_run(
-                    run_id,
-                    ranking_run.id,
+                    run_id, ranking_run.id,
                     strategy_name=spec.strategy_name,
                     as_of_date=ranking_run.as_of_date,
                     status=ranking_run.status,

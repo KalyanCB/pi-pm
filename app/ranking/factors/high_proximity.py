@@ -20,6 +20,6 @@ class FiftyTwoWeekHighFactor:
         rolling_high = rolling_max_close(bars, cls.lookback)
         if rolling_high is None or rolling_high <= 0:
             return None
-        close = bars[-1].close
+        close = Decimal(str(bars[-1].close))
         distance = (close / rolling_high) - Decimal("1")
         return quantize_component(distance)

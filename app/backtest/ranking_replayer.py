@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import logging
+import traceback
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 from app.backtest.models import BacktestGenerationResult
 from app.schemas.backtest import GenerateRankingsRequest
@@ -45,7 +49,8 @@ class RankingReplayer:
                     runs_reused += 1
                 else:
                     runs_created += 1
-            except Exception:
+            except Exception as exc:
+                logger.error("Ranking failed %s/%s on %s: %s", strategy_name, strategy_version, as_of_date, exc, exc_info=True)
                 runs_failed += 1
                 failed_dates.append(as_of_date)
 

@@ -163,7 +163,7 @@ class ReversalV1Strategy:
         low_52w = rolling_min_close(bars, LOW_52W)
         if low_52w is None or low_52w <= MIN_PRICE:
             return None
-        close = bars[-1].close
+        close = Decimal(str(bars[-1].close))
         if close <= 0:
             return None
         # Normalise: distance above 52w low (lower = better = nearer to bottom)

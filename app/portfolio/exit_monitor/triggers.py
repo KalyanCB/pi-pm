@@ -23,10 +23,16 @@ def check_rank_drop(
     rank_deterioration_threshold: int = 40,
     entry_rank_threshold: int = 20,
 ) -> TriggerResult:
-    """EXIT_RANK_DROP: rank fell below threshold (R-EXIT-01)."""
+    """EXIT_RANK_DROP: rank fell below absolute threshold OR deteriorated 20+ from entry (P-07)."""
     if current_rank is None:
         return TriggerResult(False, "EXIT_RANK_DROP", {})
-    fired = current_rank > rank_deterioration_threshold
+    # Absolute threshold (safety net)
+    absolute_breach = current_rank > rank_deterioration_threshold
+    # P-07: relative deterioration — high-conviction entry that silently degraded
+    relative_breach = (
+        entry_rank is not None and current_rank > entry_rank + 20
+    )
+    fired = absolute_breach or relative_breach
     urgency = "HIGH" if current_rank > 60 else "NORMAL"
     return TriggerResult(
         fired=fired,
@@ -35,6 +41,8 @@ def check_rank_drop(
             "current_rank": current_rank,
             "threshold": rank_deterioration_threshold,
             "entry_rank": entry_rank,
+            "absolute_breach": absolute_breach,
+            "relative_breach": relative_breach,
         },
         urgency=urgency,
     )
@@ -65,9 +73,36 @@ def check_alpha_decay(
 def check_regime_change(
     current_regime_posture: str,
     entry_regime_posture: str | None,
+    unrealized_pnl_pct: float | None = None,
+    current_rank: int | None = None,
+    entry_pool_size: int = 20,
 ) -> TriggerResult:
-    """EXIT_REGIME: regime turned defensive or crisis (R-EXIT-03)."""
-    fired = current_regime_posture in ("defensive", "crisis")
+    """EXIT_REGIME: regime turned defensive or crisis (R-EXIT-03).
+
+    P-20: make the regime exit *selective* rather than a blanket liquidation.
+    A defensive flip previously sold every open position regardless of the
+    individual stock's trend — dumping still-trending winners alongside laggards
+    (mean post-exit +7.7% vs +2.4% market). Now:
+
+      - ``crisis``    → always exit (capital preservation dominates).
+      - ``defensive`` → exit only positions *also* showing individual weakness
+                        (negative P&L, or rank fallen out of the entry pool).
+                        A position still ranked and in profit is held; the
+                        regime signal throttles new buying / tightens stops
+                        elsewhere instead of market-selling a working winner.
+    """
+    if current_regime_posture == "crisis":
+        fired = True
+    elif current_regime_posture == "defensive":
+        weak_pnl = unrealized_pnl_pct is not None and unrealized_pnl_pct < 0
+        weak_rank = current_rank is not None and current_rank > entry_pool_size
+        # If we have no per-position signal at all, fall back to exiting (safe default).
+        if unrealized_pnl_pct is None and current_rank is None:
+            fired = True
+        else:
+            fired = weak_pnl or weak_rank
+    else:
+        fired = False
     urgency = "CRITICAL" if current_regime_posture == "crisis" else ("HIGH" if fired else "NORMAL")
     return TriggerResult(
         fired=fired,
@@ -75,6 +110,8 @@ def check_regime_change(
         details={
             "current_posture": current_regime_posture,
             "entry_posture": entry_regime_posture,
+            "unrealized_pnl_pct": unrealized_pnl_pct,
+            "current_rank": current_rank,
         },
         urgency=urgency,
     )
@@ -114,16 +151,41 @@ def check_stop_loss(
     )
 
 
+def _trailing_pct(max_gain_pct: float) -> float:
+    """P-02: profit-ladder trailing stop — wider trail as gains grow."""
+    if max_gain_pct >= 35.0:
+        return 15.0
+    if max_gain_pct >= 20.0:
+        return 12.0
+    if max_gain_pct >= 10.0:
+        return 8.0
+    return 5.0
+
+
 def check_trailing_stop(
     unrealized_pnl_pct: float | None,
     max_gain_pct: float | None,
     trailing_stop_pct: float = 5.0,
 ) -> TriggerResult:
-    """EXIT_TRAILING_STOP: position pulled back trailing_stop_pct from peak."""
+    """EXIT_TRAILING_STOP: position pulled back from peak (P-02 dynamic ladder + P-03 profit lock)."""
     if unrealized_pnl_pct is None or max_gain_pct is None or max_gain_pct <= 0:
         return TriggerResult(False, "EXIT_TRAILING_STOP", {})
+
+    # P-02: dynamic trail based on peak gain
+    effective_trail = _trailing_pct(max_gain_pct)
     drawback = max_gain_pct - unrealized_pnl_pct
-    fired = drawback >= trailing_stop_pct and max_gain_pct >= trailing_stop_pct
+
+    # P-03: hard profit floor — once max_gain >= 20%, exit level never drops below 50% of max
+    profit_floor = max_gain_pct * 0.5 if max_gain_pct >= 20.0 else None
+    exit_level = max_gain_pct - effective_trail
+    if profit_floor is not None:
+        exit_level = max(exit_level, profit_floor)
+
+    fired = (
+        drawback >= effective_trail and max_gain_pct >= effective_trail
+    ) or (
+        profit_floor is not None and unrealized_pnl_pct < profit_floor
+    )
     return TriggerResult(
         fired=fired,
         trigger_code="EXIT_TRAILING_STOP",
@@ -131,7 +193,9 @@ def check_trailing_stop(
             "max_gain_pct": max_gain_pct,
             "current_pnl_pct": unrealized_pnl_pct,
             "drawback_pct": round(drawback, 2),
-            "trailing_stop_pct": trailing_stop_pct,
+            "effective_trail_pct": effective_trail,
+            "profit_floor_pct": profit_floor,
+            "exit_level_pct": round(exit_level, 2),
         },
         urgency="HIGH" if fired else "NORMAL",
     )
@@ -156,12 +220,24 @@ def check_concentration(
 def check_liquidity(
     avg_daily_volume: float | None,
     position_value: float | None,
+    last_price: float | None = None,
     liquidity_days_threshold: float = 5.0,
 ) -> TriggerResult:
-    """EXIT_LIQUIDITY: position would take too many days to unwind at average volume."""
+    """EXIT_LIQUIDITY: position would take too many days to unwind at average volume.
+
+    P-19: ``days_to_unwind`` is position value (₹) divided by *daily value traded* (₹),
+    i.e. ``avg_daily_volume`` (shares) × ``last_price`` (₹). Dividing ₹ by raw share
+    volume (the previous behaviour) was dimensionally wrong — the metric scaled with
+    share price, so a rising winner looked progressively "more illiquid" and self-
+    triggered a daily exit, force-selling the strategy's biggest multibaggers.
+    """
     if avg_daily_volume is None or position_value is None or avg_daily_volume <= 0:
         return TriggerResult(False, "EXIT_LIQUIDITY", {})
-    days_to_unwind = position_value / avg_daily_volume
+    # Daily traded value in ₹; fall back to share-volume only if price unavailable.
+    daily_traded_value = avg_daily_volume * last_price if last_price else avg_daily_volume
+    if daily_traded_value <= 0:
+        return TriggerResult(False, "EXIT_LIQUIDITY", {})
+    days_to_unwind = position_value / daily_traded_value
     fired = days_to_unwind > liquidity_days_threshold
     return TriggerResult(
         fired=fired,

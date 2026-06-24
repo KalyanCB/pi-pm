@@ -235,6 +235,9 @@ class ReconciliationService:
         else:
             status = "PASS"
 
+        # Clamp to NUMERIC(8,4) column max to avoid DB overflow
+        discrepancy_pct_clamped = min(round(discrepancy_pct, 4), 9999.9999)
+
         return ReconciliationResult(
             status=status,
             cash_from_ledger=round(cash_from_ledger, 2),
@@ -243,7 +246,7 @@ class ReconciliationService:
             computed_nav=round(computed_nav, 2),
             reported_nav=round(reported_nav, 2),
             discrepancy=round(discrepancy, 2),
-            discrepancy_pct=round(discrepancy_pct, 4),
+            discrepancy_pct=discrepancy_pct_clamped,
             checks=checks,
             warnings=warnings,
             failures=failures,

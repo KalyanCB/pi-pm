@@ -67,10 +67,14 @@ def test_backfill_invalid_date_range(validation_service: SignalValidationService
         validation_service.backfill(date(2024, 3, 31), date(2024, 1, 1))
 
 
-def test_backfill_reuses_insufficient_data_report(
+def test_backfill_retries_insufficient_data_report(
     validation_service: SignalValidationService, db_session
 ) -> None:
-    run = _completed_run(db_session, date(2024, 2, 1))
+    # insufficient_data within the 10-90 day retry window must be re-attempted
+    # (forward returns may have materialized since the original attempt).
+    from datetime import date as _date, timedelta as _td
+    ranking_date = _date.today() - _td(days=30)  # 30 days ago — within retry window
+    run = _completed_run(db_session, ranking_date)
     validation_repo = RankingValidationRepository(db_session)
     report = validation_repo.create_pending(run.id)
     validation_repo.complete(
@@ -85,10 +89,50 @@ def test_backfill_reuses_insufficient_data_report(
     )
     db_session.commit()
 
-    result = validation_service.backfill(date(2024, 1, 1), date(2024, 3, 31))
+    result = validation_service.backfill(ranking_date - _td(days=1), _date.today())
     assert result.runs_found == 1
-    assert result.reused == 1
-    assert result.validated == 0
+    assert result.reused == 0                      # must not be reused
+    assert result.validated + result.failed == 1   # must be re-attempted
+
+
+def test_backfill_skips_insufficient_data_outside_retry_window(
+    validation_service: SignalValidationService, db_session
+) -> None:
+    # Too recent (< 10 days) — forward returns not available yet, skip
+    from datetime import date as _date, timedelta as _td
+    ranking_date = _date.today() - _td(days=5)
+    run = _completed_run(db_session, ranking_date)
+    validation_repo = RankingValidationRepository(db_session)
+    report = validation_repo.create_pending(run.id)
+    validation_repo.complete(
+        report, validation_hash=None, regime_label=None, trend_regime=None,
+        vol_regime=None, status=VALIDATION_STATUS_INSUFFICIENT_DATA,
+        horizon_metrics={}, sample_summary={"reason": "test"},
+    )
+    db_session.commit()
+
+    result = validation_service.backfill(ranking_date - _td(days=1), _date.today())
+    assert result.reused == 1  # too early — skip
+
+
+def test_backfill_skips_insufficient_data_too_old(
+    validation_service: SignalValidationService, db_session
+) -> None:
+    # Too old (> 90 days) — beyond all horizons, accept as permanently insufficient
+    from datetime import date as _date, timedelta as _td
+    ranking_date = _date.today() - _td(days=100)
+    run = _completed_run(db_session, ranking_date)
+    validation_repo = RankingValidationRepository(db_session)
+    report = validation_repo.create_pending(run.id)
+    validation_repo.complete(
+        report, validation_hash=None, regime_label=None, trend_regime=None,
+        vol_regime=None, status=VALIDATION_STATUS_INSUFFICIENT_DATA,
+        horizon_metrics={}, sample_summary={"reason": "test"},
+    )
+    db_session.commit()
+
+    result = validation_service.backfill(ranking_date - _td(days=1), _date.today())
+    assert result.reused == 1  # too old — give up
 
 
 def test_backfill_reuses_completed_validation(

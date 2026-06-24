@@ -42,7 +42,13 @@ def build_pipm_services(db: Session) -> dict:
     market_data_repo = MarketDataRepository(db)
     ingestion_run_repo = IngestionRunRepository(db)
     universe_repo = UniverseRepository(db)
-    provider = YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds)
+    if settings.market_data_provider == "kite":
+        from app.providers.kite import token_store
+        from app.providers.kite.client import KiteConnectProvider
+        token = token_store.get_token(db) or settings.kite_access_token
+        provider = KiteConnectProvider(api_key=settings.kite_api_key, access_token=token)
+    else:
+        provider = YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds)
     lineage_repo = RunLineageRepository(db)
     market_data_service = MarketDataService(
         db,

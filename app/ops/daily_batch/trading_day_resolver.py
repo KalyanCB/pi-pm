@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.constants import MARKET_DATA_SOURCE_YAHOO
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.stock_repository import StockRepository
@@ -83,7 +84,10 @@ class TradingDayResolver:
         stock = self.stock_repo.get_by_symbol(self.benchmark_symbol)
         if stock is None:
             return None
-        latest = self.market_data_repo.get_latest_market_data(
-            stock.id, source=MARKET_DATA_SOURCE_YAHOO
-        )
+        source = get_settings().ranking_market_data_source
+        latest = self.market_data_repo.get_latest_market_data(stock.id, source=source)
+        if latest is None and source != MARKET_DATA_SOURCE_YAHOO:
+            latest = self.market_data_repo.get_latest_market_data(
+                stock.id, source=MARKET_DATA_SOURCE_YAHOO
+            )
         return latest.date if latest else None

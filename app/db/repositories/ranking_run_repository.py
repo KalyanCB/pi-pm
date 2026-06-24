@@ -90,6 +90,7 @@ class RankingRunRepository:
         universe_code: str | None = None,
         strategy_name: str | None = None,
         strategy_version: str | None = None,
+        target_dates: set | None = None,
     ) -> list[RankingRun]:
         stmt = (
             select(RankingRun)
@@ -100,6 +101,8 @@ class RankingRunRepository:
             )
             .order_by(RankingRun.as_of_date)
         )
+        if target_dates is not None:
+            stmt = stmt.where(RankingRun.as_of_date.in_(target_dates))
         if universe_code:
             stmt = stmt.where(RankingRun.universe_code == universe_code)
         if strategy_name:

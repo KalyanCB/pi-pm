@@ -61,7 +61,7 @@ class RegimeAnalyticsService:
             end_date,
             universe_stock_ids=[],
             benchmark_stock_id=benchmark_stock.id,
-            source=MARKET_DATA_SOURCE_YAHOO,
+            source=self.settings.ranking_market_data_source,
         )
         written = 0
         skipped = 0
@@ -90,9 +90,13 @@ class RegimeAnalyticsService:
             return None
 
         cache = MarketDataCache(self.market_data_repo)
-        bars = cache.load_extended_series(benchmark_stock.id, as_of_date)
+        bars = cache.load_extended_series(
+            benchmark_stock.id, as_of_date,
+            source=self.settings.ranking_market_data_source,
+        )
         high_vol_threshold = Decimal(str(self.settings.validation_high_vol_threshold))
-        regime = classify_regime(bars, as_of_date, high_vol_threshold)
+        breadth_pct = self._compute_breadth(as_of_date)
+        regime = classify_regime(bars, as_of_date, high_vol_threshold, breadth_pct=breadth_pct)
         if regime is None:
             return None
 
@@ -103,6 +107,37 @@ class RegimeAnalyticsService:
             vol_regime=regime.vol_regime,
             regime_label=regime.regime_label,
         )
+
+    def _compute_breadth(self, as_of_date: date) -> float | None:
+        """P-14: fraction of the traded universe whose latest close is above its
+        50-day SMA, as of ``as_of_date``. One bounded query (universe × 50 bars).
+        Returns None if too few stocks have data (cold start) — classifier then
+        ignores breadth rather than mis-firing on a thin sample.
+        """
+        from sqlalchemy import text as _text
+        row = self.db.execute(_text("""
+            WITH recent AS (
+                SELECT stock_id, close,
+                       ROW_NUMBER() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
+                FROM market_data
+                WHERE source = :src AND date <= :d
+            ),
+            per_stock AS (
+                SELECT stock_id,
+                       MAX(close) FILTER (WHERE rn = 1)  AS last_close,
+                       AVG(close) FILTER (WHERE rn <= 50) AS sma50,
+                       COUNT(*) AS bars
+                FROM recent WHERE rn <= 50 GROUP BY stock_id
+            )
+            SELECT
+                COUNT(*) FILTER (WHERE bars >= 50) AS n,
+                AVG(CASE WHEN last_close > sma50 THEN 1.0 ELSE 0.0 END)
+                    FILTER (WHERE bars >= 50) AS breadth
+            FROM per_stock
+        """), {"src": self.settings.ranking_market_data_source, "d": as_of_date}).fetchone()
+        if row is None or row.n is None or row.n < 50:
+            return None
+        return float(row.breadth) if row.breadth is not None else None
 
     def get_current_regime(
         self,

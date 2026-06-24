@@ -18,6 +18,17 @@ class RankingValidationRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def get_many_by_ranking_run_ids(self, run_ids: list[UUID]) -> dict[UUID, RankingValidationReport]:
+        """Bulk fetch validation reports for multiple ranking runs in one query."""
+        if not run_ids:
+            return {}
+        rows = self.db.scalars(
+            select(RankingValidationReport).where(
+                RankingValidationReport.ranking_run_id.in_(run_ids)
+            )
+        ).all()
+        return {r.ranking_run_id: r for r in rows}
+
     def get_by_ranking_run_id(self, ranking_run_id: UUID) -> RankingValidationReport | None:
         return self.db.scalar(
             select(RankingValidationReport).where(

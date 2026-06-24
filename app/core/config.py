@@ -122,6 +122,27 @@ class Settings(BaseSettings):
     intraday_exit_monitor_enabled: bool = False
     intraday_interval_sec: int = 300  # poll cadence when run by a scheduler
 
+    # ── ADR-037 v18 Tier-1/2 (post-entry management + gold) — all default OFF so the
+    # v17 equity baseline is unchanged; enable per-feature for v18 A/B runs. ──────
+    # Tier 1: day-5 follow-through graduation. After the 5-day noise window, a
+    # position that is green AND still ranked is "winner-track" (loosen the leash,
+    # hold to run); red OR rank-dropped is "loser-track" (cut). Raises realized win%
+    # and cuts the 1-5 day short-churn that bleeds STT.
+    graduation_enabled: bool = False
+    graduation_winner_trail_pct: float = 12.0   # wide trail for winner-track (let it run)
+    # Tier 1: runner tier — an exceptional winner (still top-N ranked + large gain)
+    # is promoted to a months-long position trade on a very loose trail; rides the
+    # multibaggers we already find, with near-zero added turnover.
+    runner_tier_enabled: bool = False
+    runner_max_rank: int = 5
+    runner_min_gain_pct: float = 20.0
+    runner_trail_pct: float = 25.0
+    # Tier 2: gold rotation — in BEAR regimes deploy the defensive sleeve to GOLDBEES
+    # instead of holding cash (P-22). Diversifier with positive bear-regime expectancy.
+    gold_rotation_enabled: bool = False
+    gold_symbol: str = "GOLDBEES.NS"
+    gold_alloc_pct: float = 0.50   # fraction of deployable capital into gold in bear
+
     # Advisory stop — creates PENDING exit + notifies owner (HITL required).
     advisory_stop_pct: float = -8.0   # unrealized % vs avg_cost; e.g. -8.0
 
@@ -131,6 +152,15 @@ class Settings(BaseSettings):
     # Whether the critical stop fires an automatic SELL (no HITL).
     # PO must explicitly enable. Never auto-enabled.
     auto_exit_on_critical_stop: bool = False
+
+    # ── ADR-036: Regime-aware RCEE EDGE_PRESENT sample floor ───────────────────
+    # Rare regimes (bear / high-vol) accumulate far fewer regime-days, so the flat
+    # 60-day floor blocks genuinely-significant edge there (e.g. reversal_v1 in
+    # BEAR_LOW_VOL: IC_low95 +0.072, hit 81%, but n=53 < 60). ic_lower_95 already
+    # gates sample uncertainty, so a lower floor for rare regimes is principled.
+    rcee_edge_present_sample_days: int = 60          # common regimes (BULL_LOW_VOL)
+    rcee_rare_regime_sample_days: int = 40           # P-23: 45→40 so a valid young bear edge (reversal hit n=41) isn't benched
+    rcee_rare_regimes: str = "BEAR_LOW_VOL,BEAR_HIGH_VOL,BULL_HIGH_VOL"
 
     # ── ADR-035: Regime-dynamic stops & time-stop removal (flag-off default) ───
     # When enabled, the advisory stop is resolved per-day from the market regime

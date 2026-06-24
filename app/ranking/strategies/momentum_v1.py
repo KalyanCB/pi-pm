@@ -118,7 +118,7 @@ class MomentumV1Strategy:
     def _trend_quality(self, bars: list[PriceBar]) -> Decimal | None:
         if len(bars) < MA_LONG:
             return None
-        close = bars[-1].close
+        close = Decimal(str(bars[-1].close))
         ma50 = simple_moving_average(bars, MA_SHORT)
         ma200 = simple_moving_average(bars, MA_LONG)
         if ma50 is None or ma200 is None or ma50 <= 0 or ma200 <= 0:

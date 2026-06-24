@@ -23,6 +23,32 @@ from app.models.recommendation import RecommendationOutcome, RecommendationResul
 from app.services.portfolio_nav_service import PortfolioNavService
 from app.services.portfolio_service import PortfolioService
 
+# When several exit triggers fire on the same day (e.g. a gap-down trips both the
+# stop-loss AND rank-drop), the recorded exit_reason must be the most *severe* one,
+# not whichever was appended first. Picking triggers[0] mislabelled gap-down stops
+# as RANK_DROP, which (a) distorted exit analytics and (b) bypassed the P-16
+# stop-loss re-entry cooldown — letting the pilot immediately re-buy a crashed name.
+# Lower index = higher precedence.
+_EXIT_REASON_PRECEDENCE: list[str] = [
+    "EXIT_STOP_LOSS",      # capital protection — always wins the label
+    "EXIT_TRAILING_STOP",  # profit protection
+    "EXIT_REGIME",         # de-risk on regime flip
+    "EXIT_LIQUIDITY",
+    "EXIT_TIME",
+    "EXIT_ALPHA_DECAY",
+    "EXIT_RANK_DROP",      # analytical — least severe
+]
+
+
+def _primary_exit_reason(exit_triggers: list[str] | None) -> str | None:
+    """Pick the most severe fired trigger as the recorded exit reason."""
+    if not exit_triggers:
+        return None
+    for reason in _EXIT_REASON_PRECEDENCE:
+        if reason in exit_triggers:
+            return reason
+    return exit_triggers[0]  # unknown trigger — fall back to first
+
 
 class PaperTradeService:
     def __init__(
@@ -37,6 +63,8 @@ class PaperTradeService:
         self.portfolio_service = portfolio_service or PortfolioService(db)
         self.market_data_repo = market_data_repo or MarketDataRepository(db)
         self.nav_service = nav_service or PortfolioNavService(db)
+        from app.core.config import get_settings
+        self.settings = get_settings()
 
     def execute_entry(
         self,
@@ -65,10 +93,19 @@ class PaperTradeService:
             alloc = self.portfolio_service.compute_allocation(
                 conviction_band=result.conviction_band or "MEDIUM",
                 last_price=last_close,
+                as_of_date=fill_date,
             )
             quantity = max(1.0, alloc.quantity_estimate)
         except Exception:
             quantity = 1.0
+
+        # Cash guard: skip fill if insufficient cash (avoids negative cash balance)
+        summary = self.portfolio_service.get_summary(fill_date)
+        required = quantity * fill_price
+        if summary.cash_available < required:
+            raise ValueError(
+                f"Insufficient cash: have ₹{summary.cash_available:,.0f}, need ₹{required:,.0f}"
+            )
 
         rec_run = self.db.get(RecommendationRun, result.recommendation_run_id)
         ranking_run_id = rec_run.ranking_run_id if rec_run else None
@@ -333,6 +370,19 @@ class PaperTradeService:
         fill_price, last_close = self._fill_price(stock_id, fill_date, side="SELL")
         quantity = float(pos.quantity)
 
+        primary_trigger = _primary_exit_reason(exit_triggers)
+
+        # ADR-033 restoration: cap a stop-loss exit at the regime advisory stop level.
+        # A daily backtest has no ticks, so model the hard stop the standard way — if
+        # the day's LOW breached the advisory stop, the realised fill is the stop level
+        # (intraday slide), or the day's open if the stock gapped below it. Without this,
+        # an intraday slide to -13% by the close was booked at the close instead of the
+        # -6%/-8% stop the system was designed to honour.
+        if primary_trigger == "EXIT_STOP_LOSS" and pos.avg_cost:
+            capped = self._stop_capped_fill(stock_id, fill_date, float(pos.avg_cost))
+            if capped is not None:
+                fill_price = capped
+
         trade = PaperTrade(
             stock_id=stock_id,
             side=TradeSide.SELL.value,
@@ -360,7 +410,9 @@ class PaperTradeService:
         self.db.add(trade)
         self.db.flush()
 
-        self.portfolio_service.close_position(stock_id, exit_price=fill_price, exit_date=fill_date)
+        self.portfolio_service.close_position(
+            stock_id, exit_price=fill_price, exit_date=fill_date, exit_reason=primary_trigger
+        )
 
         proceeds = quantity * fill_price
         fee = self._fee()
@@ -430,6 +482,35 @@ class PaperTradeService:
         last_close = float(bars[0].close)
         slippage_factor = 1.0005 if side == "BUY" else 0.9995  # 5 bps
         return round(last_close * slippage_factor, 4), last_close
+
+    def _stop_capped_fill(
+        self, stock_id: UUID, fill_date: date, avg_cost: float
+    ) -> float | None:
+        """Stop-loss fill capped at the regime advisory stop level (ADR-033).
+
+        If the day's LOW breached the advisory stop, the realised fill is the stop
+        level (intraday slide) or the day's open if it gapped below (a gap can't fill
+        better than the open). Returns None if the stop wasn't breached this day or
+        data is missing — caller then keeps the normal close-based fill.
+        """
+        from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
+        from app.portfolio.regime_stops import resolve_stop_pcts
+
+        advisory_pct, _ = resolve_stop_pcts(
+            RegimeAnalyticsRepository(self.db), as_of=fill_date, settings=self.settings
+        )
+        stop_level = avg_cost * (1 + advisory_pct / 100.0)
+        bars = self.market_data_repo.get_by_stock_and_date_range(
+            stock_id, end_date=fill_date, limit=1
+        )
+        if not bars or bars[0].low is None or bars[0].open is None:
+            return None
+        day_low = float(bars[0].low)
+        day_open = float(bars[0].open)
+        if day_low > stop_level:
+            return None  # stop not breached intraday — keep normal fill
+        fill = min(day_open, stop_level)  # slide → stop level; gap → open
+        return round(fill * 0.9995, 4)    # 5 bps sell slippage
 
     def _make_idem_key(self, action: str, result_id: UUID) -> str:
         raw = f"{action}:{result_id}"

@@ -130,7 +130,7 @@ class LowVolV1Strategy:
         if not bars:
             return None
         atr = average_true_range(bars, ATR_WINDOW)
-        close = bars[-1].close
+        close = Decimal(str(bars[-1].close))
         if atr is None or close <= 0:
             return None
         atr_ratio = atr / close

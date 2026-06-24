@@ -65,5 +65,5 @@ class RankingPerformanceRepository:
         snapshot.return_20d = float(returns[20]) if returns.get(20) is not None else None
         snapshot.return_60d = float(returns[60]) if returns.get(60) is not None else None
         snapshot.captured_at = datetime.now(UTC)
-        self.db.flush()
+        # No flush here — caller flushes once after the full loop (avoids 600 round-trips)
         return snapshot

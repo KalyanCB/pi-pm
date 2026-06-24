@@ -7,7 +7,6 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.constants import (
-    MARKET_DATA_SOURCE_YAHOO,
     DataStatus,
     IngestBatchStatus,
     IngestionMode,
@@ -50,15 +49,18 @@ class MarketDataService:
         self.ingestion_batch_repo = ingestion_batch_repo
         self.lineage_repo = lineage_repo
         self.provider = provider
+        self._source: str = getattr(provider, "source", "yahoo")
 
     def get_market_data(
         self,
         symbol: str,
         start_date: date | None = None,
         end_date: date | None = None,
-        source: str | None = MARKET_DATA_SOURCE_YAHOO,
+        source: str | None = None,
         limit: int | None = None,
     ) -> list[MarketData]:
+        if source is None:
+            source = self._source
         stock = self.stock_repo.get_by_symbol(symbol.strip().upper())
         if stock is None:
             raise NotFoundError(f"Stock not found: {symbol}")
@@ -93,7 +95,7 @@ class MarketDataService:
     ) -> MarketDataIngestResponse:
         started = time.perf_counter()
         batch = self.ingestion_batch_repo.create_running(
-            provider=MARKET_DATA_SOURCE_YAHOO,
+            provider=self._source,
             period=period.value,
             ingestion_mode=ingestion_mode.value,
             symbol_count_requested=len(symbols),
@@ -102,7 +104,7 @@ class MarketDataService:
             logger,
             "ingestion_started",
             batch_id=batch.id,
-            provider=MARKET_DATA_SOURCE_YAHOO,
+            provider=self._source,
             period=period.value,
             ingestion_mode=ingestion_mode.value,
             symbol_count=len(symbols),
@@ -119,7 +121,7 @@ class MarketDataService:
         for symbol in symbols:
             run = self.ingestion_run_repo.create_running(
                 symbol=symbol,
-                provider=MARKET_DATA_SOURCE_YAHOO,
+                provider=self._source,
                 requested_period=period.value,
                 batch_id=batch.id,
                 ingestion_mode=ingestion_mode.value,
@@ -241,7 +243,7 @@ class MarketDataService:
                 return completed
             raise InvalidSymbolError(f"No OHLCV history returned for symbol: {symbol}")
 
-        counts = self.market_data_repo.upsert_bars(stock.id, bars, source=MARKET_DATA_SOURCE_YAHOO)
+        counts = self.market_data_repo.upsert_bars(stock.id, bars, source=self._source)
 
         if (
             counts.inserted == 0

@@ -23,6 +23,13 @@ from app.services.universe_bootstrap_service import UniverseBootstrapService
 
 def _build_market_data_service(db) -> MarketDataService:
     settings = get_settings()
+    if settings.market_data_provider == "kite":
+        from app.providers.kite import token_store
+        from app.providers.kite.client import KiteConnectProvider
+        token = token_store.get_token(db) or settings.kite_access_token
+        provider = KiteConnectProvider(api_key=settings.kite_api_key, access_token=token)
+    else:
+        provider = YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds)
     return MarketDataService(
         db,
         StockRepository(db),
@@ -30,7 +37,7 @@ def _build_market_data_service(db) -> MarketDataService:
         IngestionRunRepository(db),
         IngestionBatchRepository(db),
         RunLineageRepository(db),
-        YahooFinanceProvider(timeout_seconds=settings.yahoo_request_timeout_seconds),
+        provider,
     )
 
 

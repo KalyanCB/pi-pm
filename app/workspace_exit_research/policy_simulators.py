@@ -56,7 +56,7 @@ def _entry_close(bars: list[PriceBar], entry_date) -> Decimal | None:
     eligible = bars_on_or_before(bars, entry_date)
     if not eligible:
         return None
-    return eligible[-1].close
+    return Decimal(str(eligible[-1].close))
 
 
 def _return_between(bars: list[PriceBar], entry_date, exit_date) -> Decimal | None:
@@ -66,7 +66,7 @@ def _return_between(bars: list[PriceBar], entry_date, exit_date) -> Decimal | No
     exit_bars = bars_on_or_before(bars, exit_date)
     if not exit_bars:
         return None
-    exit_close = exit_bars[-1].close
+    exit_close = Decimal(str(exit_bars[-1].close))
     if exit_close <= 0:
         return None
     return (exit_close / entry) - Decimal("1")
@@ -191,7 +191,7 @@ def simulate_trend_failure(
         )
     pre_entry = bars_on_or_before(bars, entry.entry_date)
     breakout_level = max(
-        (b.close for b in pre_entry[-BREAKOUT_LOOKBACK_DAYS:]), default=entry_close
+        (Decimal(str(b.close)) for b in pre_entry[-BREAKOUT_LOOKBACK_DAYS:]), default=entry_close
     )
     atr = average_true_range(pre_entry, 14) if len(pre_entry) >= 15 else None
     trail_stop = entry_close - ATR_TRAIL_MULTIPLIER * atr if atr else None
@@ -200,20 +200,21 @@ def simulate_trend_failure(
     exit_date = future[-1].date
     exit_reason = "TIME"
     for index, bar in enumerate(future, start=1):
-        peak = max(peak, bar.close)
+        bar_close = Decimal(str(bar.close))
+        peak = max(peak, bar_close)
         hist = bars_on_or_before(bars, bar.date)
         dma20 = simple_moving_average(hist, 20)
         dma50 = simple_moving_average(hist, 50)
         triggered = False
-        if variant == "TREND_DMA20_BREAK" and dma20 is not None and bar.close < dma20:
+        if variant == "TREND_DMA20_BREAK" and dma20 is not None and bar_close < dma20:
             triggered = True
-        elif variant == "TREND_DMA50_BREAK" and dma50 is not None and bar.close < dma50:
+        elif variant == "TREND_DMA50_BREAK" and dma50 is not None and bar_close < dma50:
             triggered = True
-        elif variant == "TREND_BREAKOUT_FAILURE" and bar.close < breakout_level:
+        elif variant == "TREND_BREAKOUT_FAILURE" and bar_close < breakout_level:
             triggered = True
         elif variant == "TREND_ATR_TRAIL" and trail_stop is not None:
             trail_stop = max(trail_stop, peak - ATR_TRAIL_MULTIPLIER * (atr or Decimal("0")))
-            if bar.close < trail_stop:
+            if bar_close < trail_stop:
                 triggered = True
         if triggered:
             exit_date = bar.date

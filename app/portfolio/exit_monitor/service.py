@@ -58,19 +58,73 @@ class ExitMonitorService:
     def run(self, as_of_date: date | None = None) -> list[ExitRecommendation]:
         """Evaluate all OPEN positions and generate T2 DAILY ExitRecommendation rows.
 
-        ADR-033: skip if a DAILY PENDING row already exists for this position today
-        (allows T1 intraday rows to coexist without being swallowed by T2 dedup).
+        ADR-033: skip if a DAILY PENDING row already exists for this position today.
+        All market data and rank lookups are batched upfront — one query per data
+        type across all positions, not one query per position.
         """
         as_of = as_of_date or date.today()
         cfg = self._get_config()
         positions = self._get_open_positions()
         regime_posture = self._resolve_regime_posture(as_of)
 
+        if not positions:
+            return []
+
+        # ── Batch prefetch: prices for all positions in one query ─────────────
+        from app.models.market_data import MarketData as MarketDataModel
+        stock_ids = [pos.stock_id for pos in positions]
+        price_rows = self.db.execute(
+            select(
+                MarketDataModel.stock_id,
+                MarketDataModel.close,
+                MarketDataModel.low,
+                MarketDataModel.volume,
+            )
+            .where(
+                MarketDataModel.stock_id.in_(stock_ids),
+                MarketDataModel.date <= as_of,
+            )
+            .distinct(MarketDataModel.stock_id)
+            .order_by(MarketDataModel.stock_id, MarketDataModel.date.desc())
+        ).all()
+        # price_map: stock_id → (close, day_low, volume)
+        price_map = {
+            row.stock_id: (
+                float(row.close),
+                float(row.low) if row.low else None,
+                float(row.volume) if row.volume else None,
+            )
+            for row in price_rows
+        }
+
+        # ── Batch prefetch: latest ranking run + all ranks in one query ───────
+        latest_run = self.db.scalar(
+            select(RankingRun)
+            .where(RankingRun.status == "completed", RankingRun.as_of_date <= as_of)
+            .order_by(RankingRun.as_of_date.desc(), RankingRun.completed_at.desc())
+            .limit(1)
+        )
+        rank_map: dict = {}
+        if latest_run:
+            rank_rows = self.db.execute(
+                select(RankingResult.stock_id, RankingResult.rank)
+                .where(
+                    RankingResult.ranking_run_id == latest_run.id,
+                    RankingResult.stock_id.in_(stock_ids),
+                )
+            ).all()
+            rank_map = {row.stock_id: row.rank for row in rank_rows}
+
         results: list[ExitRecommendation] = []
 
         for pos in positions:
+            # Gold-rotation sleeve is managed entirely by _gold_rotation (buy once
+            # in bear, hold, sell on regime flip). It must NOT be evaluated by the
+            # equity exit monitor — otherwise EXIT_REGIME liquidates it every bear
+            # day and _gold_rotation re-buys it, churning the sleeve.
+            if getattr(pos, "strategy_name", None) == "gold_rotation":
+                continue
             # Skip if a DAILY PENDING exit already exists for today.
-            # INTRADAY rows do NOT block T2 from running for the same position.
             existing = self.db.scalar(
                 select(ExitRecommendation).where(
                     ExitRecommendation.portfolio_position_id == pos.id,
@@ -83,7 +137,7 @@ class ExitMonitorService:
                 results.append(existing)
                 continue
 
-            context = self._build_position_context(pos, as_of)
+            context = self._build_position_context(pos, as_of, price_map=price_map, rank_map=rank_map)
             fired_triggers = self._evaluate_triggers(pos, context, cfg, regime_posture, as_of)
 
             if not fired_triggers:
@@ -191,30 +245,54 @@ class ExitMonitorService:
         except Exception:
             return "neutral"
 
-    def _build_position_context(self, pos: PortfolioPosition, as_of: date) -> dict:
+    def _build_position_context(
+        self,
+        pos: PortfolioPosition,
+        as_of: date,
+        price_map: dict | None = None,
+        rank_map: dict | None = None,
+    ) -> dict:
         ctx: dict = {}
 
-        # Days held
         if pos.entry_date:
             ctx["days_held"] = (as_of - pos.entry_date).days
 
-        # Latest price
-        latest = self.market_data_repo.get_latest_market_data(pos.stock_id)
-        if latest:
-            ctx["last_price"] = float(latest.close)
-            ctx["avg_daily_volume"] = float(latest.volume) if latest.volume else None
+        # Use pre-fetched price map if available, else fall back to single query
+        if price_map is not None:
+            entry = price_map.get(pos.stock_id)
+            if entry:
+                ctx["last_price"] = entry[0]
+                ctx["day_low"] = entry[1]
+                ctx["avg_daily_volume"] = entry[2]
+        else:
+            latest = self.market_data_repo.get_latest_market_data(pos.stock_id)
+            if latest:
+                ctx["last_price"] = float(latest.close)
+                ctx["day_low"] = float(latest.low) if latest.low else None
+                ctx["avg_daily_volume"] = float(latest.volume) if latest.volume else None
 
-        # Current rank from latest ranking run
-        ctx["current_rank"] = self._get_current_rank(pos.stock_id, as_of)
+        # Use pre-fetched rank map if available, else fall back to single query
+        if rank_map is not None:
+            ctx["current_rank"] = rank_map.get(pos.stock_id)
+        else:
+            ctx["current_rank"] = self._get_current_rank(pos.stock_id, as_of)
 
-        # Unrealized P&L pct
         if pos.avg_cost and ctx.get("last_price"):
-            ctx["unrealized_pnl_pct"] = (
-                (ctx["last_price"] - float(pos.avg_cost)) / float(pos.avg_cost) * 100
-            )
+            avg_cost = float(pos.avg_cost)
+            close = ctx["last_price"]
+            day_low = ctx.get("day_low")
+            ctx["unrealized_pnl_pct"] = (close - avg_cost) / avg_cost * 100
+            # Intraday stop only fires if day_low breached the stop threshold
+            # AND the close also confirms weakness (stock didn't recover by EOD).
+            # If close > stop_price the stock recovered — don't exit.
+            # We store the day_low-based pnl so _evaluate_triggers can apply
+            # the dual-condition check (low breach + close confirmation).
+            ctx["intraday_pnl_pct"] = (day_low - avg_cost) / avg_cost * 100 if day_low else ctx["unrealized_pnl_pct"]
 
-        # Max gain (from RecommendationOutcome if available)
         ctx["max_gain_pct"] = self._get_max_gain(pos)
+
+        # P-07: entry_rank for relative deterioration check
+        ctx["entry_rank"] = self._get_entry_rank(pos)
 
         return ctx
 
@@ -241,6 +319,16 @@ class ExitMonitorService:
         except Exception:
             return None
 
+    def _get_entry_rank(self, pos: PortfolioPosition) -> int | None:
+        try:
+            if pos.recommendation_result_id is None:
+                return None
+            from app.models.recommendation import RecommendationResult as _RR
+            result = self.db.get(_RR, pos.recommendation_result_id)
+            return int(result.rank) if result and result.rank else None
+        except Exception:
+            return None
+
     def _get_max_gain(self, pos: PortfolioPosition) -> float | None:
         try:
             if pos.recommendation_result_id is None:
@@ -264,28 +352,109 @@ class ExitMonitorService:
         regime_posture: str,
         as_of: date | None = None,
     ) -> list:
+        from datetime import timedelta
+
         settings = get_settings()
         single_cap = float(cfg.single_name_cap_pct * 100) if cfg else 18.0
+        days_held = ctx.get("days_held", 0)
+
+        # ADR-037 P-15: suppress analytical exits (rank drop, alpha decay) for
+        # first 5 days. 48% of losers recover +14.7% avg within 10 days —
+        # premature exits destroy that recovery potential.
+        _analytical_exits_suppressed = days_held < 5
+
+        # ADR-037 P-16: 3-day cooldown after EXIT_ALPHA_DECAY to prevent churn.
+        # Check if the last closed exit for this position was EXIT_ALPHA_DECAY
+        # within the past 3 days.
+        _in_alpha_decay_cooldown = False
+        if pos.exit_reason == "EXIT_ALPHA_DECAY" and pos.exit_date and as_of:
+            cooldown_end = pos.exit_date + timedelta(days=3)
+            _in_alpha_decay_cooldown = as_of <= cooldown_end
+
+        # ADR-037 P-17: progressive stop floor tightens as position ages.
+        # Day 1-5: -6% (initial stop), Day 6-10: -4%, Day 11-15: breakeven (-0%),
+        # Day 16+: breakeven +0.5% (lock in small gain).
+        if days_held <= 5:
+            _progressive_stop = -6.0
+        elif days_held <= 10:
+            _progressive_stop = -4.0
+        elif days_held <= 15:
+            _progressive_stop = 0.0
+        else:
+            _progressive_stop = 0.5
+
         # ADR-033: advisory stop from Settings; ADR-035: regime-resolved when the
         # regime_dynamic_stops_enabled flag is on (static otherwise).
         stop_loss, _critical = resolve_stop_pcts(
             self.regime_repo, as_of=as_of, settings=settings
         )
+        # P-17: use the tighter of progressive stop vs regime stop (after day 10)
+        if days_held > 10:
+            stop_loss = max(stop_loss, _progressive_stop)
+
         trailing = 5.0
 
-        results = [
-            check_rank_drop(ctx.get("current_rank"), None),
-            check_alpha_decay(ctx.get("unrealized_pnl_pct"), ctx.get("days_held", 0)),
-            check_regime_change(regime_posture, None),
-            check_stop_loss(ctx.get("unrealized_pnl_pct"), stop_loss),
+        # ── ADR-037 v18 Tier-1: day-5 graduation + runner tier (flag-gated) ──────
+        # After the 5-day noise window, tier each surviving position:
+        #   winner-track (green AND ranked) → loosen the leash (wide trail, suppress
+        #     analytical exits) so winners run to 12-20 days.
+        #   loser-track  (red OR rank-dropped) → let analytical exits cut it now.
+        #   runner (winner + top-N rank + large gain) → very loose trail, ride for
+        #     months (the multibagger capture).
+        _grad_suppress_analytical = False
+        _is_runner = False
+        if settings.graduation_enabled and days_held >= 5:
+            _pnl = ctx.get("unrealized_pnl_pct")
+            _rank = ctx.get("current_rank")
+            _pool = ctx.get("entry_pool_size") or 20
+            _green = _pnl is not None and _pnl > 0
+            _ranked = _rank is not None and _rank <= _pool
+            if _green and _ranked:
+                # winner-track: hold it; replace tight analytical exits with a wide trail
+                _grad_suppress_analytical = True
+                trailing = settings.graduation_winner_trail_pct
+                if (settings.runner_tier_enabled
+                        and _rank is not None and _rank <= settings.runner_max_rank
+                        and (ctx.get("max_gain_pct") or 0) >= settings.runner_min_gain_pct):
+                    _is_runner = True
+                    trailing = settings.runner_trail_pct  # let the monster ride
+
+        # EOD confirmation: stop only fires if day_low breached the level AND
+        # the close also confirms (stock didn't recover by EOD). This prevents
+        # intraday dips from killing positions that close back above the stop.
+        eod_pnl = ctx.get("unrealized_pnl_pct")
+        intraday_pnl = ctx.get("intraday_pnl_pct", eod_pnl)
+        stop_pnl = intraday_pnl if (intraday_pnl is not None and eod_pnl is not None and eod_pnl <= stop_loss) else eod_pnl
+
+        results = []
+
+        # Analytical exits gated by P-15 minimum hold AND (v18) graduation winner-track
+        # suppression — a green, still-ranked winner is held on a wide trail instead of
+        # being cut by rank-drop/alpha-decay.
+        if (not _analytical_exits_suppressed and not _in_alpha_decay_cooldown
+                and not _grad_suppress_analytical):
+            results.append(check_rank_drop(ctx.get("current_rank"), ctx.get("entry_rank")))
+            results.append(check_alpha_decay(ctx.get("unrealized_pnl_pct"), days_held))
+
+        # Hard exits always fire regardless of hold period — EXCEPT a runner, which is
+        # deliberately held through regime flips to ride a confirmed multibagger.
+        if not _is_runner:
+            results.append(check_regime_change(
+                regime_posture,
+                None,
+                ctx.get("unrealized_pnl_pct"),
+                ctx.get("current_rank"),
+            ))
+        results += [
+            check_stop_loss(stop_pnl, stop_loss),
             check_trailing_stop(ctx.get("unrealized_pnl_pct"), ctx.get("max_gain_pct"), trailing),
-            check_concentration(float(pos.weight_pct) if pos.weight_pct else None, single_cap),
             check_liquidity(
                 ctx.get("avg_daily_volume"),
                 float(pos.market_value) if pos.market_value else None,
+                ctx.get("last_price"),
             ),
         ]
         # ADR-035 D2: the 30-day time stop is policy-gated (PRD §5 amendment).
         if settings.time_stop_enabled:
-            results.append(check_time_stop(ctx.get("days_held", 0)))
+            results.append(check_time_stop(days_held))
         return [r for r in results if r.fired]

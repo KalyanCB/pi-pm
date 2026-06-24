@@ -36,6 +36,8 @@ def _infer_exchange(symbol: str, raw_exchange: str | None) -> str:
 
 
 class YahooFinanceProvider:
+    source = "yahoo"
+
     def __init__(self, timeout_seconds: int = 30) -> None:
         self.timeout_seconds = timeout_seconds
 

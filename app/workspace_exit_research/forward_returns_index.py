@@ -26,7 +26,7 @@ class BarForwardReturnIndex:
             self._future = ()
             return
         self._entry = entry
-        self._entry_close = entry.close
+        self._entry_close = Decimal(str(entry.close))
         self._future = tuple(bar for bar in bars if bar.date > entry.date)
 
     def forward_return(self, forward_trading_days: int) -> Decimal | None:
@@ -37,7 +37,7 @@ class BarForwardReturnIndex:
         exit_bar = self._future[forward_trading_days - 1]
         if exit_bar.close <= 0:
             return None
-        return quantize_return((exit_bar.close / self._entry_close) - Decimal("1"))
+        return quantize_return(Decimal(str(exit_bar.close)) / self._entry_close - Decimal("1"))
 
     def forward_returns_through(self, max_days: int) -> dict[int, Decimal | None]:
         if self._entry is None or max_days <= 0:
@@ -49,7 +49,7 @@ class BarForwardReturnIndex:
             if len(future) < day:
                 results[day] = None
                 continue
-            exit_close = future[day - 1].close
+            exit_close = Decimal(str(future[day - 1].close))
             if exit_close <= 0:
                 results[day] = None
             else:

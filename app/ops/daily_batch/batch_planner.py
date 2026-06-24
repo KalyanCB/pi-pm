@@ -21,7 +21,7 @@ from app.ops.daily_batch.evidence_windows import (
 )
 from app.ops.daily_batch.models import DailyBatchPlan, TradingDayResolution
 
-_BACKFILL_REUSE = frozenset({"completed", "insufficient_data"})
+_BACKFILL_REUSE = frozenset({"completed"})
 
 
 @dataclass(frozen=True)
@@ -82,8 +82,10 @@ class DailyBatchPlanner:
         benchmark = self.stock_repo.get_by_symbol(self.benchmark_symbol)
         benchmark_id = benchmark.id if benchmark else None
 
+        from app.core.config import get_settings
+        _source = get_settings().ranking_market_data_source
         expected_days = self.calendar.trading_days_in_range(
-            window_start, target, stock_ids, benchmark_id, source=MARKET_DATA_SOURCE_YAHOO
+            window_start, target, stock_ids, benchmark_id, source=_source
         )
 
         ranking_gaps: dict[str, list[date]] = {}
@@ -114,7 +116,17 @@ class DailyBatchPlanner:
             )
             for run in runs:
                 report = self.validation_repo.get_by_ranking_run_id(run.id)
-                if report is None or report.status not in _BACKFILL_REUSE:
+                if report is None:
+                    validation_gap += 1
+                elif report.status == "completed":
+                    pass  # done
+                elif report.status == "insufficient_data":
+                    # Count as gap only at milestone windows matching the backfill service
+                    days_since = (target - run.as_of_date).days
+                    _RETRY_WINDOWS = [(7, 9), (14, 16), (28, 32), (88, 92)]
+                    if any(lo <= days_since <= hi for lo, hi in _RETRY_WINDOWS):
+                        validation_gap += 1
+                else:
                     validation_gap += 1
 
         lookback_start = max(
@@ -210,12 +222,13 @@ class DailyBatchPlanner:
         benchmark = self.stock_repo.get_by_symbol(benchmark_symbol)
         if benchmark is None:
             return True
+        from app.core.config import get_settings as _gs
         expected = self.calendar.trading_days_in_range(
             window_start,
             target,
             universe_stock_ids=[],
             benchmark_stock_id=benchmark.id,
-            source=MARKET_DATA_SOURCE_YAHOO,
+            source=_gs().ranking_market_data_source,
         )
         if not expected:
             return False

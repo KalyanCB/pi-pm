@@ -63,6 +63,8 @@ class KiteConnectProvider:
     because Kite does not offer that data.
     """
 
+    source = "kite"
+
     def __init__(self, api_key: str, access_token: str) -> None:
         try:
             from kiteconnect import KiteConnect  # type: ignore[import]

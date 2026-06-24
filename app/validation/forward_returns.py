@@ -37,7 +37,7 @@ def compute_forward_return(
     if exit_bar.close <= 0:
         return None
 
-    return quantize_return((exit_bar.close / entry.close) - Decimal("1"))
+    return quantize_return(Decimal(str(exit_bar.close / entry.close)) - Decimal("1"))
 
 
 def compute_forward_returns(
