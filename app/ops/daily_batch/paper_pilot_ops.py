@@ -141,13 +141,46 @@ class PaperPilotOps:
             PortfolioPosition.position_status == "OPEN",
         ))
         is_bear = regime_label.upper().startswith("BEAR")
+        cash = self.nav_service.cash_balance()
 
-        if is_bear and held is None:
-            cash = self.nav_service.cash_balance()
-            budget = cash * s.gold_alloc_pct
+        def _sell(reason: str) -> dict:
+            fill = round(px * 0.9995, 4)
+            qty = float(held.quantity)
+            self.portfolio_service.close_position(
+                gold_id, exit_price=fill, exit_date=as_of_date, exit_reason=reason)
+            self.nav_service.record_cash_entry(
+                entry_type="TRADE_SELL", amount=qty * fill, as_of_date=as_of_date,
+                reference_type="gold_rotation", description=f"{reason} {qty} @ {fill}")
+            return {"action": reason, "qty": qty, "price": fill}
+
+        # NON-BEAR: ride if winning, cut only if losing (underwater vs avg cost).
+        if not is_bear:
+            if held is None:
+                return {"action": "none", "is_bear": False}
+            if px < float(held.entry_price):          # underwater → cut the loser
+                return _sell("GOLD_LOSS_EXIT")
+            return {"action": "GOLD_HOLD_RIDE",       # in profit → let it ride into bull
+                    "unreal_pct": round((px / float(held.entry_price) - 1) * 100, 1)}
+
+        # BEAR: slots take ABSOLUTE priority. Reserve cash for any open stock slots
+        # (slots_available × single-name cap × equity); gold may only use the surplus.
+        cfg = self.portfolio_service.get_config()
+        total_equity = float(cfg.total_equity) if cfg else 0.0
+        cap = float(cfg.single_name_cap_pct) if cfg and cfg.single_name_cap_pct else 0.18
+        limits = self.portfolio_service.get_limits(as_of_date)
+        reserve = limits.slots_available * cap * total_equity
+
+        # Open stock slots need cash that's parked in gold → yield: sell gold to fund them.
+        if held is not None and cash < reserve:
+            return _sell("GOLD_YIELD_SLOTS")
+
+        # Deploy gold_alloc_pct (80%) of the surplus cash beyond the slot reserve.
+        if held is None:
+            deployable = max(0.0, cash - reserve)
+            budget = deployable * s.gold_alloc_pct
             qty = int(budget / px)
             if qty <= 0:
-                return {"status": "insufficient_cash"}
+                return {"action": "hold", "cash": round(cash), "reserve": round(reserve)}
             fill = round(px * 1.0005, 4)  # 5bps slippage
             self.portfolio_service.open_position(
                 stock_id=gold_id, quantity=qty, fill_price=fill,
@@ -158,16 +191,7 @@ class PaperPilotOps:
                 reference_type="gold_rotation", description=f"GOLD BUY {qty} @ {fill}")
             return {"action": "GOLD_BUY", "qty": qty, "price": fill}
 
-        if not is_bear and held is not None:
-            fill = round(px * 0.9995, 4)
-            qty = float(held.quantity)
-            self.portfolio_service.close_position(
-                gold_id, exit_price=fill, exit_date=as_of_date, exit_reason="GOLD_REGIME_EXIT")
-            self.nav_service.record_cash_entry(
-                entry_type="TRADE_SELL", amount=qty * fill, as_of_date=as_of_date,
-                reference_type="gold_rotation", description=f"GOLD SELL {qty} @ {fill}")
-            return {"action": "GOLD_SELL", "qty": qty, "price": fill}
-        return {"action": "hold", "is_bear": is_bear, "holding": held is not None}
+        return {"action": "GOLD_HOLD_BEAR", "cash": round(cash), "reserve": round(reserve)}
 
     # ── P-21 Trade Decision Layer ────────────────────────────────────────────
 
@@ -455,6 +479,18 @@ class PaperPilotOps:
         )
 
         buys_today = 0
+        # Live slot cap (fixes over-allocation): count open NON-gold positions now and
+        # cap at max_positions, incremented per entry below. `limits.can_add_position`
+        # was a stale day-start snapshot — when eligibility was loose (e.g. shorter RCEE
+        # warm-up) it let many candidates through, opening far more than max_positions.
+        # Gold is excluded — it is not a stock slot.
+        _open_slots = self.db.scalar(
+            select(func.count(PortfolioPosition.id)).where(
+                PortfolioPosition.is_current.is_(True),
+                PortfolioPosition.position_status == "OPEN",
+                PortfolioPosition.strategy_name != "gold_rotation",
+            )
+        ) or 0
         for rec in _ordered_recs:
                 if rec.portfolio_position_id:
                     continue
@@ -487,11 +523,13 @@ class PaperPilotOps:
                     })
                     continue
 
-                if not limits.can_add_position or buys_today >= limits.max_buy_per_day:
+                if _open_slots >= limits.max_positions or buys_today >= limits.max_buy_per_day:
                     skipped.append({
                         "recommendation_id": str(rec.id),
                         "action": "entry",
-                        "reason": limits.block_reason or "slot_limit",
+                        "reason": limits.block_reason
+                        or f"slot_limit: {_open_slots}/{limits.max_positions} open, "
+                        f"{buys_today}/{limits.max_buy_per_day} buys today",
                     })
                     continue
 
@@ -536,6 +574,7 @@ class PaperPilotOps:
                     )
                     entries.append(str(order.id))
                     buys_today += 1
+                    _open_slots += 1  # live slot cap — count this new position
                 except Exception as exc:
                     skipped.append({
                         "recommendation_id": str(rec.id),
