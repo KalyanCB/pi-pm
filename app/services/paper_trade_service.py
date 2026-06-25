@@ -159,7 +159,7 @@ class PaperTradeService:
         # Cash ledger: capital out (trade value) + fee
         self.nav_service.ensure_initial_capital(fill_date)
         trade_value = quantity * fill_price
-        fee = self._fee()
+        fee = self._leg_cost(trade_value, "BUY")  # P-24: full cost stack when enabled
         self.nav_service.record_cash_entry(
             entry_type="TRADE_BUY",
             amount=-trade_value,
@@ -213,6 +213,24 @@ class PaperTradeService:
             return float(cfg.fee_per_leg) if cfg else 20.0
         except Exception:
             return 20.0
+
+    def _leg_cost(self, trade_value: float, side: str) -> float:
+        """P-24: per-leg transaction cost (₹). When ``transaction_costs_enabled``,
+        models the NSE delivery-equity stack (STT + stamp + exchange txn + SEBI +
+        GST + flat brokerage) so NAV is net of costs; otherwise returns the legacy
+        flat per-leg fee. STT applies on both legs (delivery); stamp duty buy-only.
+        """
+        s = self.settings
+        brokerage = self._fee()
+        if not getattr(s, "transaction_costs_enabled", False):
+            return brokerage
+        is_buy = side == "BUY"
+        stt = (s.cost_stt_buy_pct if is_buy else s.cost_stt_sell_pct) / 100.0 * trade_value
+        stamp = (s.cost_stamp_buy_pct / 100.0 * trade_value) if is_buy else 0.0
+        exch = s.cost_exchange_txn_pct / 100.0 * trade_value
+        sebi = s.cost_sebi_pct / 100.0 * trade_value
+        gst = s.cost_gst_rate * (brokerage + exch + sebi)
+        return round(stt + stamp + exch + sebi + brokerage + gst, 2)
 
     def execute_exit(
         self,
@@ -281,7 +299,7 @@ class PaperTradeService:
 
         # Cash ledger: capital in (sale proceeds) - fee
         proceeds = quantity * fill_price
-        fee = self._fee()
+        fee = self._leg_cost(proceeds, "SELL")  # P-24: full cost stack when enabled
         self.nav_service.record_cash_entry(
             entry_type="TRADE_SELL",
             amount=proceeds,
@@ -415,7 +433,7 @@ class PaperTradeService:
         )
 
         proceeds = quantity * fill_price
-        fee = self._fee()
+        fee = self._leg_cost(proceeds, "SELL")  # P-24: full cost stack when enabled
         self.nav_service.record_cash_entry(
             entry_type="TRADE_SELL",
             amount=proceeds,

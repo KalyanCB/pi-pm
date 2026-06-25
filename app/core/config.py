@@ -191,6 +191,20 @@ class Settings(BaseSettings):
     regime_exit_trend_sma_fast: int = 50
     regime_exit_trend_sma_slow: int = 200
 
+    # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
+    # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
+    # CAGR are reported NET of costs (the legacy behaviour applied only a flat
+    # per-leg brokerage fee, ≈0.004%, which hid the real ~0.22%+slippage/round-trip
+    # drag — material at this strategy's 68× turnover). Pct values are PERCENT of
+    # trade value (0.10 == 0.10%). STT applies both legs on delivery; stamp on buy.
+    transaction_costs_enabled: bool = False
+    cost_stt_buy_pct: float = 0.10
+    cost_stt_sell_pct: float = 0.10
+    cost_stamp_buy_pct: float = 0.015
+    cost_exchange_txn_pct: float = 0.00297
+    cost_sebi_pct: float = 0.0001
+    cost_gst_rate: float = 0.18
+
     # ── ADR-034: Recommendation trade levels (deterministic, BUY) ──────────────
     # Entry range + stop-loss range decorated onto BUY recommendations at the
     # recommendation phase. Stops reuse advisory_stop_pct / critical_stop_pct above.
