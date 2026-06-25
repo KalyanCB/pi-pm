@@ -11,7 +11,7 @@ export interface AlphaCardProps {
 export function AlphaCard({ alpha, series }: AlphaCardProps) {
   return (
     <MetricCard
-      label="ALPHA"
+      label="ALPHA vs NIFTY (CUM)"
       footer={<SparklineChart data={series} color="#3dba7a" />}
     >
       <MetricValue value={alpha} format="percent" colorize size="lg" />
