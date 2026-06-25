@@ -5,7 +5,7 @@ import type { ApiClient } from './client';
 export function createCommitteeApi(client: ApiClient) {
   return {
     async getLatest(
-      universeCode = 'NIFTY_500',
+      universeCode = 'NIFTY_1000',
       strategyName?: string,
       asOfDate?: string,
     ): Promise<CommitteeReviewSummary | null> {
