@@ -27,6 +27,7 @@ export { ConcentrationCard, type ConcentrationCardProps } from './molecules/Conc
 export { TradeLevelsCard, type TradeLevelsCardProps } from './molecules/TradeLevelsCard';
 export { PositionPnlCard, type PositionPnlCardProps } from './molecules/PositionPnlCard';
 export { ConvictionMixCard, type ConvictionMixCardProps } from './molecules/ConvictionMixCard';
+export { MultiSelectDropdown, type MultiSelectDropdownProps } from './molecules/MultiSelectDropdown';
 export { CommitteeAdvisoryCard, type CommitteeAdvisoryCardProps } from './molecules/CommitteeAdvisoryCard';
 export { CommitteeConsensusCard, type CommitteeConsensusCardProps } from './molecules/CommitteeConsensusCard';
 export { CommitteeReportPanel, type CommitteeReportPanelProps } from './molecules/CommitteeReportPanel';

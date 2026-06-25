@@ -11,6 +11,7 @@ import { SectorPieCard } from '../molecules/SectorPieCard';
 import { ConcentrationCard } from '../molecules/ConcentrationCard';
 import { PositionPnlCard } from '../molecules/PositionPnlCard';
 import { ConvictionMixCard } from '../molecules/ConvictionMixCard';
+import { MultiSelectDropdown } from '../molecules/MultiSelectDropdown';
 import { SparklineChart } from '../charts/SparklineChart';
 import { DonutChart } from '../charts/DonutChart';
 import { BarChart } from '../charts/BarChart';
@@ -28,11 +29,11 @@ export function PortfolioScreen() {
 
   // Filter state — Open tab
   const [filterStrategy, setFilterStrategy] = useState<string | null>(null);
-  const [filterSector, setFilterSector] = useState<string | null>(null);
+  const [filterSector, setFilterSector] = useState<string[]>([]);
 
   // Filter state — Closed tab
   const [filterClosedStrategy, setFilterClosedStrategy] = useState<string | null>(null);
-  const [filterClosedSector, setFilterClosedSector] = useState<string | null>(null);
+  const [filterClosedSector, setFilterClosedSector] = useState<string[]>([]);
   const [filterExitReason, setFilterExitReason] = useState<string | null>(null);
   const [filterPnlDir, setFilterPnlDir] = useState<'All' | 'Winners' | 'Losers'>('All');
 
@@ -57,7 +58,7 @@ export function PortfolioScreen() {
     isError,
     error,
     refetch,
-  } = usePortfolioScreen(showClosed);
+  } = usePortfolioScreen(true); // always load open + closed so both tab counts are correct up front
   const { points, returnSeries, navSeries } = useNavHistory();
 
   // Derive unique filter options from loaded positions
@@ -71,7 +72,7 @@ export function PortfolioScreen() {
 
   const filteredOpen = openPositions.filter((p) => {
     if (filterStrategy && p.strategy_name !== filterStrategy) return false;
-    if (filterSector && p.sector !== filterSector) return false;
+    if (filterSector.length && !filterSector.includes(p.sector ?? '')) return false;
     if (searchOpen && !(p.symbol ?? '').toLowerCase().includes(searchOpen.toLowerCase())) return false;
     const entryD = p.entry_date ? p.entry_date.slice(0, 10) : '';
     if (openFromDate && entryD < openFromDate) return false;
@@ -81,7 +82,7 @@ export function PortfolioScreen() {
 
   const filteredClosed = closedPositions.filter((p) => {
     if (filterClosedStrategy && p.strategy_name !== filterClosedStrategy) return false;
-    if (filterClosedSector && p.sector !== filterClosedSector) return false;
+    if (filterClosedSector.length && !filterClosedSector.includes(p.sector ?? '')) return false;
     if (filterExitReason && p.exit_reason !== filterExitReason) return false;
     if (filterPnlDir === 'Winners' && (p.realized_pnl ?? 0) <= 0) return false;
     if (filterPnlDir === 'Losers' && (p.realized_pnl ?? 0) >= 0) return false;
@@ -92,12 +93,14 @@ export function PortfolioScreen() {
     return true;
   });
 
-  const allocation = positions
+  // Allocation / sector exposure reflect the *current* book only — closed
+  // positions retain a stale weight_pct, so derive these from open positions.
+  const allocation = openPositions
     .filter((p) => (p.weight_pct ?? 0) > 0)
     .map((p) => ({ label: p.symbol ?? '—', value: p.weight_pct ?? 0 }));
 
   const sectorMap = new Map<string, number>();
-  for (const p of positions) {
+  for (const p of openPositions) {
     const sector = p.sector ?? 'Other';
     sectorMap.set(sector, (sectorMap.get(sector) ?? 0) + (p.weight_pct ?? 0));
   }
@@ -281,23 +284,13 @@ export function PortfolioScreen() {
                 </View>
               )}
               {openSectors.length > 0 && (
-                <View style={styles.filterRow}>
-                  <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Sector</Text>
-                  <Pressable
-                    onPress={() => setFilterSector(null)}
-                    style={[styles.chip, { backgroundColor: filterSector === null ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
-                  >
-                    <Text style={[styles.chipText, { color: filterSector === null ? '#fff' : theme.colors.textMuted }]}>All</Text>
-                  </Pressable>
-                  {openSectors.map((s) => (
-                    <Pressable
-                      key={s}
-                      onPress={() => setFilterSector(filterSector === s ? null : s)}
-                      style={[styles.chip, { backgroundColor: filterSector === s ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
-                    >
-                      <Text style={[styles.chipText, { color: filterSector === s ? '#fff' : theme.colors.textMuted }]}>{s}</Text>
-                    </Pressable>
-                  ))}
+                <View style={[styles.filterRow, styles.dropdownRow]}>
+                  <MultiSelectDropdown
+                    label="Sector"
+                    options={openSectors as string[]}
+                    selected={filterSector}
+                    onChange={setFilterSector}
+                  />
                 </View>
               )}
             </View>
@@ -368,23 +361,13 @@ export function PortfolioScreen() {
                 </View>
               )}
               {closedSectors.length > 0 && (
-                <View style={styles.filterRow}>
-                  <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Sector</Text>
-                  <Pressable
-                    onPress={() => setFilterClosedSector(null)}
-                    style={[styles.chip, { backgroundColor: filterClosedSector === null ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
-                  >
-                    <Text style={[styles.chipText, { color: filterClosedSector === null ? '#fff' : theme.colors.textMuted }]}>All</Text>
-                  </Pressable>
-                  {closedSectors.map((s) => (
-                    <Pressable
-                      key={s}
-                      onPress={() => setFilterClosedSector(filterClosedSector === s ? null : s)}
-                      style={[styles.chip, { backgroundColor: filterClosedSector === s ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
-                    >
-                      <Text style={[styles.chipText, { color: filterClosedSector === s ? '#fff' : theme.colors.textMuted }]}>{s}</Text>
-                    </Pressable>
-                  ))}
+                <View style={[styles.filterRow, styles.dropdownRow]}>
+                  <MultiSelectDropdown
+                    label="Sector"
+                    options={closedSectors as string[]}
+                    selected={filterClosedSector}
+                    onChange={setFilterClosedSector}
+                  />
                 </View>
               )}
               <View style={styles.filterRow}>
@@ -574,12 +557,20 @@ const styles = StyleSheet.create({
   },
   filterSection: {
     gap: 6,
+    // sit above the position cards so the sector dropdown menu can overlay them
+    position: 'relative',
+    zIndex: 20,
   },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
+  },
+  // sector dropdown row needs to stack above the rows (and cards) that follow it
+  dropdownRow: {
+    position: 'relative',
+    zIndex: 30,
   },
   filterLabel: {
     fontSize: 10,
