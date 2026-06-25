@@ -177,6 +177,20 @@ class Settings(BaseSettings):
     # T2 exit monitor EXIT_TIME). True = current behaviour.
     time_stop_enabled: bool = True
 
+    # ── Hybrid (per-stock) regime exit ────────────────────────────────────────
+    # The market regime (^NSEI + breadth) is a BOOK-level signal; today a
+    # defensive flip can EXIT_REGIME a position purely because its *relative* rank
+    # slipped, even while the stock is still in its OWN uptrend and in profit.
+    # Evidence (2026-06): such blanket-cut own-uptrend names went on to beat NIFTY
+    # +2.35%/10d, and EXIT_REGIME is the #1 churn driver (60% of exits, 1.8d hold).
+    # When enabled, a defensive flip HOLDS positions still above their own
+    # 50 & 200-day SMA and not losing money (rank-slip alone no longer forces the
+    # sell); a *crisis* posture still always exits (systemic crash protection).
+    # Default False preserves current behaviour.
+    regime_exit_per_stock_trend_enabled: bool = False
+    regime_exit_trend_sma_fast: int = 50
+    regime_exit_trend_sma_slow: int = 200
+
     # ── ADR-034: Recommendation trade levels (deterministic, BUY) ──────────────
     # Entry range + stop-loss range decorated onto BUY recommendations at the
     # recommendation phase. Stops reuse advisory_stop_pct / critical_stop_pct above.

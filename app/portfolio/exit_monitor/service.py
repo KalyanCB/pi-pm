@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -115,6 +115,50 @@ class ExitMonitorService:
             ).all()
             rank_map = {row.stock_id: row.rank for row in rank_rows}
 
+        # ── Batch prefetch: per-stock own-trend (hybrid regime exit, flag-gated) ──
+        # own_trend_intact = last close above its OWN fast & slow SMA. Computed in
+        # one bounded window query (≤ slow bars × positions). Skipped entirely when
+        # the flag is off so default behaviour pays no query cost.
+        settings = get_settings()
+        trend_map: dict = {}
+        if settings.regime_exit_per_stock_trend_enabled:
+            fast = settings.regime_exit_trend_sma_fast
+            slow = settings.regime_exit_trend_sma_slow
+            ranked = (
+                select(
+                    MarketDataModel.stock_id,
+                    MarketDataModel.close,
+                    func.row_number()
+                    .over(
+                        partition_by=MarketDataModel.stock_id,
+                        order_by=MarketDataModel.date.desc(),
+                    )
+                    .label("rn"),
+                )
+                .where(
+                    MarketDataModel.stock_id.in_(stock_ids),
+                    MarketDataModel.date <= as_of,
+                )
+                .subquery()
+            )
+            trend_rows = self.db.execute(
+                select(
+                    ranked.c.stock_id,
+                    func.avg(ranked.c.close).filter(ranked.c.rn <= fast).label("sma_fast"),
+                    func.avg(ranked.c.close).filter(ranked.c.rn <= slow).label("sma_slow"),
+                    func.max(ranked.c.close).filter(ranked.c.rn == 1).label("last_close"),
+                    func.count().filter(ranked.c.rn <= slow).label("n"),
+                )
+                .where(ranked.c.rn <= slow)
+                .group_by(ranked.c.stock_id)
+            ).all()
+            for r in trend_rows:
+                if r.n and r.n >= slow and r.last_close and r.sma_fast and r.sma_slow:
+                    trend_map[r.stock_id] = (
+                        float(r.last_close) > float(r.sma_fast)
+                        and float(r.last_close) > float(r.sma_slow)
+                    )
+
         results: list[ExitRecommendation] = []
 
         for pos in positions:
@@ -137,7 +181,9 @@ class ExitMonitorService:
                 results.append(existing)
                 continue
 
-            context = self._build_position_context(pos, as_of, price_map=price_map, rank_map=rank_map)
+            context = self._build_position_context(
+                pos, as_of, price_map=price_map, rank_map=rank_map, trend_map=trend_map
+            )
             fired_triggers = self._evaluate_triggers(pos, context, cfg, regime_posture, as_of)
 
             if not fired_triggers:
@@ -251,8 +297,14 @@ class ExitMonitorService:
         as_of: date,
         price_map: dict | None = None,
         rank_map: dict | None = None,
+        trend_map: dict | None = None,
     ) -> dict:
         ctx: dict = {}
+
+        # Per-stock own-trend flag (hybrid regime exit). None when the flag is off
+        # or insufficient history → check_regime_change falls back to default logic.
+        if trend_map:
+            ctx["own_trend_intact"] = trend_map.get(pos.stock_id)
 
         if pos.entry_date:
             ctx["days_held"] = (as_of - pos.entry_date).days
@@ -444,6 +496,8 @@ class ExitMonitorService:
                 None,
                 ctx.get("unrealized_pnl_pct"),
                 ctx.get("current_rank"),
+                own_trend_intact=ctx.get("own_trend_intact"),
+                per_stock_trend_hold=settings.regime_exit_per_stock_trend_enabled,
             ))
         results += [
             check_stop_loss(stop_pnl, stop_loss),

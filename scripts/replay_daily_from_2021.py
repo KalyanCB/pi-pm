@@ -53,7 +53,10 @@ from app.services.research_intelligence_service import ResearchIntelligenceServi
 from scripts.pipm_service_factory import build_pipm_services
 
 # ── Config ────────────────────────────────────────────────────────────────────
-START_DATE = date(2021, 1, 1)
+# Warm-up analytics (rankings/validation/regime/factor-IC) run from START_DATE;
+# paper trading only kicks in >= PAPER_TRADE_FROM. 2018 start gives RCEE / SMA200
+# / regime lookbacks a 3-year warm-up before the 2021 paper-trade phase.
+START_DATE = date(2018, 1, 1)
 PAPER_TRADE_FROM = date(2021, 1, 1)
 BENCHMARK = "^NSEI"
 UNIVERSE = "NIFTY_1000"
