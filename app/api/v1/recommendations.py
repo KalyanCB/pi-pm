@@ -227,11 +227,26 @@ def get_daily(
     action: str | None = Query(
         default=None, description="Filter by action: BUY, WATCH, HOLD, REJECT"
     ),
+    include_rejected: bool = Query(
+        default=False,
+        description=(
+            "Include REJECT/HOLD results. Off by default: the UI only shows "
+            "BUY/WATCH/EXIT_APPROVED, and REJECTs are ~96% of a NIFTY_1000 day "
+            "(2.5MB / ~12-32s vs ~80KB / ~2s). Ignored when `action` is set."
+        ),
+    ),
     db=Depends(get_db),
     service: RecommendationService = Depends(get_recommendation_service),
 ) -> DailyRecommendationsRead:
     """All strategies' recommendations for a given date in one call."""
-    action_filter = [action] if action else None
+    # Mirrors the Recommendations screen TABS; keep in sync if a tab is added.
+    DISPLAY_ACTIONS = ["BUY", "WATCH", "EXIT_APPROVED"]
+    if action:
+        action_filter = [action]
+    elif include_rejected:
+        action_filter = None
+    else:
+        action_filter = DISPLAY_ACTIONS
     resolved_date = as_of_date
     daily = service.get_daily(resolved_date, action_filter)
 
