@@ -49,8 +49,18 @@ export function SparklineChart({
   const fmt = formatValue ?? fmtLakh;
 
   const { points, fillPoints, min, max, yTicks, xTicks, label } = useMemo(() => {
-    const slice = data.slice(-MAX_POINTS);
-    const dateSlice = dates ? dates.slice(-MAX_POINTS) : [];
+    // Downsample evenly across the FULL series (not just the last MAX_POINTS) so a
+    // long history shows its complete arc — e.g. a NAV trend that starts at ₹10L —
+    // instead of being truncated to only the most recent window.
+    const sample = <T,>(arr: T[]): T[] =>
+      arr.length <= MAX_POINTS
+        ? arr
+        : Array.from(
+            { length: MAX_POINTS },
+            (_, i) => arr[Math.round((i * (arr.length - 1)) / (MAX_POINTS - 1))]!,
+          );
+    const slice = sample(data);
+    const dateSlice = dates ? sample(dates) : [];
 
     if (slice.length < 2) {
       return { points: '', fillPoints: '', min: 0, max: 0, yTicks: [], xTicks: [], label: emptyLabel };
