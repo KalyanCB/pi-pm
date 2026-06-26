@@ -22,12 +22,19 @@ _INITIAL_CAPITAL = 1_000_000.0  # ₹10L
 @router.get("/replay-status", response_class=HTMLResponse)
 def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
     # ranking_runs has a row per (strategy, day) and runs every day incl. the
-    # 2020 warm-up, so distinct as_of_date tracks progress across both phases.
+    # warm-up phase, so distinct as_of_date tracks progress across both phases.
     prog = db.execute(
-        text("SELECT COUNT(DISTINCT as_of_date) AS n, MAX(as_of_date) AS d FROM ranking_runs")
+        text(
+            "SELECT COUNT(DISTINCT as_of_date) AS n, MAX(as_of_date) AS d, "
+            "MIN(as_of_date) AS s FROM ranking_runs"
+        )
     ).fetchone()
     processed = prog.n or 0
     cur_date = prog.d
+    # Derive the denominator's start from the numerator's own range so the two can
+    # never drift (the warm-up start moved 2020→2018 and a hardcoded 2020-01-01
+    # here under-counted the total, inflating % and showing a wrong day count).
+    start_date = prog.s or date(2018, 1, 1)
 
     total = (
         db.execute(
@@ -35,8 +42,9 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
                 "SELECT COUNT(*) FROM (SELECT DISTINCT m.date FROM market_data m "
                 "JOIN stocks s ON s.id = m.stock_id "
                 "WHERE s.symbol = '^NSEI' AND m.source = 'kite' "
-                "AND m.date >= DATE '2020-01-01') x"
-            )
+                "AND m.date >= :start) x"
+            ),
+            {"start": start_date},
         ).scalar()
         or 0
     )
