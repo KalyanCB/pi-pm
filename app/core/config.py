@@ -235,6 +235,20 @@ class Settings(BaseSettings):
     # postures stay at 0, adding no downside-regime risk. Default off.
     fast_deploy_enabled: bool = False
     fast_deploy_buy_multiplier: int = 2
+    # When fast_deploy is on, the stock deploy ceiling per regime posture (overrides
+    # _REGIME_DEPLOY_PCT): BULL_LOW_VOL=risk_on 0.95, BULL_HIGH_VOL=limited_risk_on
+    # 0.75, BEAR_LOW_VOL=neutral 0.45 (reversal dip-buy), BEAR_HIGH_VOL=defensive 0.00.
+    fast_deploy_risk_on_pct: float = 0.95
+    fast_deploy_limited_pct: float = 0.75
+    fast_deploy_neutral_pct: float = 0.45
+    fast_deploy_defensive_pct: float = 0.00
+    # Gold sleeve as a dynamic band (% of TOTAL portfolio), demand-driven: soaks idle
+    # cash up to gold_max, yields to stock buys down to gold_min, rides winners (no
+    # auto-sell on regime flip), cuts losers. gold_buy_cooldown_days prevents the
+    # buy-yield-rebuy thrash. Active when fast_deploy_enabled.
+    gold_min_pct: float = 0.25
+    gold_max_pct: float = 0.50
+    gold_buy_cooldown_days: int = 6
 
     # ── ADR-034: Recommendation trade levels (deterministic, BUY) ──────────────
     # Entry range + stop-loss range decorated onto BUY recommendations at the

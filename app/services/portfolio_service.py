@@ -166,6 +166,18 @@ class PortfolioService:
 
         # P-08: regime-dependent deploy ceiling overrides the flat cfg.deploy_pct
         _regime_deploy = _REGIME_DEPLOY_PCT.get(regime_posture, float(cfg.deploy_pct))
+        # fast_deploy: per-regime stock deploy ceiling (deploy policy) when enabled.
+        from app.core.config import get_settings as _gs
+        _s = _gs()
+        if _s.fast_deploy_enabled:
+            _fd = {
+                "risk_on": _s.fast_deploy_risk_on_pct,
+                "limited_risk_on": _s.fast_deploy_limited_pct,
+                "neutral": _s.fast_deploy_neutral_pct,
+                "defensive": _s.fast_deploy_defensive_pct,
+                "crisis": 0.0,
+            }
+            _regime_deploy = _fd.get(regime_posture, _s.fast_deploy_neutral_pct)
         deployable = total_equity * _regime_deploy
 
         active_count = len(positions)

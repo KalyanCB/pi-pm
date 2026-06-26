@@ -143,6 +143,11 @@ class PaperPilotOps:
         is_bear = regime_label.upper().startswith("BEAR")
         cash = self.nav_service.cash_balance()
 
+        # fast_deploy: demand-driven dynamic-band sleeve (rides winners, yields to
+        # buys, 25-50% band, buy-cooldown to curb gold churn).
+        if s.fast_deploy_enabled:
+            return self._gold_rotation_dynamic(as_of_date, gold_id, px, held, cash, regime_label, s)
+
         def _sell(reason: str) -> dict:
             fill = round(px * 0.9995, 4)
             qty = float(held.quantity)
@@ -192,6 +197,83 @@ class PaperPilotOps:
             return {"action": "GOLD_BUY", "qty": qty, "price": fill}
 
         return {"action": "GOLD_HOLD_BEAR", "cash": round(cash), "reserve": round(reserve)}
+
+    def _gold_rotation_dynamic(
+        self, as_of_date, gold_id, px, held, cash, regime_label, s
+    ) -> dict:
+        """fast_deploy gold sleeve: demand-driven dynamic band (% of total portfolio).
+        Stock slots have absolute priority. Gold rides winners (no auto-sell on a
+        regime flip), yields cash to stock BUYS (bull: fully; bear: down to the 25%
+        floor), soaks idle cash up to the 50% ceiling, cuts losers, and a buy-cooldown
+        stops the buy-yield-rebuy thrash.
+        """
+        from sqlalchemy import text as _text
+
+        cfg = self.portfolio_service.get_config()
+        total_equity = float(cfg.total_equity) if cfg else 0.0
+        cap = float(cfg.single_name_cap_pct) if cfg and cfg.single_name_cap_pct else 0.18
+        limits = self.portfolio_service.get_limits(as_of_date)
+        slot_reserve = limits.slots_available * cap * total_equity  # cash stock buys want
+        is_bear = regime_label.upper().startswith("BEAR")
+        gold_val = float(held.quantity) * px if held else 0.0
+        floor = s.gold_min_pct * total_equity
+        ceil = s.gold_max_pct * total_equity
+
+        def _sell(qty: float, reason: str) -> dict:
+            qty = min(qty, float(held.quantity))
+            fill = round(px * 0.9995, 4)
+            if qty >= float(held.quantity) - 1e-9:
+                self.portfolio_service.close_position(
+                    gold_id, exit_price=fill, exit_date=as_of_date, exit_reason=reason)
+            else:
+                held.quantity = float(held.quantity) - qty   # partial yield
+                self.db.flush()
+            self.nav_service.record_cash_entry(
+                entry_type="TRADE_SELL", amount=qty * fill, as_of_date=as_of_date,
+                reference_type="gold_rotation", description=f"{reason} {qty:.0f} @ {fill}")
+            return {"action": reason, "qty": qty, "price": fill}
+
+        # cut losers (bull only — in bear the band holds through MTM dips)
+        if held is not None and not is_bear and px < float(held.entry_price):
+            return _sell(float(held.quantity), "GOLD_LOSS_EXIT")
+
+        # YIELD to stock buys: slots need cash → release gold (bull: all; bear: to floor)
+        if held is not None and cash < slot_reserve:
+            need = slot_reserve - cash
+            sellable = gold_val if not is_bear else max(0.0, gold_val - floor)
+            qty = int(min(need, sellable) / px)
+            if qty > 0:
+                return _sell(qty, "GOLD_YIELD_SLOTS")
+
+        if not is_bear:
+            if held is None:
+                return {"action": "none", "is_bear": False}
+            return {"action": "GOLD_HOLD_RIDE",
+                    "unreal_pct": round((px / float(held.entry_price) - 1) * 100, 1)}
+
+        # BEAR: size gold to the band from idle cash, once, cooldown-gated.
+        if held is not None:
+            return {"action": "GOLD_HOLD_BEAR", "gold_val": round(gold_val)}
+        idle = max(0.0, cash - slot_reserve)
+        if idle < floor:                       # not enough idle to meet the 25% floor
+            return {"action": "hold", "idle": round(idle)}
+        last = self.db.execute(_text(
+            "SELECT max(as_of_date) FROM portfolio_cash_ledger WHERE reference_type='gold_rotation'"
+        )).scalar()
+        if last is not None and (as_of_date - last).days < s.gold_buy_cooldown_days:
+            return {"action": "GOLD_COOLDOWN", "last": str(last)}
+        budget = min(ceil, idle)               # soak idle cash up to the 50% ceiling
+        qty = int(budget / px)
+        if qty <= 0:
+            return {"action": "hold"}
+        fill = round(px * 1.0005, 4)
+        self.portfolio_service.open_position(
+            stock_id=gold_id, quantity=qty, fill_price=fill,
+            entry_date=as_of_date, strategy_name="gold_rotation", sector="ETF")
+        self.nav_service.record_cash_entry(
+            entry_type="TRADE_BUY", amount=-(qty * fill), as_of_date=as_of_date,
+            reference_type="gold_rotation", description=f"GOLD BUY {qty} @ {fill}")
+        return {"action": "GOLD_BUY", "qty": qty, "price": fill, "budget": round(budget)}
 
     # ── P-21 Trade Decision Layer ────────────────────────────────────────────
 
