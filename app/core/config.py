@@ -205,6 +205,16 @@ class Settings(BaseSettings):
     cost_sebi_pct: float = 0.0001
     cost_gst_rate: float = 0.18
 
+    # ── Fast-deploy: refill bull/neutral slots faster (idle-cash fix) ─────────
+    # In bull regimes max_buy_per_day is 2 (1 neutral), so after a batch exit the
+    # book refills only a trickle/day → ~40% idle cash in bull years against 20+
+    # candidates/day (measured 2021). Idle cash earns 0% while each bull trade nets
+    # ~+0.87% (gross − 0.23% cost), so deploying faster is net-accretive. This only
+    # multiplies max_buy_per_day where it is already > 0 (bull/neutral) — bear
+    # postures stay at 0, adding no downside-regime risk. Default off.
+    fast_deploy_enabled: bool = False
+    fast_deploy_buy_multiplier: int = 2
+
     # ── ADR-034: Recommendation trade levels (deterministic, BUY) ──────────────
     # Entry range + stop-loss range decorated onto BUY recommendations at the
     # recommendation phase. Stops reuse advisory_stop_pct / critical_stop_pct above.
