@@ -493,11 +493,12 @@ class ExitMonitorService:
         if not _is_runner:
             results.append(check_regime_change(
                 regime_posture,
-                None,
+                self._resolve_regime_posture(pos.entry_date),
                 ctx.get("unrealized_pnl_pct"),
                 ctx.get("current_rank"),
                 own_trend_intact=ctx.get("own_trend_intact"),
                 per_stock_trend_hold=settings.regime_exit_per_stock_trend_enabled,
+                intra_bear_hold=settings.regime_exit_intra_bear_hold,
             ))
         results += [
             check_stop_loss(stop_pnl, stop_loss),

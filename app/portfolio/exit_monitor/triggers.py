@@ -78,6 +78,7 @@ def check_regime_change(
     entry_pool_size: int = 20,
     own_trend_intact: bool | None = None,
     per_stock_trend_hold: bool = False,
+    intra_bear_hold: bool = True,
 ) -> TriggerResult:
     """EXIT_REGIME: regime turned defensive or crisis (R-EXIT-03).
 
@@ -107,9 +108,18 @@ def check_regime_change(
     elif current_regime_posture == "defensive":
         weak_pnl = unrealized_pnl_pct is not None and unrealized_pnl_pct < 0
         weak_rank = current_rank is not None and current_rank > entry_pool_size
+        # Intra-bear churn fix: a position ENTERED already in a defensive (bear /
+        # high-vol) regime was made *for* that regime (e.g. reversal_v1 in
+        # BEAR_LOW_VOL). A defensive re-flip within the same bear must not re-cut it —
+        # bear->bear was 76% of EXIT_REGIME exits, 57% of them winners, +1.2% post-exit
+        # drift. Hold through intra-bear re-flips; only genuine per-stock P&L weakness
+        # exits. crisis still always exits (above); bull->bear keeps the full logic.
+        entered_defensive = entry_regime_posture == "defensive"
         # If we have no per-position signal at all, fall back to exiting (safe default).
         if unrealized_pnl_pct is None and current_rank is None:
             fired = True
+        elif intra_bear_hold and entered_defensive:
+            fired = weak_pnl
         elif per_stock_trend_hold and own_trend_intact and not weak_pnl:
             # Own trend intact + not losing → hold through the defensive flip; a
             # mere relative rank-slip no longer forces a market-sell of a winner.

@@ -191,6 +191,13 @@ class Settings(BaseSettings):
     regime_exit_trend_sma_fast: int = 50
     regime_exit_trend_sma_slow: int = 200
 
+    # Intra-bear churn fix: suppress the *defensive* EXIT_REGIME when the position was
+    # ENTERED already in a defensive (bear / high-vol) regime — the trade was made for
+    # that regime (e.g. reversal_v1 in BEAR_LOW_VOL), so a re-flip within the same bear
+    # should not re-cut it. bear->bear was 76% of EXIT_REGIME exits (57% winners).
+    # crisis still always exits; bull->bear keeps the full defensive logic.
+    regime_exit_intra_bear_hold: bool = True
+
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
     # CAGR are reported NET of costs (the legacy behaviour applied only a flat
