@@ -302,6 +302,7 @@ def test_t2_monitor_tags_daily_tier():
     mock_settings.time_stop_enabled = True
     mock_settings.advisory_stop_pct = -8.0
     mock_settings.regime_dynamic_stops_enabled = False
+    mock_settings.alpha_decay_grace_days = 5
     with patch.object(svc, "_build_position_context", return_value={
         "days_held": 35,  # > 30 day time stop
         "current_rank": None,

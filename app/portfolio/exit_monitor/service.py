@@ -483,10 +483,27 @@ class ExitMonitorService:
         # Analytical exits gated by P-15 minimum hold AND (v18) graduation winner-track
         # suppression — a green, still-ranked winner is held on a wide trail instead of
         # being cut by rank-drop/alpha-decay.
+        # RANK_DROP keeps the P-15 day-5 grace — it rotates out winners on a faded
+        # rank (302/303 of its exits are green); it is not the early-churn problem.
         if (not _analytical_exits_suppressed and not _in_alpha_decay_cooldown
                 and not _grad_suppress_analytical):
             results.append(check_rank_drop(ctx.get("current_rank"), ctx.get("entry_rank")))
-            results.append(check_alpha_decay(ctx.get("unrealized_pnl_pct"), days_held))
+
+        # ALPHA_DECAY timing (P-26): judge thesis decay at alpha_decay_grace_days
+        # rather than cutting every still-red name on day 5. With grace>5 we use FLOOR
+        # semantics (cut if STILL red at/after the grace day, no upper ceiling) so a
+        # weekend/holiday gap can't let a position skip the single day-15 evaluation;
+        # the legacy grace of 5 keeps the original [5,15] early-exit window. STOP_LOSS
+        # + the progressive stop floor big losers in the interim, so deferring only
+        # spares the recoverers (green by day 15), not the genuine decayers.
+        _alpha_decay_grace = settings.alpha_decay_grace_days
+        if (days_held >= _alpha_decay_grace and not _in_alpha_decay_cooldown
+                and not _grad_suppress_analytical):
+            _decay_threshold = 15 if _alpha_decay_grace <= 5 else 10**6
+            results.append(check_alpha_decay(
+                ctx.get("unrealized_pnl_pct"), days_held,
+                decay_threshold_day=_decay_threshold,
+            ))
 
         # Hard exits always fire regardless of hold period — EXCEPT a runner, which is
         # deliberately held through regime flips to ride a confirmed multibagger.

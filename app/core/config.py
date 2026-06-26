@@ -198,6 +198,20 @@ class Settings(BaseSettings):
     # crisis still always exits; bull->bear keeps the full defensive logic.
     regime_exit_intra_bear_hold: bool = True
 
+    # ── P-26: ALPHA_DECAY timing — judge thesis decay at its intended threshold ─
+    # check_alpha_decay is *meant* to test alpha decay at its day-15 threshold, but
+    # the P-15 day-5 grace made it cut every still-red name the instant the grace
+    # lifted: 54% of EXIT_ALPHA_DECAY exits fire on exactly day 5 (median hold 5d,
+    # max 10d — the 15-day ceiling is never reached). On the names that recover, that
+    # day-5 cut threw away +14.4% alpha by day 15 (87% positive), then re-bought them
+    # ~11.5% higher as breakouts (paying two STT round-trips). Deferring the judgement
+    # to this many days lets the recoverers (green by day 15) be HELD while the genuine
+    # decayers (still red at day 15) are still cut. STOP_LOSS (-8%) + the P-17
+    # progressive stop floor the downside in the interim, so the only thing deferred is
+    # the premature day-5 cut. Default 5 preserves the legacy day-5 window [5,15];
+    # set to 15 to judge at the day-15 horizon (floor semantics, gap-robust).
+    alpha_decay_grace_days: int = 5
+
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
     # CAGR are reported NET of costs (the legacy behaviour applied only a flat
