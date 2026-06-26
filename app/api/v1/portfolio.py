@@ -572,9 +572,27 @@ def get_dashboard(db=Depends(get_db)) -> Any:
         if nav_rows and nav_rows[-1].day_return_pct is not None
         else None
     )
-    alpha = (
-        float(nav_rows[-1].alpha_pct) if nav_rows and nav_rows[-1].alpha_pct is not None else None
-    )
+    # Cumulative alpha since inception (portfolio cum. return − benchmark cum.
+    # return), not the single-day alpha — the headline card should show the real
+    # edge vs NIFTY, not one session's noisy ±0.x% blip.
+    alpha = None
+    if nav_rows:
+        base_nav = float(nav_rows[0].total_equity) if nav_rows[0].total_equity else None
+        last_nav = float(nav_rows[-1].total_equity) if nav_rows[-1].total_equity else None
+        if base_nav and last_nav and base_nav > 0:
+            port_cum_pct = (last_nav / base_nav - 1.0) * 100.0
+            bench_factor = 1.0
+            have_bench = False
+            for r in nav_rows:
+                br = getattr(r, "benchmark_return_pct", None)
+                if br is not None:
+                    bench_factor *= 1.0 + float(br) / 100.0
+                    have_bench = True
+            if have_bench:
+                bench_cum_pct = (bench_factor - 1.0) * 100.0
+                alpha = round(port_cum_pct - bench_cum_pct, 2)
+            else:
+                alpha = round(port_cum_pct, 2)
 
     try:
         summary = port.get_summary()

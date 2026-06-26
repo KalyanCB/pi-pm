@@ -177,6 +177,65 @@ class Settings(BaseSettings):
     # T2 exit monitor EXIT_TIME). True = current behaviour.
     time_stop_enabled: bool = True
 
+    # ── Hybrid (per-stock) regime exit ────────────────────────────────────────
+    # The market regime (^NSEI + breadth) is a BOOK-level signal; today a
+    # defensive flip can EXIT_REGIME a position purely because its *relative* rank
+    # slipped, even while the stock is still in its OWN uptrend and in profit.
+    # Evidence (2026-06): such blanket-cut own-uptrend names went on to beat NIFTY
+    # +2.35%/10d, and EXIT_REGIME is the #1 churn driver (60% of exits, 1.8d hold).
+    # When enabled, a defensive flip HOLDS positions still above their own
+    # 50 & 200-day SMA and not losing money (rank-slip alone no longer forces the
+    # sell); a *crisis* posture still always exits (systemic crash protection).
+    # Default False preserves current behaviour.
+    regime_exit_per_stock_trend_enabled: bool = False
+    regime_exit_trend_sma_fast: int = 50
+    regime_exit_trend_sma_slow: int = 200
+
+    # Intra-bear churn fix: suppress the *defensive* EXIT_REGIME when the position was
+    # ENTERED already in a defensive (bear / high-vol) regime — the trade was made for
+    # that regime (e.g. reversal_v1 in BEAR_LOW_VOL), so a re-flip within the same bear
+    # should not re-cut it. bear->bear was 76% of EXIT_REGIME exits (57% winners).
+    # crisis still always exits; bull->bear keeps the full defensive logic.
+    regime_exit_intra_bear_hold: bool = True
+
+    # ── P-26: ALPHA_DECAY timing — judge thesis decay at its intended threshold ─
+    # check_alpha_decay is *meant* to test alpha decay at its day-15 threshold, but
+    # the P-15 day-5 grace made it cut every still-red name the instant the grace
+    # lifted: 54% of EXIT_ALPHA_DECAY exits fire on exactly day 5 (median hold 5d,
+    # max 10d — the 15-day ceiling is never reached). On the names that recover, that
+    # day-5 cut threw away +14.4% alpha by day 15 (87% positive), then re-bought them
+    # ~11.5% higher as breakouts (paying two STT round-trips). Deferring the judgement
+    # to this many days lets the recoverers (green by day 15) be HELD while the genuine
+    # decayers (still red at day 15) are still cut. STOP_LOSS (-8%) + the P-17
+    # progressive stop floor the downside in the interim, so the only thing deferred is
+    # the premature day-5 cut. Default 5 preserves the legacy day-5 window [5,15];
+    # set to 15 to judge at the day-15 horizon (floor semantics, gap-robust).
+    alpha_decay_grace_days: int = 5
+
+    # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
+    # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
+    # CAGR are reported NET of costs (the legacy behaviour applied only a flat
+    # per-leg brokerage fee, ≈0.004%, which hid the real ~0.22%+slippage/round-trip
+    # drag — material at this strategy's 68× turnover). Pct values are PERCENT of
+    # trade value (0.10 == 0.10%). STT applies both legs on delivery; stamp on buy.
+    transaction_costs_enabled: bool = False
+    cost_stt_buy_pct: float = 0.10
+    cost_stt_sell_pct: float = 0.10
+    cost_stamp_buy_pct: float = 0.015
+    cost_exchange_txn_pct: float = 0.00297
+    cost_sebi_pct: float = 0.0001
+    cost_gst_rate: float = 0.18
+
+    # ── Fast-deploy: refill bull/neutral slots faster (idle-cash fix) ─────────
+    # In bull regimes max_buy_per_day is 2 (1 neutral), so after a batch exit the
+    # book refills only a trickle/day → ~40% idle cash in bull years against 20+
+    # candidates/day (measured 2021). Idle cash earns 0% while each bull trade nets
+    # ~+0.87% (gross − 0.23% cost), so deploying faster is net-accretive. This only
+    # multiplies max_buy_per_day where it is already > 0 (bull/neutral) — bear
+    # postures stay at 0, adding no downside-regime risk. Default off.
+    fast_deploy_enabled: bool = False
+    fast_deploy_buy_multiplier: int = 2
+
     # ── ADR-034: Recommendation trade levels (deterministic, BUY) ──────────────
     # Entry range + stop-loss range decorated onto BUY recommendations at the
     # recommendation phase. Stops reuse advisory_stop_pct / critical_stop_pct above.

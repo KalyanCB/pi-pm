@@ -156,6 +156,11 @@ class RecommendationOutcomeRepository:
         if to_date:
             q = q.where(RecommendationRun.as_of_date <= to_date)
         q = q.where(RecommendationRun.status == "completed")
+        # Stability measures churn among *actionable* recommendations. REJECTs are
+        # ~96% of a NIFTY_1000 day and are stably REJECT, so they add no churn signal
+        # while making this unbounded query enormous (it was hanging the trust endpoint
+        # and exhausting the connection pool). Exclude them.
+        q = q.where(RecommendationResult.action != "REJECT")
         q = q.order_by(Stock.symbol, RecommendationRun.as_of_date)
         rows = self.db.execute(q).all()
         return [{"symbol": r[0], "date": r[1], "action": r[2]} for r in rows]

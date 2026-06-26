@@ -505,9 +505,22 @@ class PortfolioService:
 
     def _regime_slots(self, cfg: PortfolioConfig, posture: str) -> dict:
         slots = cfg.regime_slots or {}
-        return slots.get(
+        resolved = slots.get(
             posture, _DEFAULT_REGIME_SLOTS.get(posture, {"max_positions": 6, "max_buy_per_day": 1})
         )
+        # Fast-deploy (flag-gated): multiply max_buy_per_day where it is already > 0
+        # (bull/neutral) so empty slots refill faster — attacks the ~40% idle-cash
+        # drag in bull years. Bear postures (0) are left untouched. Copy so the shared
+        # _DEFAULT_REGIME_SLOTS dict is never mutated.
+        from app.core.config import get_settings
+
+        s = get_settings()
+        if s.fast_deploy_enabled and resolved.get("max_buy_per_day", 0) > 0:
+            resolved = {
+                **resolved,
+                "max_buy_per_day": resolved["max_buy_per_day"] * s.fast_deploy_buy_multiplier,
+            }
+        return resolved
 
     def _recompute_weights(self) -> None:
         basis = self.nav_basis()

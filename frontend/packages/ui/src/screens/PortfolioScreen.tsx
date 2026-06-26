@@ -21,6 +21,16 @@ const TABS = ['Overview', 'Positions', 'Allocation', 'Performance', 'Attribution
 
 const EXIT_REASONS = ['STOP_LOSS', 'TIME_STOP', 'RANK_DROP', 'FORCE_CLOSE'] as const;
 
+type SortKey = 'default' | 'symbol' | 'pnl' | 'value' | 'entry' | 'weight';
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'default', label: 'Default' },
+  { key: 'symbol', label: 'Symbol' },
+  { key: 'pnl', label: 'P&L' },
+  { key: 'value', label: 'Value' },
+  { key: 'weight', label: 'Weight' },
+  { key: 'entry', label: 'Entry Date' },
+];
+
 export function PortfolioScreen() {
   const theme = useTheme();
   const { isDesktop } = useBreakpoint();
@@ -46,6 +56,10 @@ export function PortfolioScreen() {
   const [searchClosed, setSearchClosed] = useState('');
   const [closedFromDate, setClosedFromDate] = useState('');
   const [closedToDate, setClosedToDate] = useState('');
+
+  // Sort state — applies to whichever positions list is shown
+  const [sortKey, setSortKey] = useState<SortKey>('default');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const toggleCopilot = useUiStore((s) => s.toggleCopilotPanel);
   const {
@@ -92,6 +106,36 @@ export function PortfolioScreen() {
     if (closedToDate && exitD > closedToDate) return false;
     return true;
   });
+
+  const sortPositions = <T extends (typeof positions)[number]>(list: T[]): T[] => {
+    if (sortKey === 'default') return list;
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const val = (p: T): number | string => {
+      switch (sortKey) {
+        case 'symbol':
+          return (p.symbol ?? '').toLowerCase();
+        case 'pnl':
+          return (p.position_status === 'CLOSED' ? p.realized_pnl : p.unrealized_pnl) ?? 0;
+        case 'value':
+          return p.market_value ?? 0;
+        case 'weight':
+          return p.weight_pct ?? 0;
+        case 'entry':
+          return p.entry_date ?? '';
+        default:
+          return 0;
+      }
+    };
+    return [...list].sort((a, b) => {
+      const va = val(a);
+      const vb = val(b);
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+  };
+  const sortedOpen = sortPositions(filteredOpen);
+  const sortedClosed = sortPositions(filteredClosed);
 
   // Allocation / sector exposure reflect the *current* book only — closed
   // positions retain a stale weight_pct, so derive these from open positions.
@@ -405,7 +449,38 @@ export function PortfolioScreen() {
             </View>
           )}
 
-          {(showClosed ? filteredClosed : filteredOpen).map((p) => (
+          {/* ── Sort by ── */}
+          <View style={[styles.filterSection]}>
+            <View style={styles.filterRow}>
+              <Text style={[styles.filterLabel, { color: theme.colors.textMuted }]}>Sort by</Text>
+              {SORT_OPTIONS.map((opt) => {
+                const active = sortKey === opt.key;
+                const arrow = opt.key === 'default' ? '' : active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+                return (
+                  <Pressable
+                    key={opt.key}
+                    onPress={() => {
+                      if (opt.key === 'default') {
+                        setSortKey('default');
+                      } else if (active) {
+                        setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortKey(opt.key);
+                        setSortDir('desc');
+                      }
+                    }}
+                    style={[styles.chip, { backgroundColor: active ? theme.colors.accent : theme.colors.backgroundPanel, borderColor: theme.colors.border }]}
+                  >
+                    <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.textMuted }]}>
+                      {opt.label}{arrow}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {(showClosed ? sortedClosed : sortedOpen).map((p) => (
             <PortfolioPositionCard
               key={p.id}
               symbol={p.symbol}
@@ -428,7 +503,7 @@ export function PortfolioScreen() {
             />
           ))}
 
-          {(showClosed ? filteredClosed : filteredOpen).length === 0 && (
+          {(showClosed ? sortedClosed : sortedOpen).length === 0 && (
             <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
               {showClosed ? 'No exited positions match filters.' : 'No open positions match filters.'}
             </Text>

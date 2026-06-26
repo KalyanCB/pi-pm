@@ -7,7 +7,7 @@ recommendation engine, conviction formula, or ARGS committees (AC-RP-09).
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -172,6 +172,12 @@ class RecommendationAnalyticsService:
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> TrustMetricsDTO:
+        # Bound the window. Unbounded, every trust query scans all history; under
+        # NIFTY_1000 that hangs >20s and exhausts the connection pool (which took the
+        # whole app down). Trust metrics are recent-window measures anyway — default
+        # to the last 90 days when the caller (the UI) doesn't pass dates.
+        if from_date is None:
+            from_date = (to_date or date.today()) - timedelta(days=90)
         rows = self._load_outcome_rows(
             strategy_name=strategy_name, from_date=from_date, to_date=to_date
         )

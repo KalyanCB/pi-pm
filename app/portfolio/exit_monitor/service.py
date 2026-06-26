@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -115,6 +115,50 @@ class ExitMonitorService:
             ).all()
             rank_map = {row.stock_id: row.rank for row in rank_rows}
 
+        # ── Batch prefetch: per-stock own-trend (hybrid regime exit, flag-gated) ──
+        # own_trend_intact = last close above its OWN fast & slow SMA. Computed in
+        # one bounded window query (≤ slow bars × positions). Skipped entirely when
+        # the flag is off so default behaviour pays no query cost.
+        settings = get_settings()
+        trend_map: dict = {}
+        if settings.regime_exit_per_stock_trend_enabled:
+            fast = settings.regime_exit_trend_sma_fast
+            slow = settings.regime_exit_trend_sma_slow
+            ranked = (
+                select(
+                    MarketDataModel.stock_id,
+                    MarketDataModel.close,
+                    func.row_number()
+                    .over(
+                        partition_by=MarketDataModel.stock_id,
+                        order_by=MarketDataModel.date.desc(),
+                    )
+                    .label("rn"),
+                )
+                .where(
+                    MarketDataModel.stock_id.in_(stock_ids),
+                    MarketDataModel.date <= as_of,
+                )
+                .subquery()
+            )
+            trend_rows = self.db.execute(
+                select(
+                    ranked.c.stock_id,
+                    func.avg(ranked.c.close).filter(ranked.c.rn <= fast).label("sma_fast"),
+                    func.avg(ranked.c.close).filter(ranked.c.rn <= slow).label("sma_slow"),
+                    func.max(ranked.c.close).filter(ranked.c.rn == 1).label("last_close"),
+                    func.count().filter(ranked.c.rn <= slow).label("n"),
+                )
+                .where(ranked.c.rn <= slow)
+                .group_by(ranked.c.stock_id)
+            ).all()
+            for r in trend_rows:
+                if r.n and r.n >= slow and r.last_close and r.sma_fast and r.sma_slow:
+                    trend_map[r.stock_id] = (
+                        float(r.last_close) > float(r.sma_fast)
+                        and float(r.last_close) > float(r.sma_slow)
+                    )
+
         results: list[ExitRecommendation] = []
 
         for pos in positions:
@@ -137,7 +181,9 @@ class ExitMonitorService:
                 results.append(existing)
                 continue
 
-            context = self._build_position_context(pos, as_of, price_map=price_map, rank_map=rank_map)
+            context = self._build_position_context(
+                pos, as_of, price_map=price_map, rank_map=rank_map, trend_map=trend_map
+            )
             fired_triggers = self._evaluate_triggers(pos, context, cfg, regime_posture, as_of)
 
             if not fired_triggers:
@@ -251,8 +297,14 @@ class ExitMonitorService:
         as_of: date,
         price_map: dict | None = None,
         rank_map: dict | None = None,
+        trend_map: dict | None = None,
     ) -> dict:
         ctx: dict = {}
+
+        # Per-stock own-trend flag (hybrid regime exit). None when the flag is off
+        # or insufficient history → check_regime_change falls back to default logic.
+        if trend_map:
+            ctx["own_trend_intact"] = trend_map.get(pos.stock_id)
 
         if pos.entry_date:
             ctx["days_held"] = (as_of - pos.entry_date).days
@@ -431,19 +483,39 @@ class ExitMonitorService:
         # Analytical exits gated by P-15 minimum hold AND (v18) graduation winner-track
         # suppression — a green, still-ranked winner is held on a wide trail instead of
         # being cut by rank-drop/alpha-decay.
+        # RANK_DROP keeps the P-15 day-5 grace — it rotates out winners on a faded
+        # rank (302/303 of its exits are green); it is not the early-churn problem.
         if (not _analytical_exits_suppressed and not _in_alpha_decay_cooldown
                 and not _grad_suppress_analytical):
             results.append(check_rank_drop(ctx.get("current_rank"), ctx.get("entry_rank")))
-            results.append(check_alpha_decay(ctx.get("unrealized_pnl_pct"), days_held))
+
+        # ALPHA_DECAY timing (P-26): judge thesis decay at alpha_decay_grace_days
+        # rather than cutting every still-red name on day 5. With grace>5 we use FLOOR
+        # semantics (cut if STILL red at/after the grace day, no upper ceiling) so a
+        # weekend/holiday gap can't let a position skip the single day-15 evaluation;
+        # the legacy grace of 5 keeps the original [5,15] early-exit window. STOP_LOSS
+        # + the progressive stop floor big losers in the interim, so deferring only
+        # spares the recoverers (green by day 15), not the genuine decayers.
+        _alpha_decay_grace = settings.alpha_decay_grace_days
+        if (days_held >= _alpha_decay_grace and not _in_alpha_decay_cooldown
+                and not _grad_suppress_analytical):
+            _decay_threshold = 15 if _alpha_decay_grace <= 5 else 10**6
+            results.append(check_alpha_decay(
+                ctx.get("unrealized_pnl_pct"), days_held,
+                decay_threshold_day=_decay_threshold,
+            ))
 
         # Hard exits always fire regardless of hold period — EXCEPT a runner, which is
         # deliberately held through regime flips to ride a confirmed multibagger.
         if not _is_runner:
             results.append(check_regime_change(
                 regime_posture,
-                None,
+                self._resolve_regime_posture(pos.entry_date),
                 ctx.get("unrealized_pnl_pct"),
                 ctx.get("current_rank"),
+                own_trend_intact=ctx.get("own_trend_intact"),
+                per_stock_trend_hold=settings.regime_exit_per_stock_trend_enabled,
+                intra_bear_hold=settings.regime_exit_intra_bear_hold,
             ))
         results += [
             check_stop_loss(stop_pnl, stop_loss),
