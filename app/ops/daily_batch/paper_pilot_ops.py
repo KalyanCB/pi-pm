@@ -211,11 +211,15 @@ class PaperPilotOps:
 
         cfg = self.portfolio_service.get_config()
         total_equity = float(cfg.total_equity) if cfg else 0.0
-        cap = float(cfg.single_name_cap_pct) if cfg and cfg.single_name_cap_pct else 0.18
-        limits = self.portfolio_service.get_limits(as_of_date)
-        slot_reserve = limits.slots_available * cap * total_equity  # cash stock buys want
         is_bear = regime_label.upper().startswith("BEAR")
         gold_val = float(held.quantity) * px if held else 0.0
+        # Cash the stock slots still want = regime DEPLOY CEILING (fast_deploy-aware)
+        # minus what stocks already hold. NOT slots_available × single-name-cap — that
+        # over-reserved (e.g. BEAR_HIGH_VOL: 4 slots × 18% = 72% phantom-reserved for
+        # stocks that won't be bought at a 0% ceiling, starving gold of idle cash).
+        summary = self.portfolio_service.get_summary(as_of_date)
+        stock_value = max(0.0, float(summary.market_value) - gold_val)
+        slot_reserve = max(0.0, float(summary.deployable_capital) - stock_value)
         floor = s.gold_min_pct * total_equity
         ceil = s.gold_max_pct * total_equity
 
