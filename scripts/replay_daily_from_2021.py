@@ -18,6 +18,7 @@ Requires:
 """
 from __future__ import annotations
 
+import os
 import sys
 import time
 from datetime import date
@@ -58,6 +59,12 @@ from scripts.pipm_service_factory import build_pipm_services
 # / regime lookbacks a 3-year warm-up before the 2021 paper-trade phase.
 START_DATE = date(2018, 1, 1)
 PAPER_TRADE_FROM = date(2021, 1, 1)
+# Analytics throttle: factor-IC recomputes over an EXPANDING window from START_DATE
+# (loads ranking_factor_contributions, ~2GB by 2022) x 4 horizons EVERY day -> O(n^2),
+# per-day time grew 1s -> 50s+ across the run. It is pure research analytics and does
+# NOT gate the paper trades (trading uses rankings/validation/expectancy), so run it
+# only every FACTOR_IC_CADENCE trading days. Env-overridable; 0 disables entirely.
+FACTOR_IC_CADENCE = int(os.getenv("FACTOR_IC_CADENCE", "21"))
 BENCHMARK = "^NSEI"
 UNIVERSE = "NIFTY_1000"
 
@@ -185,6 +192,8 @@ def main() -> int:
 
     for i, day in enumerate(remaining, 1):
         paper_trade = day >= PAPER_TRADE_FROM
+        # Throttle the O(n^2) factor-IC analytics (see FACTOR_IC_CADENCE note above).
+        factor_ic_day = FACTOR_IC_CADENCE > 0 and (i % FACTOR_IC_CADENCE == 0)
         db = get_session_factory()()
         try:
             batch_svc = _build_batch_service(db, global_store)
@@ -207,7 +216,7 @@ def main() -> int:
                     recommendations=True,
                     regime_history=True,
                     regime_performance=True,
-                    factor_ic=True,
+                    factor_ic=factor_ic_day,      # throttled: every FACTOR_IC_CADENCE days
                     research_intelligence=False,  # expensive, skip for replay
                     exit_research=False,          # skip for speed — backfill separately
                     portfolio=paper_trade,
