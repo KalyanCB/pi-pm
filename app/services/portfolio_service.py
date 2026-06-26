@@ -29,9 +29,9 @@ _CONVICTION_WEIGHTS: dict[str, float] = {
 }
 
 _DEFAULT_REGIME_SLOTS: dict[str, dict] = {
-    "risk_on":        {"max_positions": 8, "max_buy_per_day": 2},
-    "limited_risk_on":{"max_positions": 7, "max_buy_per_day": 2},  # P-12: BULL_HIGH_VOL upgrade
-    "neutral":        {"max_positions": 6, "max_buy_per_day": 1},
+    "risk_on":        {"max_positions": 5, "max_buy_per_day": 2},  # 5-name concentration (~20%/name @ 100% deploy)
+    "limited_risk_on":{"max_positions": 5, "max_buy_per_day": 2},  # P-12: BULL_HIGH_VOL upgrade
+    "neutral":        {"max_positions": 5, "max_buy_per_day": 1},
     "defensive":      {"max_positions": 4, "max_buy_per_day": 0},
     "crisis":         {"max_positions": 2, "max_buy_per_day": 0},
 }

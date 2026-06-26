@@ -238,7 +238,7 @@ class Settings(BaseSettings):
     # When fast_deploy is on, the stock deploy ceiling per regime posture (overrides
     # _REGIME_DEPLOY_PCT): BULL_LOW_VOL=risk_on 0.95, BULL_HIGH_VOL=limited_risk_on
     # 0.75, BEAR_LOW_VOL=neutral 0.45 (reversal dip-buy), BEAR_HIGH_VOL=defensive 0.00.
-    fast_deploy_risk_on_pct: float = 0.95
+    fast_deploy_risk_on_pct: float = 1.00  # BULL_LOW_VOL: fully deployed across 5 names (~20%/name)
     fast_deploy_limited_pct: float = 0.75
     fast_deploy_neutral_pct: float = 0.45
     fast_deploy_defensive_pct: float = 0.00
