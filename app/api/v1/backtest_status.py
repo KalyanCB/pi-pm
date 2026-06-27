@@ -86,6 +86,19 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
         "ORDER BY as_of_date DESC, created_at DESC LIMIT 1"
     )).scalar() or "—"
 
+    # Run timing — started / elapsed (wall-clock of processing) / avg per trade-day.
+    _tm = db.execute(text(
+        "SELECT min(started_at) AS s, max(completed_at) AS e FROM daily_batch_runs"
+    )).fetchone()
+    if _tm and _tm.s and _tm.e:
+        _el = (_tm.e - _tm.s).total_seconds()
+        started_str = _tm.s.strftime("%Y-%m-%d %H:%M UTC")
+        elapsed_str = (f"{int(_el // 3600)}h {int((_el % 3600) // 60)}m"
+                       if _el >= 3600 else f"{_el / 60:.1f} min")
+        per_day_str = f"{_el / max(processed, 1):.1f}s"
+    else:
+        started_str = elapsed_str = per_day_str = "—"
+
     if nav is not None:
         equity = float(nav.total_equity)
         ret = (equity / initial_capital - 1) * 100
@@ -134,6 +147,8 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
  <div class="bar" style="background:#2a2433"><div class="fill" style="width:{research_pct}%;background:linear-gradient(90deg,#a855f7,#f59e0b)"></div></div>
  <div class="sub">RESEARCH (background, all 4 strat): {research_done:,} / {total:,} days
    &middot; lag <span class="{bg_cls}">{bg_lag:,} d</span></div>
+ <div class="sub" style="margin-top:8px">started <b>{started_str}</b> &middot; elapsed <b>{elapsed_str}</b>
+   &middot; ~<b>{per_day_str}</b>/trade-day</div>
 </div>
 <div class="card"><div class="grid">
  <div><div class="k">NAV ({nav_date or '—'})</div><div class="v">&#8377;{equity:,.0f}</div></div>
