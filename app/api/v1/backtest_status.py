@@ -59,6 +59,20 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
     trades = db.execute(text("SELECT COUNT(*) FROM paper_trades")).scalar() or 0
     rankings = db.execute(text("SELECT COUNT(*) FROM ranking_results")).scalar() or 0
 
+    # Foreground/background split (replay_fast): the FOREGROUND ranks only the active
+    # (regime-gated) strategy each day → distinct as_of_date == trade-days done. The
+    # BACKGROUND fills the other 3 strategies for research (lagging). A day is fully
+    # researched once all 4 strategies have ranked it; the lag = foreground − research.
+    research_done = db.execute(text(
+        "SELECT COUNT(*) FROM (SELECT as_of_date FROM ranking_runs "
+        "GROUP BY as_of_date HAVING COUNT(DISTINCT strategy_name) >= 4) x"
+    )).scalar() or 0
+    bg_lag = max(0, processed - research_done)
+    active_strategy = db.execute(text(
+        "SELECT strategy_name FROM recommendation_runs "
+        "ORDER BY as_of_date DESC, created_at DESC LIMIT 1"
+    )).scalar() or "—"
+
     if nav is not None:
         equity = float(nav.total_equity)
         ret = (equity / _INITIAL_CAPITAL - 1) * 100
@@ -71,12 +85,14 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
     if cur_date is None:
         phase = "Not started"
     elif cur_date >= date(2021, 1, 1):
-        phase = "Paper trading (2021+)"
+        phase = "Paper trading (2021+) &middot; foreground = active strategy only"
     else:
-        phase = "Warm-up — computing 2020 analytics (no trades)"
+        phase = "Warm-up analytics (no trades)"
 
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     ret_cls = "pos" if ret >= 0 else "neg"
+    research_pct = round(research_done / total * 100, 1) if total else 0.0
+    bg_cls = "pos" if bg_lag == 0 else "neg"
 
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -96,11 +112,15 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
  .pos{{color:#22c55e}} .neg{{color:#ef4444}}
 </style></head><body>
 <div class="card">
- <h1>V17 + Gold &mdash; Replay</h1>
+ <h1>Pi-PM &mdash; Replay (fast)</h1>
  <div class="sub">{phase}<br>updated {now} &middot; auto-refresh 30s</div>
  <div class="big">{pct}%</div>
  <div class="bar"><div class="fill" style="width:{pct}%"></div></div>
- <div class="sub">{processed:,} / {total:,} days &middot; current: <b>{cur_date or '—'}</b></div>
+ <div class="sub">TRADES (foreground): {processed:,} / {total:,} days &middot; current: <b>{cur_date or '—'}</b>
+   &middot; active: <b>{active_strategy}</b></div>
+ <div class="bar" style="background:#2a2433"><div class="fill" style="width:{research_pct}%;background:linear-gradient(90deg,#a855f7,#f59e0b)"></div></div>
+ <div class="sub">RESEARCH (background, all 4 strat): {research_done:,} / {total:,} days
+   &middot; lag <span class="{bg_cls}">{bg_lag:,} d</span></div>
 </div>
 <div class="card"><div class="grid">
  <div><div class="k">NAV ({nav_date or '—'})</div><div class="v">&#8377;{equity:,.0f}</div></div>
@@ -110,6 +130,6 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
  <div><div class="k">Paper trades</div><div class="v">{trades:,}</div></div>
  <div><div class="k">Ranking rows</div><div class="v">{rankings:,}</div></div>
 </div></div>
-<div class="sub" style="text-align:center">₹10L start &middot; gold ON &middot; graduation OFF</div>
+<div class="sub" style="text-align:center">₹10L start &middot; foreground=active-only (identical trades) &middot; background=research async</div>
 </body></html>"""
     return HTMLResponse(content=html)
