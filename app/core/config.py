@@ -137,6 +137,21 @@ class Settings(BaseSettings):
     runner_max_rank: int = 5
     runner_min_gain_pct: float = 20.0
     runner_trail_pct: float = 25.0
+    # ATR-scaled DYNAMIC stops & trails (flag-gated). Stop/trail distances scale with
+    # each stock's own ATR(14)%/price (daily-recomputed) so a volatile name breathes
+    # wider and a quiet one keeps a tight leash. The run-tier sets the trail multiplier
+    # (normal/winner/runner). Clamped so no absurd stop. Calibrated to ≈ today's fixed
+    # values at the median NIFTY ATR% (~3.4%).
+    atr_dynamic_exits_enabled: bool = False
+    atr_stop_mult_bull: float = 2.5      # bull/neutral stop = 2.5×ATR (~-8% median)
+    atr_stop_mult_bear: float = 1.2      # bear stop = 1.2×ATR (~-4% median)
+    atr_trail_mult_normal: float = 2.0   # un-graduated trail (~-7% median)
+    atr_trail_mult_winner: float = 3.5   # winner-track trail (~12% median)
+    atr_trail_mult_runner: float = 6.0   # runner trail (~20% median)
+    atr_stop_floor_pct: float = 3.0      # min |stop| (no whipsaw-tight)
+    atr_stop_cap_pct: float = 12.0       # max |stop| (no disaster-wide)
+    atr_trail_floor_pct: float = 4.0
+    atr_trail_cap_pct: float = 30.0
     # Tier 2: gold rotation — in BEAR regimes deploy the defensive sleeve to GOLDBEES
     # instead of holding cash (P-22). Diversifier with positive bear-regime expectancy.
     gold_rotation_enabled: bool = False

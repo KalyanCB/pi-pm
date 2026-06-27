@@ -159,6 +159,47 @@ class ExitMonitorService:
                         and float(r.last_close) > float(r.sma_slow)
                     )
 
+        # ── Batch prefetch: per-stock ATR(14)% for dynamic stops/trails (flag-gated) ──
+        # atr_pct = avg true-range over the last 14 bars / last close. One windowed
+        # query for all positions; skipped entirely when the flag is off.
+        atr_map: dict = {}
+        if settings.atr_dynamic_exits_enabled:
+            ranked_atr = (
+                select(
+                    MarketDataModel.stock_id,
+                    MarketDataModel.high, MarketDataModel.low, MarketDataModel.close,
+                    func.lag(MarketDataModel.close)
+                    .over(partition_by=MarketDataModel.stock_id,
+                          order_by=MarketDataModel.date)
+                    .label("prev_close"),
+                    func.row_number()
+                    .over(partition_by=MarketDataModel.stock_id,
+                          order_by=MarketDataModel.date.desc())
+                    .label("rn"),
+                )
+                .where(MarketDataModel.stock_id.in_(stock_ids),
+                       MarketDataModel.date <= as_of)
+                .subquery()
+            )
+            _tr = func.greatest(
+                ranked_atr.c.high - ranked_atr.c.low,
+                func.abs(ranked_atr.c.high - ranked_atr.c.prev_close),
+                func.abs(ranked_atr.c.low - ranked_atr.c.prev_close),
+            )
+            atr_rows = self.db.execute(
+                select(
+                    ranked_atr.c.stock_id,
+                    func.avg(_tr).filter(ranked_atr.c.rn <= 14).label("atr14"),
+                    func.max(ranked_atr.c.close).filter(ranked_atr.c.rn == 1).label("last_close"),
+                    func.count().filter(ranked_atr.c.rn <= 14).label("n"),
+                )
+                .where(ranked_atr.c.rn <= 15, ranked_atr.c.prev_close.isnot(None))
+                .group_by(ranked_atr.c.stock_id)
+            ).all()
+            for r in atr_rows:
+                if r.atr14 and r.last_close and float(r.last_close) > 0 and r.n and r.n >= 10:
+                    atr_map[r.stock_id] = float(r.atr14) / float(r.last_close)  # fraction
+
         results: list[ExitRecommendation] = []
 
         for pos in positions:
@@ -182,7 +223,8 @@ class ExitMonitorService:
                 continue
 
             context = self._build_position_context(
-                pos, as_of, price_map=price_map, rank_map=rank_map, trend_map=trend_map
+                pos, as_of, price_map=price_map, rank_map=rank_map, trend_map=trend_map,
+                atr_map=atr_map,
             )
             fired_triggers = self._evaluate_triggers(pos, context, cfg, regime_posture, as_of)
 
@@ -298,6 +340,7 @@ class ExitMonitorService:
         price_map: dict | None = None,
         rank_map: dict | None = None,
         trend_map: dict | None = None,
+        atr_map: dict | None = None,
     ) -> dict:
         ctx: dict = {}
 
@@ -305,6 +348,10 @@ class ExitMonitorService:
         # or insufficient history → check_regime_change falls back to default logic.
         if trend_map:
             ctx["own_trend_intact"] = trend_map.get(pos.stock_id)
+
+        # Per-stock ATR% (fraction) for dynamic stops/trails. None when flag off.
+        if atr_map:
+            ctx["atr_pct"] = atr_map.get(pos.stock_id)
 
         if pos.entry_date:
             ctx["days_held"] = (as_of - pos.entry_date).days
@@ -440,11 +487,31 @@ class ExitMonitorService:
         stop_loss, _critical = resolve_stop_pcts(
             self.regime_repo, as_of=as_of, settings=settings
         )
+
+        # ATR-scaled dynamic stops/trails (flag-gated, daily-recomputed). atr_pct is a
+        # fraction; convert to % units. Stop tighter in bear (defensive/crisis posture).
+        _atr = ctx.get("atr_pct")
+        _atr_dyn = settings.atr_dynamic_exits_enabled and _atr is not None and _atr > 0
+        _atr_pct100 = (_atr * 100.0) if _atr_dyn else None
+
+        def _clamp(v: float, lo: float, hi: float) -> float:
+            return min(max(v, lo), hi)
+
+        if _atr_dyn:
+            _bearish = regime_posture in ("defensive", "crisis")
+            _k_stop = settings.atr_stop_mult_bear if _bearish else settings.atr_stop_mult_bull
+            stop_loss = -_clamp(_k_stop * _atr_pct100,
+                                settings.atr_stop_floor_pct, settings.atr_stop_cap_pct)
+
         # P-17: use the tighter of progressive stop vs regime stop (after day 10)
         if days_held > 10:
             stop_loss = max(stop_loss, _progressive_stop)
 
-        trailing = 5.0
+        trailing = (
+            _clamp(settings.atr_trail_mult_normal * _atr_pct100,
+                   settings.atr_trail_floor_pct, settings.atr_trail_cap_pct)
+            if _atr_dyn else 5.0
+        )
 
         # ── ADR-037 v18 Tier-1: day-5 graduation + runner tier (flag-gated) ──────
         # After the 5-day noise window, tier each surviving position:
@@ -464,12 +531,20 @@ class ExitMonitorService:
             if _green and _ranked:
                 # winner-track: hold it; replace tight analytical exits with a wide trail
                 _grad_suppress_analytical = True
-                trailing = settings.graduation_winner_trail_pct
+                trailing = (
+                    _clamp(settings.atr_trail_mult_winner * _atr_pct100,
+                           settings.atr_trail_floor_pct, settings.atr_trail_cap_pct)
+                    if _atr_dyn else settings.graduation_winner_trail_pct
+                )
                 if (settings.runner_tier_enabled
                         and _rank is not None and _rank <= settings.runner_max_rank
                         and (ctx.get("max_gain_pct") or 0) >= settings.runner_min_gain_pct):
                     _is_runner = True
-                    trailing = settings.runner_trail_pct  # let the monster ride
+                    trailing = (  # let the monster ride
+                        _clamp(settings.atr_trail_mult_runner * _atr_pct100,
+                               settings.atr_trail_floor_pct, settings.atr_trail_cap_pct)
+                        if _atr_dyn else settings.runner_trail_pct
+                    )
 
         # EOD confirmation: stop only fires if day_low breached the level AND
         # the close also confirms (stock didn't recover by EOD). This prevents
