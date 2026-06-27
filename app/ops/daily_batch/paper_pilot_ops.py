@@ -618,6 +618,11 @@ class PaperPilotOps:
         )
 
         buys_today = 0
+        # Seed the ₹10L starting capital BEFORE any cash check. The funding waterfall
+        # (cash floor + gold-yield) reads cash_balance() to size/gate each buy; without
+        # this, day-1 cash reads 0 (initial capital was only seeded lazily inside the
+        # entry path that the funding gate blocks) → every buy is skipped → zero trades.
+        self.nav_service.ensure_initial_capital(as_of_date)
         # Live slot cap (fixes over-allocation): count open NON-gold positions now and
         # cap at max_positions, incremented per entry below. `limits.can_add_position`
         # was a stale day-start snapshot — when eligibility was loose (e.g. shorter RCEE
