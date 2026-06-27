@@ -41,6 +41,18 @@ class Settings(BaseSettings):
     # supply. Default OFF preserves the full universe in every regime.
     mega_diversifier_enabled: bool = False
     mega_min_adtv_inr: float = 2_000_000_000.0   # ₹200 cr avg daily traded value
+    # Defensive regimes normally cap max_buy_per_day at 0 (sit in cash/gold), which
+    # blocks the bear-resilient mega names from EVER being bought — gold fills the
+    # slots by default (1,880 mega BUY recs → 0 equity buys in BEAR_LOW_VOL). When the
+    # diversifier is on, allow a few mega buys in bear/crisis so the book deploys
+    # liquid mega (net-positive in bear) instead of leaving the slots to gold.
+    mega_diversifier_bear_max_buy: int = 4      # defensive EQUITY slot cap (gold fills 5−4=1+)
+    mega_diversifier_crisis_max_buy: int = 2    # crisis EQUITY slot cap (gold fills 5−2=3+)
+    # Total slots are fixed at mega_diversifier_total_slots in every regime. Equity is
+    # capped per regime above; GOLD fills the RESIDUAL (total − equity held) and ALWAYS
+    # yields to buys (no floor). In bear the deploy ceiling is raised to fund all slots.
+    # Works with fast_deploy — the dynamic gold path sizes gold to the residual too.
+    mega_diversifier_total_slots: int = 5
 
     validation_high_vol_threshold: float = 0.20
 
@@ -170,6 +182,12 @@ class Settings(BaseSettings):
     gold_rotation_enabled: bool = False
     gold_symbol: str = "GOLDBEES.NS"
     gold_alloc_pct: float = 0.50   # fraction of deployable capital into gold in bear
+    # Gold ALWAYS yields to equity buys: gold is a pure residual idle-cash sleeve — it
+    # only deploys cash no equity slot wants, and sells (fully, no floor) the moment an
+    # equity BUY needs the capital. So equity slots have absolute priority in every
+    # regime and are never blocked by gold. Default OFF preserves the legacy bear floor
+    # (gold_min_pct) below which gold would NOT yield.
+    gold_yield_to_buys_enabled: bool = False
 
     # Advisory stop — creates PENDING exit + notifies owner (HITL required).
     advisory_stop_pct: float = -8.0   # unrealized % vs avg_cost; e.g. -8.0
@@ -261,11 +279,28 @@ class Settings(BaseSettings):
     # legacy fill; set 25 (COST_SLIPPAGE_BPS=25) for a realistic small-cap true-net.
     cost_slippage_bps: float = 5.0
 
+    # ── Smarter daily-OHLC fills (no intraday data needed; backtestable) ──────
+    # Replaces the flat slippage with a realistic OHLC-based fill on the NEXT session
+    # (no same-bar look-ahead). BUY/EOD-exit = median(open, (high+low)/2, (open+close)/2)
+    # — a gap-robust typical price whose dispersion stands in for slippage. Price-
+    # triggered exits (stop/trailing) fill at their trigger level (gap → open). No flat
+    # slippage is added when on. Default OFF preserves the slippage-factor fills.
+    ohlc_fills_enabled: bool = False
+
     # ── Execution realism: next-open fills (removes same-bar look-ahead) ──────
     # Default OFF = same-bar close fills (decide and fill on day D's close — not
     # executable live). ON = the day-D-close decision fills at the NEXT trading day's
     # OPEN, the first price you could actually trade at. Applies to entries AND exits.
     next_open_fills_enabled: bool = False
+
+    # ── Execution realism: entry-band LIMIT fills (price-tag gate) ────────────
+    # Each BUY rec carries a price band [entry_low, entry_high] (reference_close ±
+    # 0.5×ATR). With this ON, a BUY is treated as a limit order on the band: it fills
+    # ONLY if D+1's intraday range OVERLAPS the band (D+1_low ≤ entry_high AND
+    # D+1_high ≥ entry_low), at clamp(D+1_open, entry_low, entry_high). If D+1 gaps
+    # entirely away from the band (up = chasing, down = possibly broken), the order is
+    # SKIPPED — no chasing the signal price. Supersedes next_open for entries when on.
+    entry_band_fills_enabled: bool = False
 
     # ── Fast-deploy: refill bull/neutral slots faster (idle-cash fix) ─────────
     # In bull regimes max_buy_per_day is 2 (1 neutral), so after a batch exit the

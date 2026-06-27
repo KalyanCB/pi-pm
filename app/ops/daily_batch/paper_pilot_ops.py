@@ -179,10 +179,19 @@ class PaperPilotOps:
         if held is not None and cash < reserve:
             return _sell("GOLD_YIELD_SLOTS")
 
-        # Deploy gold_alloc_pct (80%) of the surplus cash beyond the slot reserve.
+        # Gold budget. With the mega diversifier on, size gold to the RESIDUAL slots
+        # (total − equity cap) × single-name cap × equity — 1 in defensive, 3 in crisis.
+        # Else legacy surplus share.
         if held is None:
-            deployable = max(0.0, cash - reserve)
-            budget = deployable * s.gold_alloc_pct
+            if s.mega_diversifier_enabled:
+                _cap = float(cfg.single_name_cap_pct) if cfg and cfg.single_name_cap_pct else 0.18
+                _posture = self.portfolio_service._resolve_regime_posture(as_of_date)
+                _eqcap = (s.mega_diversifier_crisis_max_buy if _posture == "crisis"
+                          else s.mega_diversifier_bear_max_buy)
+                _gslots = max(0, s.mega_diversifier_total_slots - _eqcap)  # residual slots
+                budget = min(_gslots * _cap * total_equity, cash)
+            else:
+                budget = max(0.0, cash - reserve) * s.gold_alloc_pct
             qty = int(budget / px)
             if qty <= 0:
                 return {"action": "hold", "cash": round(cash), "reserve": round(reserve)}
@@ -222,6 +231,17 @@ class PaperPilotOps:
         slot_reserve = max(0.0, float(summary.deployable_capital) - stock_value)
         floor = s.gold_min_pct * total_equity
         ceil = s.gold_max_pct * total_equity
+        # Mega diversifier: reserve ONLY equity's own slot sleeve (max_buy × cap) so gold
+        # gets the residual; gold fills up to (total − equity) slots and yields fully (no
+        # floor). This makes the bear structure exact even under fast_deploy.
+        if s.mega_diversifier_enabled and is_bear:
+            _cap = float(cfg.single_name_cap_pct) if cfg and cfg.single_name_cap_pct else 0.18
+            _posture = self.portfolio_service._resolve_regime_posture(as_of_date)
+            _eqcap = (s.mega_diversifier_crisis_max_buy if _posture == "crisis"
+                      else s.mega_diversifier_bear_max_buy)
+            slot_reserve = max(0.0, _eqcap * _cap * total_equity - stock_value)
+            floor = 0.0  # gold always yields to buys
+            ceil = max(0.0, (s.mega_diversifier_total_slots - _eqcap) * _cap * total_equity)
 
         def _sell(qty: float, reason: str) -> dict:
             qty = min(qty, float(held.quantity))
@@ -241,10 +261,12 @@ class PaperPilotOps:
         if held is not None and not is_bear and px < float(held.entry_price):
             return _sell(float(held.quantity), "GOLD_LOSS_EXIT")
 
-        # YIELD to stock buys: slots need cash → release gold (bull: all; bear: to floor)
+        # YIELD to stock buys: slots need cash → release gold. Bull: all; bear: to floor
+        # UNLESS gold_yield_to_buys_enabled, which makes gold yield fully (no bear floor).
         if held is not None and cash < slot_reserve:
             need = slot_reserve - cash
-            sellable = gold_val if not is_bear else max(0.0, gold_val - floor)
+            yield_fully = (not is_bear) or s.gold_yield_to_buys_enabled or s.mega_diversifier_enabled
+            sellable = gold_val if yield_fully else max(0.0, gold_val - floor)
             qty = int(min(need, sellable) / px)
             if qty > 0:
                 return _sell(qty, "GOLD_YIELD_SLOTS")
@@ -311,7 +333,10 @@ class PaperPilotOps:
         is_bear = regime_label.upper().startswith("BEAR")
         cfg = self.portfolio_service.get_config()
         equity = float(cfg.total_equity) if cfg else 0.0
-        floor = (s.gold_min_pct * equity) if is_bear else 0.0
+        # gold_yield_to_buys: sell gold fully to fund a buy — no bear floor retained.
+        floor = (s.gold_min_pct * equity) if (
+            is_bear and not s.gold_yield_to_buys_enabled and not s.mega_diversifier_enabled
+        ) else 0.0
         gold_val = float(held.quantity) * fill
         sellable_val = max(0.0, gold_val - floor)
         if sellable_val <= 0:
@@ -331,6 +356,56 @@ class PaperPilotOps:
             entry_type="TRADE_SELL", amount=proceeds, as_of_date=as_of_date,
             reference_type="gold_rotation", description=f"GOLD_YIELD_BUY {qty} @ {fill}")
         return proceeds
+
+    # ── Buy trace (price-tag limit-fill audit) ────────────────────────────────
+    def _ensure_buy_trace_table(self) -> None:
+        from sqlalchemy import text as _t
+        self.db.execute(_t("""
+            CREATE TABLE IF NOT EXISTS buy_trace (
+              id bigserial PRIMARY KEY,
+              as_of_date date, fill_date date, stock_id uuid, symbol text,
+              strategy text, conviction text,
+              reference_close numeric, entry_low numeric, entry_high numeric,
+              d1_open numeric, d1_high numeric, d1_low numeric, d1_close numeric,
+              decision text, reason text, fill_price numeric,
+              created_at timestamptz DEFAULT now())"""))
+
+    def _log_buy_trace(self, as_of_date, rec, el, eh, d1, decision, reason, fill_price) -> None:
+        """One row per BUY candidate evaluated — executed or skipped, with the band,
+        D+1 OHLC, decision and reason. Best-effort; never breaks the trade loop."""
+        from sqlalchemy import text as _t
+        try:
+            self.db.execute(_t("""
+                INSERT INTO buy_trace (as_of_date, fill_date, stock_id, symbol, strategy,
+                  conviction, reference_close, entry_low, entry_high,
+                  d1_open, d1_high, d1_low, d1_close, decision, reason, fill_price)
+                VALUES (:aod, :fd, :sid, (SELECT symbol FROM stocks WHERE id=:sid), :strat,
+                  :conv, :rc, :el, :eh, :o, :h, :l, :c, :dec, :rsn, :fp)"""), {
+                "aod": as_of_date, "fd": (d1.date if d1 else None), "sid": rec.stock_id,
+                "strat": getattr(rec, "strategy_name", None), "conv": rec.conviction_band,
+                "rc": float(rec.reference_close) if rec.reference_close is not None else None,
+                "el": el, "eh": eh,
+                "o": float(d1.open) if d1 and d1.open is not None else None,
+                "h": float(d1.high) if d1 and d1.high is not None else None,
+                "l": float(d1.low) if d1 and d1.low is not None else None,
+                "c": float(d1.close) if d1 and d1.close is not None else None,
+                "dec": decision, "rsn": reason, "fp": fill_price})
+        except Exception:
+            pass
+
+    def _entry_band_decision(self, d1, el, eh):
+        """Limit-fill on the rec's price band. Returns (decision, fill_price, reason).
+        Any O/H/L/C inside band → buy at lowest in-band; all above → skip (gap-up);
+        gap-down/straddle → min(open, entry_high)."""
+        if d1 is None or d1.open is None:
+            return ("SKIPPED", None, "NO_D1_DATA")
+        prices = [float(d1.open), float(d1.high), float(d1.low), float(d1.close)]
+        in_band = [p for p in prices if el <= p <= eh]
+        if all(p > eh for p in prices):
+            return ("SKIPPED", None, "PRICE_TAG_MISSED_GAPUP")
+        if in_band:
+            return ("FILLED", round(min(in_band), 4), "IN_BAND")
+        return ("FILLED", round(min(float(d1.open), eh), 4), "GAP_DOWN")
 
     # ── P-21 Trade Decision Layer ────────────────────────────────────────────
 
@@ -618,6 +693,9 @@ class PaperPilotOps:
         )
 
         buys_today = 0
+        from app.core.config import get_settings as _get_settings
+        _settings = _get_settings()
+        self._ensure_buy_trace_table()
         # Seed the ₹10L starting capital BEFORE any cash check. The funding waterfall
         # (cash floor + gold-yield) reads cash_balance() to size/gate each buy; without
         # this, day-1 cash reads 0 (initial capital was only seeded lazily inside the
@@ -707,14 +785,28 @@ class PaperPilotOps:
                             })
                             continue
 
-                # ── Funding waterfall (cash floor + gold yields to buys) ──────────
-                # Size to the concentration target (same compute_allocation the
-                # execution uses), then verify it can be PAID FOR: cash first, then
-                # sell gold down to its 25% bear floor. If still short → SKIP. Never
-                # buy on margin: this floors cash at 0 and removes the negative-cash
-                # leverage. Per-position, in priority order, so 4-5 eligible buys each
-                # get funded until the money runs out.
                 from sqlalchemy import text as _ctext
+                # ── Entry-band LIMIT gate (price-tag) + buy trace ─────────────────
+                # Treat the BUY as a limit order on the rec's band [entry_low, entry_high]
+                # (= reference_close ± 0.5×ATR). Fill only if D+1 trades in/below the band;
+                # gap-up (all O/H/L/C above the band) → SKIP. Every candidate is traced.
+                _d1 = self.db.execute(_ctext(
+                    "SELECT date, open, high, low, close FROM market_data "
+                    "WHERE stock_id=:s AND date>:d AND source='kite' ORDER BY date LIMIT 1"),
+                    {"s": rec.stock_id, "d": as_of_date}).fetchone()
+                _el = float(rec.entry_low) if rec.entry_low is not None else None
+                _eh = float(rec.entry_high) if rec.entry_high is not None else None
+                _band_fill = None
+                if _settings.entry_band_fills_enabled and _el is not None and _eh is not None:
+                    _dec, _band_fill, _rsn = self._entry_band_decision(_d1, _el, _eh)
+                    if _dec == "SKIPPED":
+                        self._log_buy_trace(as_of_date, rec, _el, _eh, _d1, "SKIPPED", _rsn, None)
+                        skipped.append({"recommendation_id": str(rec.id), "action": "entry", "reason": _rsn})
+                        continue
+
+                # ── Funding waterfall (cash floor + gold yields to buys) ──────────
+                # Size to the concentration target, verify it can be PAID FOR: cash first,
+                # then sell gold to its 25% bear floor. If still short → SKIP (no margin).
                 _latest = self.db.execute(_ctext(
                     "SELECT close FROM market_data WHERE stock_id=:s AND date<=:d "
                     "ORDER BY date DESC LIMIT 1"), {"s": rec.stock_id, "d": as_of_date}).scalar()
@@ -727,6 +819,7 @@ class PaperPilotOps:
                     if _cash < _need:
                         _cash += self._raise_cash_from_gold(_need - _cash, as_of_date, _regime_label)
                     if _cash < _need:
+                        self._log_buy_trace(as_of_date, rec, _el, _eh, _d1, "SKIPPED", "INSUFFICIENT_CASH", None)
                         skipped.append({
                             "recommendation_id": str(rec.id), "action": "entry",
                             "reason": f"INSUFFICIENT_CASH: need {_need:.0f} > cash {_cash:.0f} (gold at floor)"})
@@ -744,7 +837,9 @@ class PaperPilotOps:
                     entries.append(str(order.id))
                     buys_today += 1
                     _open_slots += 1  # live slot cap — count this new position
+                    self._log_buy_trace(as_of_date, rec, _el, _eh, _d1, "FILLED", _band_fill and "IN_BAND/GAP_DOWN" or "EXECUTED", _band_fill)
                 except Exception as exc:
+                    self._log_buy_trace(as_of_date, rec, _el, _eh, _d1, "SKIPPED", f"EXEC_ERROR: {str(exc)[:60]}", None)
                     skipped.append({
                         "recommendation_id": str(rec.id),
                         "action": "entry",

@@ -86,7 +86,11 @@ class PaperTradeService:
             return existing
 
         fill_date = as_of_date or date.today()
-        fill_price, last_close = self._fill_price(result.stock_id, fill_date, side="BUY")
+        fill_price, last_close = self._fill_price(
+            result.stock_id, fill_date, side="BUY",
+            entry_low=float(result.entry_low) if result.entry_low is not None else None,
+            entry_high=float(result.entry_high) if result.entry_high is not None else None,
+        )
 
         # Compute quantity from portfolio allocation
         try:
@@ -134,6 +138,7 @@ class PaperTradeService:
                 "reason_codes": result.reason_codes,
                 "last_close": last_close,
                 "slippage_bps": 5.0,
+                **self._fill_meta(),
             },
         )
         self.db.add(trade)
@@ -214,6 +219,23 @@ class PaperTradeService:
         except Exception:
             return 20.0
 
+    def _fill_meta(self) -> dict:
+        """Realistic-fill diagnostics for the most recent ``_fill_price`` call, to be
+        merged into the trade metadata. Empty (→ no metadata change) when realistic
+        fills are off or intraday data was unavailable, so the legacy path is identical.
+        """
+        q = getattr(self, "_last_fill_quote", None)
+        if q is None:
+            return {}
+        return {
+            "fill_model": {
+                "vwap": q.ref_price,
+                "impact_bps": q.impact_bps,
+                "participation_pct": round(q.participation * 100.0, 4),
+                "fill_ts": q.fill_ts.isoformat(),
+            }
+        }
+
     def _leg_cost(self, trade_value: float, side: str) -> float:
         """P-24: per-leg transaction cost (₹). When ``transaction_costs_enabled``,
         models the NSE delivery-equity stack (STT + stamp + exchange txn + SEBI +
@@ -286,6 +308,7 @@ class PaperTradeService:
                 "exit_reason_codes": result.reason_codes,
                 "last_close": last_close,
                 "slippage_bps": 5.0,
+                **self._fill_meta(),
             },
         )
         self.db.add(trade)
@@ -385,7 +408,10 @@ class PaperTradeService:
             raise ValueError(f"No open position for stock {stock_id}")
 
         fill_date = as_of_date
-        fill_price, last_close = self._fill_price(stock_id, fill_date, side="SELL")
+        # Position is known here → pass notional so the realistic-fill impact model
+        # scales by participation (order size vs ADV). No-op when realistic fills off.
+        _ov = float(pos.quantity) * float(pos.avg_cost) if pos and pos.avg_cost else None
+        fill_price, last_close = self._fill_price(stock_id, fill_date, side="SELL", order_value=_ov)
         quantity = float(pos.quantity)
 
         primary_trigger = _primary_exit_reason(exit_triggers)
@@ -423,6 +449,7 @@ class PaperTradeService:
                 ),
                 "last_close": last_close,
                 "slippage_bps": 5.0,
+                **self._fill_meta(),
             },
         )
         self.db.add(trade)
@@ -490,15 +517,76 @@ class PaperTradeService:
         self.db.flush()
         return trade
 
-    def _fill_price(self, stock_id: UUID, fill_date: date, side: str) -> tuple[float, float]:
+    def _fill_price(
+        self,
+        stock_id: UUID,
+        fill_date: date,
+        side: str,
+        order_value: float | None = None,
+        entry_low: float | None = None,
+        entry_high: float | None = None,
+    ) -> tuple[float, float]:
         """Return (fill_price_with_slippage, ref_price).
 
         Default: fills at ``fill_date``'s close (same-bar).
         Execution-realism (``next_open_fills_enabled``): the decision is made on the
         fill_date close, but the order can only execute on the NEXT trading day's OPEN —
         removing the same-bar look-ahead (you can't observe the close and trade at it).
+        Realistic fills (``realistic_fills_enabled``): fill at the next session's
+        intraday VWAP with a size-vs-ADV market-impact cost (``order_value`` drives the
+        participation). Falls back to next-open/close when intraday data is missing.
         Falls back to the close fill when there is no next bar (e.g. the final day).
         """
+        self._last_fill_quote = None
+
+        # Entry-band LIMIT fill (price-tag): a BUY is a limit on the rec's band. Fill at
+        # the lowest of D+1's O/H/L/C that lands IN the band; else (gap-down/straddle —
+        # gap-up is gated upstream in the pilot) at min(open, entry_high). No extra
+        # slippage — the band dispersion IS the cost model.
+        if (side == "BUY" and self.settings.entry_band_fills_enabled
+                and entry_low is not None and entry_high is not None):
+            nxt = self.market_data_repo.get_first_bar_after(stock_id, fill_date)
+            if nxt is not None and nxt.open is not None:
+                o = float(nxt.open)
+                prices = [o,
+                          float(nxt.high) if nxt.high is not None else o,
+                          float(nxt.low) if nxt.low is not None else o,
+                          float(nxt.close) if nxt.close is not None else o]
+                in_band = [p for p in prices if entry_low <= p <= entry_high]
+                ref = min(in_band) if in_band else min(o, float(entry_high))
+                return round(ref, 4), ref
+
+        if self.settings.ohlc_fills_enabled:
+            # Smarter daily-OHLC fill: execute on the NEXT session (no same-bar look-
+            # ahead) at a gap-robust typical price — median(open, (high+low)/2,
+            # (open+close)/2). The OHLC dispersion stands in for slippage; none is added.
+            # (Stop/trailing exits fill at their trigger via _stop_capped_fill.)
+            import statistics
+            nxt = self.market_data_repo.get_first_bar_after(stock_id, fill_date)
+            if nxt is None or nxt.open is None:   # final day → last close on/before fill_date
+                _b = self.market_data_repo.get_by_stock_and_date_range(
+                    stock_id, end_date=fill_date, limit=1)
+                if not _b:
+                    raise ValueError(f"No market data for stock {stock_id} on or before {fill_date}")
+                _c = float(_b[0].close)
+                return round(_c, 4), _c
+            o = float(nxt.open)
+            h = float(nxt.high) if nxt.high is not None else o
+            l = float(nxt.low) if nxt.low is not None else o
+            c = float(nxt.close) if nxt.close is not None else o
+            fill = statistics.median([o, (h + l) / 2.0, (o + c) / 2.0])
+            return round(fill, 4), o
+
+        if self.settings.realistic_fills_enabled:
+            from app.services.intraday_fill_service import IntradayFillService
+
+            quote = IntradayFillService(self.db, self.settings).resolve_fill(
+                stock_id, fill_date, side, order_value=order_value
+            )
+            if quote is not None:
+                self._last_fill_quote = quote
+                return quote.fill_price, quote.ref_price
+
         slip = self.settings.cost_slippage_bps / 10_000.0  # configurable (default 5 bps)
         slippage_factor = (1.0 + slip) if side == "BUY" else (1.0 - slip)
 
@@ -543,7 +631,8 @@ class PaperTradeService:
         if day_low > stop_level:
             return None  # stop not breached intraday — keep normal fill
         fill = min(day_open, stop_level)  # slide → stop level; gap → open
-        slip = self.settings.cost_slippage_bps / 10_000.0  # configurable (default 5 bps)
+        # OHLC fills: the stop level IS the fill (no slippage add-on).
+        slip = 0.0 if self.settings.ohlc_fills_enabled else self.settings.cost_slippage_bps / 10_000.0
         return round(fill * (1.0 - slip), 4)    # sell slippage
 
     def _make_idem_key(self, action: str, result_id: UUID) -> str:
