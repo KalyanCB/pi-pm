@@ -397,18 +397,22 @@ class PaperPilotOps:
             pass
 
     def _entry_band_decision(self, d1, el, eh):
-        """Limit-fill on the rec's price band. Returns (decision, fill_price, reason).
-        Any O/H/L/C inside band → buy at lowest in-band; all above → skip (gap-up);
-        gap-down/straddle → min(open, entry_high)."""
+        """Limit-fill on the rec's band [entry_low, entry_high]. Realistic limit-order
+        fill (NOT the day's low — that over-captured ~1.15% vs next-open):
+          - gap-up (D+1 low > entry_high, never reached band) → SKIP
+          - else → fill at min(D+1 open, entry_high): you transact at the OPEN if it's
+            already at/below your limit (in-band or gap-down/cheaper), else at ENTRY_HIGH
+            when the price dips into the band intraday.
+        Returns (decision, fill_price, reason)."""
         if d1 is None or d1.open is None:
             return ("SKIPPED", None, "NO_D1_DATA")
-        prices = [float(d1.open), float(d1.high), float(d1.low), float(d1.close)]
-        in_band = [p for p in prices if el <= p <= eh]
-        if all(p > eh for p in prices):
+        o = float(d1.open)
+        lo = float(d1.low) if d1.low is not None else o
+        if lo > eh:  # gap-up — band never reached
             return ("SKIPPED", None, "PRICE_TAG_MISSED_GAPUP")
-        if in_band:
-            return ("FILLED", round(min(in_band), 4), "IN_BAND")
-        return ("FILLED", round(min(float(d1.open), eh), 4), "GAP_DOWN")
+        fill = round(min(o, eh), 4)
+        reason = "IN_BAND" if el <= fill <= eh else ("GAP_DOWN" if fill < el else "LIMIT_TOUCH")
+        return ("FILLED", fill, reason)
 
     # ── P-21 Trade Decision Layer ────────────────────────────────────────────
 

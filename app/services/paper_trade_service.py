@@ -547,13 +547,10 @@ class PaperTradeService:
                 and entry_low is not None and entry_high is not None):
             nxt = self.market_data_repo.get_first_bar_after(stock_id, fill_date)
             if nxt is not None and nxt.open is not None:
-                o = float(nxt.open)
-                prices = [o,
-                          float(nxt.high) if nxt.high is not None else o,
-                          float(nxt.low) if nxt.low is not None else o,
-                          float(nxt.close) if nxt.close is not None else o]
-                in_band = [p for p in prices if entry_low <= p <= entry_high]
-                ref = min(in_band) if in_band else min(o, float(entry_high))
+                # Realistic limit fill (gap-up already gated upstream in the pilot):
+                # transact at the OPEN if it's at/below the limit, else at ENTRY_HIGH
+                # when it dips in. NOT the day's low (that over-captured the range).
+                ref = min(float(nxt.open), float(entry_high))
                 return round(ref, 4), ref
 
         if self.settings.ohlc_fills_enabled:
