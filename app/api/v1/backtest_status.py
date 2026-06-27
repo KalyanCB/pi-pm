@@ -59,6 +59,19 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
     trades = db.execute(text("SELECT COUNT(*) FROM paper_trades")).scalar() or 0
     rankings = db.execute(text("SELECT COUNT(*) FROM ranking_results")).scalar() or 0
 
+    # Starting capital — read the ACTUAL seeded amount, not a hardcoded constant.
+    # (The config can be ₹10L or ₹1cr; a fixed divisor showed bogus 900%+ returns.)
+    initial_capital = float(
+        db.execute(text(
+            "SELECT amount FROM portfolio_cash_ledger WHERE entry_type='INITIAL_CAPITAL' "
+            "ORDER BY as_of_date LIMIT 1"
+        )).scalar()
+        or db.execute(text(
+            "SELECT total_equity FROM portfolio_configs WHERE is_active LIMIT 1"
+        )).scalar()
+        or _INITIAL_CAPITAL
+    )
+
     # Foreground/background split (replay_fast): the FOREGROUND ranks only the active
     # (regime-gated) strategy each day → distinct as_of_date == trade-days done. The
     # BACKGROUND fills the other 3 strategies for research (lagging). A day is fully
@@ -75,12 +88,12 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
 
     if nav is not None:
         equity = float(nav.total_equity)
-        ret = (equity / _INITIAL_CAPITAL - 1) * 100
+        ret = (equity / initial_capital - 1) * 100
         nav_date = nav.as_of_date
         positions = nav.open_positions
         regime = nav.regime_label or "—"
     else:
-        equity, ret, nav_date, positions, regime = _INITIAL_CAPITAL, 0.0, None, 0, "—"
+        equity, ret, nav_date, positions, regime = initial_capital, 0.0, None, 0, "—"
 
     if cur_date is None:
         phase = "Not started"
