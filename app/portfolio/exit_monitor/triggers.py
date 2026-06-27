@@ -119,7 +119,14 @@ def check_regime_change(
         if unrealized_pnl_pct is None and current_rank is None:
             fired = True
         elif intra_bear_hold and entered_defensive:
-            fired = weak_pnl
+            # Entered defensive AND still defensive == NO regime change (a genuine
+            # escalation to `crisis` already exited above). EXIT_REGIME is a regime-
+            # *change* signal, so within an unchanged bear it must NOT fire. The old
+            # `fired = weak_pnl` made this a 0%-threshold daily stop, guillotining
+            # transient dips: 218 BEAR_LOW cuts sold at -0.9% then drifted +2.3%/10d
+            # (60% recovered). Hold through the intra-bear noise; genuine failures are
+            # caught by stop-loss (-2% in defensive) / rank-drop / alpha-decay.
+            fired = False
         elif per_stock_trend_hold and own_trend_intact and not weak_pnl:
             # Own trend intact + not losing → hold through the defensive flip; a
             # mere relative rank-slip no longer forces a market-sell of a winner.
