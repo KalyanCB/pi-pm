@@ -84,6 +84,38 @@ def test_regime_risk_on_no_fire():
     assert r.fired is False
 
 
+# ── intra_bear_hold guard tests (ec8f6bb): hold the dip, but DON'T over-suppress ──
+def test_intra_bear_holds_dip_in_unchanged_regime():
+    # entered defensive AND still defensive == no regime CHANGE → a transient dip
+    # must NOT be cut (218 such cuts sold -0.9% then recovered +2.3%/10d).
+    r = check_regime_change("defensive", "defensive", unrealized_pnl_pct=-0.9,
+                            current_rank=5, intra_bear_hold=True)
+    assert r.fired is False
+
+
+def test_intra_bear_does_not_block_crisis():
+    # GUARD: escalation to crisis still ALWAYS exits, even a bear-entered name.
+    r = check_regime_change("crisis", "defensive", unrealized_pnl_pct=-0.9,
+                            current_rank=5, intra_bear_hold=True)
+    assert r.fired is True
+
+
+def test_intra_bear_does_not_suppress_real_downgrade():
+    # GUARD: a GENUINE regime change (bull-entered → defensive) still cuts a weak
+    # name. The hold applies ONLY to bear-entered (entered_defensive) positions.
+    r = check_regime_change("defensive", "risk_on", unrealized_pnl_pct=-2.0,
+                            current_rank=5, intra_bear_hold=True)
+    assert r.fired is True
+
+
+def test_intra_bear_off_restores_legacy_cut():
+    # Sanity: flag off → the bear-entered dip is cut again (old weak_pnl behavior),
+    # proving the hold is gated solely by the flag and changes nothing else.
+    r = check_regime_change("defensive", "defensive", unrealized_pnl_pct=-0.9,
+                            current_rank=5, intra_bear_hold=False)
+    assert r.fired is True
+
+
 def test_time_stop_fires():
     r = check_time_stop(days_held=30, max_holding_days=30)
     assert r.fired is True
