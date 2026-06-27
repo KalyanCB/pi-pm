@@ -9,22 +9,24 @@ FOREGROUND (sync, trade-critical → BYTE-IDENTICAL paper-trade records):
   one produces the same recs and the same trades as the all-4 replay.
 
 BACKGROUND (async, research, OFF the critical path):
-  the OTHER 3 strategies' ranking + validation + factor-IC, on a thread pool. Never
-  blocks the trade loop, never writes trade state (no recommendations, no portfolio).
-  factor-IC stays throttled (pure research). The trades are ready when the FOREGROUND
-  finishes; the research drains afterward.
+  the OTHER 3 strategies' ranking + validation + factor-IC, on a PROCESS pool (true
+  multi-core — sidesteps the GIL that caps a single process at one core; the box has
+  idle cores). Never blocks the trade loop, never writes trade state (no recs, no
+  portfolio). The bar store is shared with workers via fork copy-on-write (no re-load).
+  Trades are ready when the FOREGROUND finishes; the research drains afterward.
 
 Env:
-  BG_WORKERS=2          background research worker threads
+  BG_WORKERS=2          background research worker PROCESSES (4-core box: 2 ideal)
   FACTOR_IC_CADENCE=21  factor-IC cadence (research only)
 Requires: MARKET_DATA_PROVIDER=kite, REGIME_DYNAMIC_STOPS_ENABLED=true, TIME_STOP_ENABLED=false
 """
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 
 sys.path.insert(0, ".")
@@ -49,7 +51,7 @@ from app.db.repositories.research_intelligence_repository import (
     ResearchIntelligenceRunRepository,
 )
 from app.db.repositories.stock_repository import StockRepository
-from app.db.session import get_session_factory
+from app.db.session import dispose_engine, get_session_factory
 from app.market_data.cache import GlobalBarStore
 from app.schemas.daily_batch import (
     DailyBatchPhaseFlags,
@@ -88,6 +90,19 @@ _ALL_STRATEGIES = [
     RANKING_STRATEGY_REVERSAL_V1,
     RANKING_STRATEGY_LOW_VOL_V1,
 ]
+
+# Background runs in separate PROCESSES (true multi-core — sidesteps the GIL that caps
+# a single process at one core). The preloaded bar store is shared with the workers via
+# fork copy-on-write (no re-load, no pickling): the parent sets _GLOBAL_STORE before the
+# pool forks, the workers read it. Each worker disposes the inherited DB engine on start
+# (_proc_init) so it opens its OWN connections — fork-safe SQLAlchemy.
+_GLOBAL_STORE: GlobalBarStore | None = None
+
+
+def _proc_init() -> None:
+    """Background worker startup: drop the DB engine inherited across fork so this
+    process creates fresh connections (sharing a forked engine corrupts the pool)."""
+    dispose_engine()
 
 
 def _spec(name: str) -> DailyBatchStrategySpec:
@@ -175,13 +190,14 @@ def run_foreground(day: date, paper_trade: bool, global_store) -> tuple[str, str
         db.close()
 
 
-def run_background(day: date, active: str, factor_ic_day: bool, global_store) -> None:
-    """Research only, async. The OTHER 3 strategies' ranking+validation + factor-IC.
-    No recommendations, no portfolio — never touches trade state."""
+def run_background(day: date, active: str, factor_ic_day: bool) -> None:
+    """Research only, runs in a background PROCESS. The OTHER 3 strategies' ranking +
+    validation + factor-IC. No recommendations, no portfolio — never touches trade
+    state. Reads the fork-inherited _GLOBAL_STORE (not passed, to avoid pickling it)."""
     db = get_session_factory()()
     try:
         others = [_spec(n) for n in _ALL_STRATEGIES if n != active]
-        batch_svc = _build_batch_service(db, global_store)
+        batch_svc = _build_batch_service(db, _GLOBAL_STORE)
         request = _base_request(
             day, others,
             DailyBatchPhaseFlags(
@@ -246,7 +262,16 @@ def main() -> int:
     finally:
         pdb.close()
 
-    executor = ThreadPoolExecutor(max_workers=BG_WORKERS, thread_name_prefix="bg-research")
+    # Publish the bar store to the module global so forked background PROCESSES inherit
+    # it via copy-on-write (shared, read-only — no per-worker re-load or pickling).
+    global _GLOBAL_STORE
+    _GLOBAL_STORE = global_store
+
+    executor = ProcessPoolExecutor(
+        max_workers=BG_WORKERS,
+        mp_context=mp.get_context("fork"),  # fork → inherit _GLOBAL_STORE; 3.13 default
+        initializer=_proc_init,             # fresh DB engine per worker (fork-safe)
+    )
     bg_futures: list = []
     errors: list[str] = []
     t0 = time.perf_counter()
@@ -262,7 +287,7 @@ def main() -> int:
             continue
         # Off-critical-path research (async). Submitted AFTER the active ranking is
         # committed, so factor-IC sees all 4 strategies.
-        bg_futures.append(executor.submit(run_background, day, active, factor_ic_day, global_store))
+        bg_futures.append(executor.submit(run_background, day, active, factor_ic_day))
         bg_futures = [f for f in bg_futures if not f.done()]  # prune
 
         elapsed = time.perf_counter() - t0
