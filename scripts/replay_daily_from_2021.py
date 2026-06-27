@@ -65,6 +65,12 @@ PAPER_TRADE_FROM = date(2021, 1, 1)
 # NOT gate the paper trades (trading uses rankings/validation/expectancy), so run it
 # only every FACTOR_IC_CADENCE trading days. Env-overridable; 0 disables entirely.
 FACTOR_IC_CADENCE = int(os.getenv("FACTOR_IC_CADENCE", "21"))
+# RCEE validation is the OTHER expanding-window analytic — it recomputes over the
+# fixed holdout from START_DATE (2018) EVERY day, growing as the run progresses. It
+# feeds recommendation CONVICTION (slow-moving), not a hard trade gate, and recs read
+# the LATEST completed validation (list_completed_with_runs) — so throttle it and the
+# in-between days reuse the most recent edge. ~5 cuts the validation cost 5x.
+VALIDATION_CADENCE = int(os.getenv("VALIDATION_CADENCE", "5"))
 BENCHMARK = "^NSEI"
 UNIVERSE = "NIFTY_1000"
 
@@ -194,6 +200,9 @@ def main() -> int:
         paper_trade = day >= PAPER_TRADE_FROM
         # Throttle the O(n^2) factor-IC analytics (see FACTOR_IC_CADENCE note above).
         factor_ic_day = FACTOR_IC_CADENCE > 0 and (i % FACTOR_IC_CADENCE == 0)
+        # Throttle the expanding RCEE validation (see VALIDATION_CADENCE note above).
+        # Always validate on day 1 to seed; then every VALIDATION_CADENCE days.
+        validation_day = VALIDATION_CADENCE <= 1 or i == 1 or (i % VALIDATION_CADENCE == 0)
         db = get_session_factory()()
         try:
             batch_svc = _build_batch_service(db, global_store)
@@ -212,7 +221,7 @@ def main() -> int:
                 phases=DailyBatchPhaseFlags(
                     ingest=False,
                     rankings=True,
-                    validation=True,
+                    validation=validation_day,    # throttled: every VALIDATION_CADENCE days
                     recommendations=True,
                     regime_history=True,
                     regime_performance=True,
