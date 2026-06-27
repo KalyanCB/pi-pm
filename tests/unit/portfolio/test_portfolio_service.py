@@ -181,17 +181,19 @@ def test_recompute_weights_seed_fallback_when_no_nav():
 # ── Regime slot enforcement (AC-PE-02) ────────────────────────────────────────
 
 
-def test_risk_on_allows_8_positions():
+def test_risk_on_allows_5_positions():
+    # 5-name concentration: risk_on capped at 5 slots (was 8)
     svc = _make_svc(regime="risk_on")
     limits = svc.get_limits()
-    assert limits.max_positions == 8
+    assert limits.max_positions == 5
     assert limits.max_buy_per_day == 2
 
 
-def test_neutral_allows_6_positions():
+def test_neutral_allows_5_positions():
+    # 5-name concentration: neutral capped at 5 slots (was 6)
     svc = _make_svc(regime="neutral")
     limits = svc.get_limits()
-    assert limits.max_positions == 6
+    assert limits.max_positions == 5
     assert limits.max_buy_per_day == 1
 
 
@@ -224,10 +226,10 @@ def test_portfolio_full_blocks_buy():
 def test_allocation_high_conviction():
     svc = _make_svc(regime="neutral")
     alloc = svc.compute_allocation("HIGH", last_price=1000.0)
-    # deployable=850K, max_slots=6 → slot_budget=141,666
-    # HIGH weight=1.0 → position_notional=141,666
+    # deployable=850K, max_slots=5 (5-name concentration) → slot_budget=170,000
+    # HIGH weight=1.0 → position_notional=170,000
     assert alloc.conviction_weight == pytest.approx(1.0)
-    assert alloc.slot_budget == pytest.approx(850_000 / 6, rel=0.01)
+    assert alloc.slot_budget == pytest.approx(850_000 / 5, rel=0.01)
     assert alloc.position_notional == pytest.approx(alloc.slot_budget)
     assert alloc.quantity_estimate == pytest.approx(alloc.position_notional / 1000.0, rel=0.01)
 

@@ -279,6 +279,59 @@ class PaperPilotOps:
             reference_type="gold_rotation", description=f"GOLD BUY {qty} @ {fill}")
         return {"action": "GOLD_BUY", "qty": qty, "price": fill, "budget": round(budget)}
 
+    def _raise_cash_from_gold(self, need: float, as_of_date: date, regime_label: str) -> float:
+        """Sell GOLD to fund a stock buy when cash is short. Returns cash raised.
+
+        Funding waterfall (per-trade): bull → gold is fully sellable; bear → only the
+        amount ABOVE the 25% gold floor (gold_min_pct*equity) may be sold, keeping the
+        bear hedge intact. No-op if gold is disabled / not held / already at the floor.
+        """
+        from app.core.config import get_settings
+        from sqlalchemy import text as _text
+        s = get_settings()
+        if need <= 0 or not s.gold_rotation_enabled:
+            return 0.0
+        gold = self.db.execute(_text("SELECT id FROM stocks WHERE symbol=:sym"),
+                               {"sym": s.gold_symbol}).fetchone()
+        if not gold:
+            return 0.0
+        gold_id = gold[0]
+        held = self.db.scalar(select(PortfolioPosition).where(
+            PortfolioPosition.stock_id == gold_id,
+            PortfolioPosition.is_current.is_(True),
+            PortfolioPosition.position_status == "OPEN"))
+        if held is None:
+            return 0.0
+        px = self.db.execute(_text(
+            "SELECT close FROM market_data WHERE stock_id=:s AND date<=:d ORDER BY date DESC LIMIT 1"),
+            {"s": gold_id, "d": as_of_date}).scalar()
+        if not px:
+            return 0.0
+        fill = round(float(px) * 0.9995, 4)        # 5bps sell slippage (matches sleeve)
+        is_bear = regime_label.upper().startswith("BEAR")
+        cfg = self.portfolio_service.get_config()
+        equity = float(cfg.total_equity) if cfg else 0.0
+        floor = (s.gold_min_pct * equity) if is_bear else 0.0
+        gold_val = float(held.quantity) * fill
+        sellable_val = max(0.0, gold_val - floor)
+        if sellable_val <= 0:
+            return 0.0
+        # Sell just enough to cover `need` (+1 unit for rounding), capped at the floor.
+        qty = min(int(need / fill) + 1, int(sellable_val / fill))
+        if qty <= 0:
+            return 0.0
+        proceeds = qty * fill
+        if qty >= float(held.quantity) - 1e-9:
+            self.portfolio_service.close_position(
+                gold_id, exit_price=fill, exit_date=as_of_date, exit_reason="GOLD_YIELD_BUY")
+        else:
+            held.quantity = float(held.quantity) - qty
+            self.db.flush()
+        self.nav_service.record_cash_entry(
+            entry_type="TRADE_SELL", amount=proceeds, as_of_date=as_of_date,
+            reference_type="gold_rotation", description=f"GOLD_YIELD_BUY {qty} @ {fill}")
+        return proceeds
+
     # ── P-21 Trade Decision Layer ────────────────────────────────────────────
 
     def _get_expectancy_provider(self, as_of_date: date) -> RankBucketExpectancyProvider:
@@ -648,6 +701,31 @@ class PaperPilotOps:
                                 "reason": f"LOW_VOLUME_ENTRY: {float(_vol_row[0]):.0f} < 70% of {float(_vol_row[1]):.0f}",
                             })
                             continue
+
+                # ── Funding waterfall (cash floor + gold yields to buys) ──────────
+                # Size to the concentration target (same compute_allocation the
+                # execution uses), then verify it can be PAID FOR: cash first, then
+                # sell gold down to its 25% bear floor. If still short → SKIP. Never
+                # buy on margin: this floors cash at 0 and removes the negative-cash
+                # leverage. Per-position, in priority order, so 4-5 eligible buys each
+                # get funded until the money runs out.
+                from sqlalchemy import text as _ctext
+                _latest = self.db.execute(_ctext(
+                    "SELECT close FROM market_data WHERE stock_id=:s AND date<=:d "
+                    "ORDER BY date DESC LIMIT 1"), {"s": rec.stock_id, "d": as_of_date}).scalar()
+                if _latest:
+                    _alloc = self.portfolio_service.compute_allocation(
+                        conviction_band=rec.conviction_band or "MEDIUM",
+                        last_price=float(_latest), as_of_date=as_of_date)
+                    _need = float(_alloc.position_notional) * 1.005  # + fee/slippage buffer
+                    _cash = self.nav_service.cash_balance()
+                    if _cash < _need:
+                        _cash += self._raise_cash_from_gold(_need - _cash, as_of_date, _regime_label)
+                    if _cash < _need:
+                        skipped.append({
+                            "recommendation_id": str(rec.id), "action": "entry",
+                            "reason": f"INSUFFICIENT_CASH: need {_need:.0f} > cash {_cash:.0f} (gold at floor)"})
+                        continue
 
                 try:
                     approval_id = self._latest_approval_id(rec.id)
