@@ -46,6 +46,19 @@ class MarketDataRepository:
             stmt = stmt.limit(limit)
         return list(self.db.scalars(stmt).all())
 
+    def get_first_bar_after(
+        self, stock_id: UUID, after_date: date, source: str | None = None
+    ) -> MarketData | None:
+        """First bar strictly AFTER ``after_date`` (the next trading day). Used by
+        next-open execution-realism fills."""
+        stmt = select(MarketData).where(
+            MarketData.stock_id == stock_id, MarketData.date > after_date
+        )
+        if source is not None:
+            stmt = stmt.where(MarketData.source == source)
+        stmt = stmt.order_by(MarketData.date.asc()).limit(1)
+        return self.db.scalars(stmt).first()
+
     def get_latest_market_data(
         self,
         stock_id: UUID,

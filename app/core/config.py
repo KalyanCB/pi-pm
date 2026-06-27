@@ -248,6 +248,12 @@ class Settings(BaseSettings):
     # legacy fill; set 25 (COST_SLIPPAGE_BPS=25) for a realistic small-cap true-net.
     cost_slippage_bps: float = 5.0
 
+    # ── Execution realism: next-open fills (removes same-bar look-ahead) ──────
+    # Default OFF = same-bar close fills (decide and fill on day D's close — not
+    # executable live). ON = the day-D-close decision fills at the NEXT trading day's
+    # OPEN, the first price you could actually trade at. Applies to entries AND exits.
+    next_open_fills_enabled: bool = False
+
     # ── Fast-deploy: refill bull/neutral slots faster (idle-cash fix) ─────────
     # In bull regimes max_buy_per_day is 2 (1 neutral), so after a batch exit the
     # book refills only a trickle/day → ~40% idle cash in bull years against 20+

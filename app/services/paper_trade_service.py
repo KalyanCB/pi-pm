@@ -491,15 +491,29 @@ class PaperTradeService:
         return trade
 
     def _fill_price(self, stock_id: UUID, fill_date: date, side: str) -> tuple[float, float]:
-        """Return (fill_price_with_slippage, last_close) on or before fill_date."""
+        """Return (fill_price_with_slippage, ref_price).
+
+        Default: fills at ``fill_date``'s close (same-bar).
+        Execution-realism (``next_open_fills_enabled``): the decision is made on the
+        fill_date close, but the order can only execute on the NEXT trading day's OPEN —
+        removing the same-bar look-ahead (you can't observe the close and trade at it).
+        Falls back to the close fill when there is no next bar (e.g. the final day).
+        """
+        slip = self.settings.cost_slippage_bps / 10_000.0  # configurable (default 5 bps)
+        slippage_factor = (1.0 + slip) if side == "BUY" else (1.0 - slip)
+
+        if self.settings.next_open_fills_enabled:
+            nxt = self.market_data_repo.get_first_bar_after(stock_id, fill_date)
+            if nxt is not None and nxt.open is not None:
+                ref = float(nxt.open)
+                return round(ref * slippage_factor, 4), ref
+
         bars = self.market_data_repo.get_by_stock_and_date_range(
             stock_id, end_date=fill_date, limit=1
         )
         if not bars:
             raise ValueError(f"No market data for stock {stock_id} on or before {fill_date}")
         last_close = float(bars[0].close)
-        slip = self.settings.cost_slippage_bps / 10_000.0  # configurable (default 5 bps)
-        slippage_factor = (1.0 + slip) if side == "BUY" else (1.0 - slip)
         return round(last_close * slippage_factor, 4), last_close
 
     def _stop_capped_fill(
