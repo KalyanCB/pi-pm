@@ -400,7 +400,17 @@ class DailyBatchService:
             # Runs whenever phases.portfolio=true, independent of paper pilot
             # and HITL gate. This closes the gap where HITL_ENABLED=true
             # silently skipped exit monitoring (ADR-033 implementation gap #3).
-            if request.phases.portfolio and request.portfolio_phases.exit_monitor:
+            # Pre-run the exit monitor here ONLY for the UI / HITL (non-executing) path.
+            # When the paper pilot will AUTO-EXECUTE, it runs the exit monitor in PHASES
+            # (signal pre-buy, price post-buy on D-day OHLC), so skip this single pre-run
+            # to avoid a double / mis-sequenced pass that rolls the day back.
+            from app.ops.hitl.gate import HITLGate as _HITLGate
+            _pilot_will_execute = (
+                request.phases.recommendations and request.phases.portfolio
+                and _HITLGate.from_settings().should_execute_paper_trades
+            )
+            if (request.phases.portfolio and request.portfolio_phases.exit_monitor
+                    and not _pilot_will_execute):
                 self._set_phase(run, "exit_monitor", base_pct)
                 from app.portfolio.exit_monitor.service import ExitMonitorService
                 t2_monitor = ExitMonitorService(self.db)

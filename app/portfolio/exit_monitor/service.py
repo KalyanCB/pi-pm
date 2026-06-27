@@ -55,8 +55,19 @@ class ExitMonitorService:
         self.ranking_run_repo = ranking_run_repo or RankingRunRepository(db)
         self.regime_repo = regime_repo or RegimeAnalyticsRepository(db)
 
-    def run(self, as_of_date: date | None = None) -> list[ExitRecommendation]:
+    # Trade-day phasing: SIGNAL triggers fire in the daily job (pre-buy, on the prior
+    # close); PRICE triggers (stop/trailing) fire intraday (post-buy, on the trade-day
+    # OHLC). "all" preserves the legacy single-pass behaviour.
+    _SIGNAL_TRIGGERS = {"EXIT_RANK_DROP", "EXIT_ALPHA_DECAY", "EXIT_REGIME",
+                        "EXIT_TIME", "EXIT_LIQUIDITY"}
+    _PRICE_TRIGGERS = {"EXIT_STOP_LOSS", "EXIT_TRAILING_STOP"}
+
+    def run(self, as_of_date: date | None = None,
+            trigger_group: str = "all") -> list[ExitRecommendation]:
         """Evaluate all OPEN positions and generate T2 DAILY ExitRecommendation rows.
+
+        ``trigger_group``: "all" (default) | "signal" (rank-drop/alpha/regime/time/
+        liquidity — the daily-job pass) | "price" (stop/trailing — the intraday pass).
 
         ADR-033: skip if a DAILY PENDING row already exists for this position today.
         All market data and rank lookups are batched upfront — one query per data
@@ -226,7 +237,8 @@ class ExitMonitorService:
                 pos, as_of, price_map=price_map, rank_map=rank_map, trend_map=trend_map,
                 atr_map=atr_map,
             )
-            fired_triggers = self._evaluate_triggers(pos, context, cfg, regime_posture, as_of)
+            fired_triggers = self._evaluate_triggers(
+                pos, context, cfg, regime_posture, as_of, trigger_group=trigger_group)
 
             if not fired_triggers:
                 continue
@@ -450,6 +462,7 @@ class ExitMonitorService:
         cfg: PortfolioConfig | None,
         regime_posture: str,
         as_of: date | None = None,
+        trigger_group: str = "all",
     ) -> list:
         from datetime import timedelta
 
@@ -604,4 +617,9 @@ class ExitMonitorService:
         # ADR-035 D2: the 30-day time stop is policy-gated (PRD §5 amendment).
         if settings.time_stop_enabled:
             results.append(check_time_stop(days_held))
-        return [r for r in results if r.fired]
+        fired = [r for r in results if r.fired]
+        if trigger_group == "signal":
+            fired = [r for r in fired if r.trigger_code in self._SIGNAL_TRIGGERS]
+        elif trigger_group == "price":
+            fired = [r for r in fired if r.trigger_code in self._PRICE_TRIGGERS]
+        return fired

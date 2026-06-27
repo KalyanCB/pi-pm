@@ -75,7 +75,10 @@ class PaperPilotOps:
         if recompute:
             results["recompute"] = self.portfolio_service.recompute(as_of_date)
 
-        if exit_monitor:
+        # When auto-executing, the exit monitor runs INSIDE _execute_pilot_trades in two
+        # phases (signal pre-buy, price post-buy). Only run the single all-trigger pass
+        # here for the non-execute (UI / PENDING-review) path to avoid double-evaluation.
+        if exit_monitor and not (paper_trading and pilot_auto_execute):
             exit_recs = self.exit_monitor.run(as_of_date)
             results["exit_monitor"] = {
                 "candidates": len(exit_recs),
@@ -544,19 +547,10 @@ class PaperPilotOps:
         # Map prioritized queue back to RecommendationResult objects, preserving order.
         return [rec_by_id[pc.candidate.recommendation_id] for pc in ordered]
 
-    def _execute_pilot_trades(
-        self,
-        as_of_date: date,
-        *,
-        pilot_auto_approve: bool,
-    ) -> dict:
-        entries: list[str] = []
-        exits: list[str] = []
-        skipped: list[dict] = []
-
-        limits = self.portfolio_service.get_limits(as_of_date)
-
-        # Exits first — only when pilot_auto_execute; otherwise exit_monitor.run() leaves PENDING for UI.
+    def _drain_pending_monitor_exits(self, as_of_date, exits: list, skipped: list) -> None:
+        """Execute all currently-PENDING exit-monitor recommendations for the day and
+        confirm them. Called once per phase (signal pre-buy, price post-buy) so each
+        phase only drains the recs its own exit_monitor.run() just produced."""
         monitor_exits = self.db.scalars(
             select(ExitRecommendation).where(
                 ExitRecommendation.as_of_date == as_of_date,
@@ -580,9 +574,26 @@ class PaperPilotOps:
             except Exception as exc:
                 skipped.append({
                     "exit_recommendation_id": str(exit_rec.id),
-                    "action": "exit_monitor",
-                    "error": str(exc),
+                    "action": "exit_monitor", "error": str(exc),
                 })
+
+    def _execute_pilot_trades(
+        self,
+        as_of_date: date,
+        *,
+        pilot_auto_approve: bool,
+    ) -> dict:
+        entries: list[str] = []
+        exits: list[str] = []
+        skipped: list[dict] = []
+
+        limits = self.portfolio_service.get_limits(as_of_date)
+
+        # ── PHASE 1 — SIGNAL exits (daily-job pass, before buys) ──────────────────
+        # rank-drop / alpha / regime / time / liquidity, decided on the prior close.
+        # Frees slots for the buy round. (Intraday stop/trailing run in PHASE 3.)
+        self.exit_monitor.run(as_of_date, trigger_group="signal")
+        self._drain_pending_monitor_exits(as_of_date, exits, skipped)
 
         # EXIT_APPROVED recommendation rows (engine path, when present)
         exit_candidates = self.db.scalars(
@@ -845,6 +856,13 @@ class PaperPilotOps:
                         "action": "entry",
                         "error": str(exc),
                     })
+
+        # ── PHASE 3 — INTRADAY exits (after buys, on D-day OHLC) ──────────────────
+        # stop-loss / trailing fire against the trade-day high/low, on ALL still-open
+        # trades — including names just bought this round (a same-day stop-out). This
+        # is what the live exit monitor does intraday; here it runs post-buy.
+        self.exit_monitor.run(as_of_date, trigger_group="price")
+        self._drain_pending_monitor_exits(as_of_date, exits, skipped)
 
         return {
             "entries": entries,
