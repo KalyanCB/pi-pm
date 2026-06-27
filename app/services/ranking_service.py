@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
@@ -131,14 +131,25 @@ class RankingService:
             all_stock_ids, as_of_date, source=filter_config.market_data_source
         )
 
-        tradable_universe = self.universe_filter_service.build_tradable_universe(
-            as_of_date, filter_config, market_data_cache
-        )
-
         benchmark_stock = self.stock_repo.get_by_symbol(benchmark_symbol)
         benchmark_stock_id = benchmark_stock.id if benchmark_stock else None
 
         regime_label = self._resolve_regime_label(benchmark_stock_id, as_of_date, market_data_cache)
+
+        # Mega diversifier (flag-gated, regime-conditional): in DEFENSIVE regimes
+        # (bear / high-vol) tilt the tradable universe to highly liquid mega names —
+        # they are net-positive in bear where the smallcap book bleeds, and scalable.
+        # Bull/neutral keeps the full universe (smallcaps lead). Counter-cyclical.
+        if self.settings.mega_diversifier_enabled and regime_label and (
+            "BEAR" in regime_label.upper() or "HIGH_VOL" in regime_label.upper()
+        ):
+            mega_floor = Decimal(str(self.settings.mega_min_adtv_inr))
+            if filter_config.min_avg_daily_traded_value < mega_floor:
+                filter_config = replace(filter_config, min_avg_daily_traded_value=mega_floor)
+
+        tradable_universe = self.universe_filter_service.build_tradable_universe(
+            as_of_date, filter_config, market_data_cache
+        )
 
         engine = RankingEngine(MarketDataLoader(market_data_cache))
         output = engine.run(

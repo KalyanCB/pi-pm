@@ -29,6 +29,19 @@ class Settings(BaseSettings):
     ranking_min_stock_price: float = 50.0
     ranking_market_data_source: str = "yahoo"
 
+    # ── Mega-liquidity diversifier (flag-gated, REGIME-CONDITIONAL) ───────────
+    # Counter-cyclical sleeve: tilt the tradable universe to highly liquid "mega"
+    # names (avg daily traded value ≥ mega_min_adtv_inr) ONLY in DEFENSIVE regimes
+    # (BEAR / HIGH_VOL). The mega tier is the inverse of the smallcap-momentum book:
+    # net-POSITIVE in bear (+1.0%/trade @25bps, 60% win in BEAR_LOW_VOL) where the
+    # full book bleeds, but net-negative in BULL_LOW_VOL (−0.21%) where smallcaps run.
+    # So in bull/neutral the full universe stands (smallcaps lead); in bear the book
+    # rotates to liquid, scalable, bear-resilient mega names — a flight-to-liquidity
+    # hedge alongside (or instead of) the gold sleeve. ~5 mega BUYs/day → ample
+    # supply. Default OFF preserves the full universe in every regime.
+    mega_diversifier_enabled: bool = False
+    mega_min_adtv_inr: float = 2_000_000_000.0   # ₹200 cr avg daily traded value
+
     validation_high_vol_threshold: float = 0.20
 
     # ARGS LLM routing — global defaults (per-agent vars override when set)
@@ -263,7 +276,26 @@ class Settings(BaseSettings):
     # postures stay at 0, adding no downside-regime risk. Default off.
     fast_deploy_enabled: bool = False
     fast_deploy_buy_multiplier: int = 2
-    # When fast_deploy is on, the stock deploy ceiling per regime posture (overrides
+
+    # ── Execution realism: intraday VWAP fills + size-vs-ADV market impact ────
+    # Default OFF = the legacy close/next-open fill with flat cost_slippage_bps.
+    # ON = fill at the NEXT session's intraday VWAP (first ``vwap_window_minutes``)
+    # and replace the flat slippage with a square-root market-impact model:
+    #   slip_bps = impact_spread_bps/2 + impact_coeff_bps * sqrt(order_value / ADV)
+    # so a small order in a liquid name pays ~half-spread, while a large order in a
+    # thin small-cap pays a participation-scaled impact — the true-net cost driver.
+    # Falls back to next-open (then close) when intraday data is missing for a bar.
+    realistic_fills_enabled: bool = False
+    intraday_interval: str = "60minute"  # Kite interval: "60minute" | "minute" | ...
+    vwap_window_minutes: int = 60  # T+1 window used to compute the fill VWAP
+    impact_spread_bps: float = 8.0  # round-trip half-spread proxy (per leg = /2)
+    impact_coeff_bps: float = 35.0  # √-impact coefficient (bps at 100% participation)
+    adv_lookback_days: int = 20  # trailing window for average daily traded value
+    # NOTE: statutory charges (STT/stamp/exchange/SEBI/GST) are modelled separately by
+    # PaperTradeService._leg_cost under ``transaction_costs_enabled`` (P-24) and compose
+    # with realistic fills automatically — no extra flag needed here.
+
+
     # _REGIME_DEPLOY_PCT): BULL_LOW_VOL=risk_on 0.95, BULL_HIGH_VOL=limited_risk_on
     # 0.75, BEAR_LOW_VOL=neutral 0.45 (reversal dip-buy), BEAR_HIGH_VOL=defensive 0.00.
     fast_deploy_risk_on_pct: float = 1.00  # BULL_LOW_VOL: fully deployed across 5 names (~20%/name)
