@@ -66,9 +66,20 @@ from app.services.research_intelligence_service import ResearchIntelligenceServi
 from scripts.pipm_service_factory import build_pipm_services
 
 # ── Config ────────────────────────────────────────────────────────────────────
-START_DATE = date(2018, 1, 1)
-PAPER_TRADE_FROM = date(2021, 1, 1)
-FACTOR_IC_CADENCE = int(os.getenv("FACTOR_IC_CADENCE", "21"))  # research only (background)
+def _envdate(name: str, default: date) -> date:
+    v = os.getenv(name)
+    return date.fromisoformat(v) if v else default
+
+
+START_DATE = _envdate("REPLAY_START_DATE", date(2018, 1, 1))
+PAPER_TRADE_FROM = _envdate("REPLAY_PAPER_FROM", date(2021, 1, 1))
+END_DATE = _envdate("REPLAY_END_DATE", date.today())
+# factor-IC is the heaviest BACKGROUND grower: it re-reads ranking_factor_contributions,
+# which balloons (~2.75M rows in 1y → ~22M full-run), so its per-day cost climbs and the
+# background contends more with the foreground over time. It is PURE research (never feeds
+# a trade), so default it OFF (deferred) for the fast trade replay — backfill it separately
+# afterward if the factor-IC research is wanted. Set FACTOR_IC_CADENCE=21 to re-enable.
+FACTOR_IC_CADENCE = int(os.getenv("FACTOR_IC_CADENCE", "0"))  # 0 = deferred (research only)
 BG_WORKERS = int(os.getenv("BG_WORKERS", "2"))
 BENCHMARK = "^NSEI"
 UNIVERSE = "NIFTY_1000"
@@ -227,7 +238,7 @@ def main() -> int:
             print("ERROR: benchmark not found — ingest first.")
             return 1
         trading_days = sorted(mdr.list_distinct_trading_dates(
-            [bench.id], start_date=START_DATE, end_date=date.today(), source="kite"))
+            [bench.id], start_date=START_DATE, end_date=END_DATE, source="kite"))
     finally:
         db.close()
     if not trading_days:
