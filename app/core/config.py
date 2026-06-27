@@ -240,6 +240,13 @@ class Settings(BaseSettings):
     cost_exchange_txn_pct: float = 0.00297
     cost_sebi_pct: float = 0.0001
     cost_gst_rate: float = 0.18
+    # Slippage / market-impact applied to the fill price, per side (basis points).
+    # The charge stack above (STT/stamp/etc.) is NOT the real execution cost — on the
+    # NIFTY_1000 small-cap tail, market impact dominates. At this strategy's turnover
+    # (~₹78cr traded / ₹10-31L book over 2021-25) a 25bps/side slippage costs ~₹19.6L,
+    # ≈ the entire net profit (true-net CAGR +28%→+3.6%). Default 5bps preserves the
+    # legacy fill; set 25 (COST_SLIPPAGE_BPS=25) for a realistic small-cap true-net.
+    cost_slippage_bps: float = 5.0
 
     # ── Fast-deploy: refill bull/neutral slots faster (idle-cash fix) ─────────
     # In bull regimes max_buy_per_day is 2 (1 neutral), so after a batch exit the

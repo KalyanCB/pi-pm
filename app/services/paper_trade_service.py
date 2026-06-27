@@ -498,7 +498,8 @@ class PaperTradeService:
         if not bars:
             raise ValueError(f"No market data for stock {stock_id} on or before {fill_date}")
         last_close = float(bars[0].close)
-        slippage_factor = 1.0005 if side == "BUY" else 0.9995  # 5 bps
+        slip = self.settings.cost_slippage_bps / 10_000.0  # configurable (default 5 bps)
+        slippage_factor = (1.0 + slip) if side == "BUY" else (1.0 - slip)
         return round(last_close * slippage_factor, 4), last_close
 
     def _stop_capped_fill(
@@ -528,7 +529,8 @@ class PaperTradeService:
         if day_low > stop_level:
             return None  # stop not breached intraday — keep normal fill
         fill = min(day_open, stop_level)  # slide → stop level; gap → open
-        return round(fill * 0.9995, 4)    # 5 bps sell slippage
+        slip = self.settings.cost_slippage_bps / 10_000.0  # configurable (default 5 bps)
+        return round(fill * (1.0 - slip), 4)    # sell slippage
 
     def _make_idem_key(self, action: str, result_id: UUID) -> str:
         raw = f"{action}:{result_id}"
