@@ -280,6 +280,17 @@ class Settings(BaseSettings):
     win_run_min_profit_pct: float = 3.0      # only protect positions up at least this
     win_run_pullback_band_pct: float = 8.0   # "near peak" = within this of max_gain
 
+    # ── Lifecycle wiring (regime-aware breakout/reversion; flag-gated, default off) ──
+    # ENTRY: gate the buy loop with app.lifecycle.entry.should_enter — only buy a
+    # candidate that is the 3-way regime's entry sleeve (BULL->breakout_v2,
+    # BEAR->reversion_v3, SIDEWAYS->cash), a top pick, and clears the stock-trend gate.
+    lifecycle_entry_enabled: bool = False
+    lifecycle_entry_top_pct: float = 0.20
+    # EXIT: add the cross-rank HANDOFF exit — a breakout_v2 position exits on
+    # breakout_v1 (B1) fade, a reversion_v3 position on reversal_v1 (RV1) recovery.
+    # The legacy regime exit / hard stop / trailing stop are unchanged.
+    lifecycle_handoff_exits_enabled: bool = False
+
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
     # CAGR are reported NET of costs (the legacy behaviour applied only a flat

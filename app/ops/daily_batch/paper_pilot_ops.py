@@ -550,13 +550,27 @@ class PaperPilotOps:
             SELECT stock_id,
                    MAX(close)  FILTER (WHERE rn = 1)  AS last_price,
                    AVG(close)  FILTER (WHERE rn <= 50) AS sma50,
+                   AVG(close)  FILTER (WHERE rn <= 200) AS sma200,
+                   AVG(close)  FILTER (WHERE rn BETWEEN 21 AND 220) AS sma200_prev,
                    MAX(close)  FILTER (WHERE rn = 20) AS close_20d,
                    MAX(volume) FILTER (WHERE rn = 1)  AS vol_today,
                    AVG(volume) FILTER (WHERE rn <= 90) AS vol_avg90,
                    AVG(close * volume) FILTER (WHERE rn <= 90) AS adv_value
-            FROM recent WHERE rn <= 90 GROUP BY stock_id
+            FROM recent WHERE rn <= 220 GROUP BY stock_id
         """), {"sids": sids, "d": as_of_date}).fetchall()
         ctx = {r.stock_id: r for r in ctx_rows}
+
+        # Lifecycle entry gate (flag-gated): regime-aware sleeve + top-pick + stock
+        # trend. SIDEWAYS -> sit out; otherwise keep only candidates that clear
+        # should_enter for the regime's entry sleeve.
+        from app.core.config import get_settings as _get_settings_lc
+        _ls = _get_settings_lc()
+        if _ls.lifecycle_entry_enabled:
+            fresh_recs = self._lifecycle_entry_filter(
+                fresh_recs, ctx, active_strategy, as_of_date, _ls.lifecycle_entry_top_pct
+            )
+            if not fresh_recs:
+                return []
 
         # P-14 breadth + P-13 synthetic universe benchmark (equal-weight 20-day mean
         # return) — one universe-wide query, the absolute market/segment context the
@@ -613,6 +627,57 @@ class PaperPilotOps:
         )
         # Map prioritized queue back to RecommendationResult objects, preserving order.
         return [rec_by_id[pc.candidate.recommendation_id] for pc in ordered]
+
+    def _lifecycle_entry_filter(self, recs, ctx, active_strategy, as_of_date, top_pct):
+        """Keep only BUY candidates that clear the lifecycle entry gate (regime sleeve +
+        top-pick + stock trend). Returns [] in SIDEWAYS (sit out the chop)."""
+        from sqlalchemy import text as _text
+        from app.lifecycle.entry import entry_strategy_for_regime, should_enter
+        m3 = self.db.execute(_text(
+            "SELECT market_regime_3way FROM regime_history "
+            "WHERE as_of_date = :d AND benchmark_symbol = '^NSEI'"
+        ), {"d": as_of_date}).scalar()
+        if entry_strategy_for_regime(m3) is None:
+            return []  # SIDEWAYS / unknown regime -> no entries
+        pool = self.db.execute(_text(
+            "SELECT max(res.rank) FROM ranking_runs rr "
+            "JOIN ranking_results res ON res.ranking_run_id = rr.id "
+            "WHERE rr.strategy_name = :s AND rr.as_of_date = :d AND rr.status = 'completed'"
+        ), {"s": active_strategy, "d": as_of_date}).scalar()
+        kept = []
+        for rec in recs:
+            if should_enter(
+                strategy=active_strategy,
+                market_regime_3way=m3,
+                stock_trend_3way=self._stock_trend3(ctx.get(rec.stock_id)),
+                rank=int(rec.rank) if rec.rank is not None else None,
+                pool_size=int(pool) if pool else None,
+                entry_top_pct=top_pct,
+            ):
+                kept.append(rec)
+        return kept
+
+    def _stock_trend3(self, row) -> str | None:
+        """Per-stock 3-way trend (BULL/BEAR/SIDEWAYS) from the entry context row
+        (close / 50-SMA / 200-SMA + slope) — same logic as the market 3-way."""
+        if row is None or getattr(row, "sma200", None) is None or row.last_price is None:
+            return None
+        from app.validation.constants import (
+            REGIME_SLOPE_FLAT_PCT,
+            TREND_REGIME_BEAR,
+            TREND_REGIME_BULL,
+            TREND_REGIME_SIDEWAYS,
+        )
+        last = float(row.last_price)
+        sma200 = float(row.sma200)
+        sma50 = float(row.sma50) if row.sma50 is not None else None
+        sp = float(row.sma200_prev) if getattr(row, "sma200_prev", None) is not None else None
+        slope = ((sma200 - sp) / sp) if sp else 0.0
+        if last > sma200 and sma50 is not None and sma50 > sma200 and slope > REGIME_SLOPE_FLAT_PCT:
+            return TREND_REGIME_BULL
+        if last < sma200 and sma50 is not None and sma50 < sma200 and slope < -REGIME_SLOPE_FLAT_PCT:
+            return TREND_REGIME_BEAR
+        return TREND_REGIME_SIDEWAYS
 
     def _drain_pending_monitor_exits(self, as_of_date, exits: list, skipped: list) -> None:
         """Execute all currently-PENDING exit-monitor recommendations for the day and

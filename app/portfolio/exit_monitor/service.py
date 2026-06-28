@@ -28,7 +28,14 @@ from app.models.portfolio_analytics import ExitRecommendation
 from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
 from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
+from app.lifecycle.exit import (
+    b1_has_peaked,
+    exit_rank_strategy,
+    pct_from_rank,
+    should_exit_on_handoff,
+)
 from app.portfolio.exit_monitor.triggers import (
+    TriggerResult,
     check_alpha_decay,
     check_concentration,
     check_liquidity,
@@ -72,7 +79,8 @@ class ExitMonitorService:
     # close); PRICE triggers (stop/trailing) fire intraday (post-buy, on the trade-day
     # OHLC). "all" preserves the legacy single-pass behaviour.
     _SIGNAL_TRIGGERS = {"EXIT_RANK_DROP", "EXIT_ALPHA_DECAY", "EXIT_REGIME",
-                        "EXIT_TIME", "EXIT_LIQUIDITY"}
+                        "EXIT_TIME", "EXIT_LIQUIDITY",
+                        "EXIT_B1_FADE", "EXIT_RV1_RECOVERED"}
     _PRICE_TRIGGERS = {"EXIT_STOP_LOSS", "EXIT_TRAILING_STOP"}
 
     def run(self, as_of_date: date | None = None,
@@ -443,6 +451,42 @@ class ExitMonitorService:
         except Exception:
             return None
 
+    def _lifecycle_handoff(self, pos, as_of, days_held) -> "TriggerResult | None":
+        """Cross-rank HANDOFF exit: a position entered on breakout_v2/reversion_v3 is
+        judged on the OLD active rank (breakout_v1/reversal_v1). Reads the position's
+        rank+pool in the handoff strategy from entry to ``as_of`` (percentile = (pool-
+        rank)/(pool-1)); B1 must have spiked before its fade arms the exit."""
+        handoff = exit_rank_strategy(getattr(pos, "strategy_name", None))
+        if handoff is None or pos.entry_date is None or as_of is None:
+            return None
+        from sqlalchemy import text as _t
+        rows = self.db.execute(_t("""
+            SELECT res.rank AS rank,
+                   (SELECT max(rank) FROM ranking_results WHERE ranking_run_id = rr.id) AS pool
+            FROM ranking_runs rr
+            JOIN ranking_results res ON res.ranking_run_id = rr.id AND res.stock_id = :sid
+            WHERE rr.strategy_name = :strat AND rr.status = 'completed'
+              AND rr.as_of_date BETWEEN :entry AND :asof
+            ORDER BY rr.as_of_date
+        """), {"sid": pos.stock_id, "strat": handoff,
+               "entry": pos.entry_date, "asof": as_of}).fetchall()
+        pcts = [p for p in (pct_from_rank(r.rank, r.pool) for r in rows) if p is not None]
+        if not pcts:
+            return None
+        fired, reason = should_exit_on_handoff(
+            entry_strategy=pos.strategy_name,
+            handoff_pct=pcts[-1],
+            has_peaked=any(b1_has_peaked(p) for p in pcts),
+            days_held=days_held,
+        )
+        if not fired:
+            return None
+        return TriggerResult(
+            True, reason,
+            {"handoff_strategy": handoff, "handoff_pct": round(pcts[-1], 3)},
+            urgency="NORMAL",
+        )
+
     def _get_entry_rank(self, pos: PortfolioPosition) -> int | None:
         try:
             if pos.recommendation_result_id is None:
@@ -652,6 +696,14 @@ class ExitMonitorService:
                 ctx.get("last_price"),
             ),
         ]
+        # Lifecycle cross-rank HANDOFF exit (flag-gated): breakout_v2 -> exit on
+        # breakout_v1 fade; reversion_v3 -> exit on reversal_v1 recovery. Additive to
+        # the legacy regime/stop triggers above.
+        if settings.lifecycle_handoff_exits_enabled:
+            _handoff = self._lifecycle_handoff(pos, as_of, days_held)
+            if _handoff is not None:
+                results.append(_handoff)
+
         # ADR-035 D2: the 30-day time stop is policy-gated (PRD §5 amendment).
         if settings.time_stop_enabled:
             results.append(check_time_stop(days_held))
