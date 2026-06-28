@@ -11,9 +11,12 @@ from app.ranking.math_utils import (
 )
 from app.validation.constants import (
     REGIME_MA_WINDOW,
+    REGIME_SLOPE_FLAT_PCT,
+    REGIME_SLOPE_LOOKBACK,
     REGIME_VOL_WINDOW,
     TREND_REGIME_BEAR,
     TREND_REGIME_BULL,
+    TREND_REGIME_SIDEWAYS,
     VOL_REGIME_HIGH,
     VOL_REGIME_LOW,
 )
@@ -65,6 +68,30 @@ def classify_regime(
         else TREND_REGIME_BULL
     )
 
+    # ── 3-way trend (additive): BULL/BEAR/SIDEWAYS. A confirmed trend needs price,
+    # the 50/200 alignment AND the 200-SMA slope to agree; anything mixed/transitional
+    # is SIDEWAYS (the chop where breakouts whipsaw and reversions have no bounce).
+    # Validated on the lifecycle panel: trade breakout in BULL, reversion in BEAR,
+    # sit out SIDEWAYS — and only EXIT on confirmed BEAR (hold through sideways).
+    ma200_prev = (
+        simple_moving_average(bars[:-REGIME_SLOPE_LOOKBACK], REGIME_MA_WINDOW)
+        if len(bars) >= REGIME_MA_WINDOW + REGIME_SLOPE_LOOKBACK
+        else None
+    )
+    slope = (
+        float((ma200 - ma200_prev) / ma200_prev)
+        if ma200_prev not in (None, 0)
+        else 0.0
+    )
+    ma200_rising = slope > REGIME_SLOPE_FLAT_PCT
+    ma200_falling = slope < -REGIME_SLOPE_FLAT_PCT
+    if close > ma200 and (ma50 is not None and ma50 > ma200) and ma200_rising:
+        trend3 = TREND_REGIME_BULL
+    elif close < ma200 and (ma50 is not None and ma50 < ma200) and ma200_falling:
+        trend3 = TREND_REGIME_BEAR
+    else:
+        trend3 = TREND_REGIME_SIDEWAYS
+
     vol = annualized_volatility(bars, REGIME_VOL_WINDOW)
     if vol is None:
         vol_regime = VOL_REGIME_LOW
@@ -75,4 +102,5 @@ def classify_regime(
         trend_regime=trend,
         vol_regime=vol_regime,
         regime_label=f"{trend}_{vol_regime}",
+        market_regime_3way=trend3,
     )

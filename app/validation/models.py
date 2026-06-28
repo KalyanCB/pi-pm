@@ -11,6 +11,10 @@ class RegimeClassification:
     trend_regime: str
     vol_regime: str
     regime_label: str
+    # 3-way NIFTY regime (BULL/BEAR/SIDEWAYS) — additive; the legacy 2-way
+    # trend_regime/regime_label above are untouched for backward compatibility.
+    # Default keeps any existing constructor call valid.
+    market_regime_3way: str = "BULL"
 
 
 @dataclass(frozen=True)
