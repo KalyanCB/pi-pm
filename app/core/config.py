@@ -258,6 +258,28 @@ class Settings(BaseSettings):
     # set to 15 to judge at the day-15 horizon (floor semantics, gap-robust).
     alpha_decay_grace_days: int = 5
 
+    # ── Horizon-aware exits ───────────────────────────────────────────────────
+    # Each validated edge plays out over a different horizon (breakout ~10d, deep-
+    # oversold reversion ~20d, 12mo momentum ~quarter). The legacy ~2-day churn
+    # (rank-drop / alpha-decay) sells before momentum & reversion pay. When enabled,
+    # the analytical-exit suppression window AND the progressive-stop schedule scale
+    # to the position's strategy hold (see exit_monitor._STRATEGY_MIN_HOLD), so each
+    # sleeve breathes for its signal's timescale. Hard stops still fire throughout.
+    horizon_aware_exits_enabled: bool = False
+
+    # ── Let winners run ───────────────────────────────────────────────────────
+    # Breakout is fat-tailed — a few monster runs make the strategy. The graduation/
+    # runner tiers only protect winners that are STILL top-ranked; a winner whose
+    # RANK FADES but keeps making new highs still gets rank-dropped/regime-cut (2021:
+    # cut at +7% while it ran another +7.6%; ATGL exited at +1% then ran +213%). When
+    # enabled, a position in solid profit AND still near its peak (small pullback =
+    # making higher highs) is exempt from RANK_DROP and EXIT_REGIME regardless of its
+    # current rank — it rides a wide trailing stop to capture the fat tail. Hard stop
+    # and the trailing stop still fire (risk + profit-lock intact).
+    let_winners_run_enabled: bool = False
+    win_run_min_profit_pct: float = 3.0      # only protect positions up at least this
+    win_run_pullback_band_pct: float = 8.0   # "near peak" = within this of max_gain
+
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
     # CAGR are reported NET of costs (the legacy behaviour applied only a flat

@@ -41,6 +41,19 @@ from app.portfolio.exit_monitor.triggers import (
 from app.portfolio.regime_stops import resolve_stop_pcts
 
 
+# Horizon-aware exits: per-strategy minimum-hold (trading days) during which analytical
+# exits (rank-drop / alpha-decay) are suppressed and the progressive stop is stretched,
+# so each validated edge breathes for its signal's timescale. Calibrated on forward IC:
+# breakout_v2 ~10d, deep-oversold reversion_v3 ~20d, 12mo momentum_v3 ~quarter. Unknown
+# strategies (incl. all v1) fall back to the legacy 5-day window. Gated by
+# settings.horizon_aware_exits_enabled.
+_STRATEGY_MIN_HOLD: dict[str | None, int] = {
+    "breakout_v2": 10,
+    "reversion_v3": 20,
+    "momentum_v3": 60,
+}
+
+
 class ExitMonitorService:
     def __init__(
         self,
@@ -470,10 +483,15 @@ class ExitMonitorService:
         single_cap = float(cfg.single_name_cap_pct * 100) if cfg else 18.0
         days_held = ctx.get("days_held", 0)
 
-        # ADR-037 P-15: suppress analytical exits (rank drop, alpha decay) for
-        # first 5 days. 48% of losers recover +14.7% avg within 10 days —
-        # premature exits destroy that recovery potential.
-        _analytical_exits_suppressed = days_held < 5
+        # ADR-037 P-15: suppress analytical exits (rank drop, alpha decay) for the
+        # first N days. 48% of losers recover +14.7% avg within 10 days — premature
+        # exits destroy that recovery. Default N=5 (legacy). Horizon-aware: scale N to
+        # the position's strategy hold so momentum (~quarter) / reversion (~20d) breathe
+        # for their signal's timescale instead of churning out in 2 days.
+        _min_hold = 5
+        if settings.horizon_aware_exits_enabled:
+            _min_hold = _STRATEGY_MIN_HOLD.get(getattr(pos, "strategy_name", None), 5)
+        _analytical_exits_suppressed = days_held < _min_hold
 
         # ADR-037 P-16: 3-day cooldown after EXIT_ALPHA_DECAY to prevent churn.
         # Check if the last closed exit for this position was EXIT_ALPHA_DECAY
@@ -485,12 +503,16 @@ class ExitMonitorService:
 
         # ADR-037 P-17: progressive stop floor tightens as position ages.
         # Day 1-5: -6% (initial stop), Day 6-10: -4%, Day 11-15: breakeven (-0%),
-        # Day 16+: breakeven +0.5% (lock in small gain).
-        if days_held <= 5:
+        # Day 16+: breakeven +0.5% (lock in small gain). Horizon-aware: stretch the
+        # schedule by (min_hold/5) so a quarter-hold momentum name isn't forced to
+        # breakeven by day 15 (which a normal pullback would trip) — it tightens
+        # proportionally to its own horizon. Hard regime/ATR stop still applies.
+        _ps_scale = (_min_hold / 5.0) if settings.horizon_aware_exits_enabled else 1.0
+        if days_held <= 5 * _ps_scale:
             _progressive_stop = -6.0
-        elif days_held <= 10:
+        elif days_held <= 10 * _ps_scale:
             _progressive_stop = -4.0
-        elif days_held <= 15:
+        elif days_held <= 15 * _ps_scale:
             _progressive_stop = 0.0
         else:
             _progressive_stop = 0.5
@@ -559,6 +581,21 @@ class ExitMonitorService:
                         if _atr_dyn else settings.runner_trail_pct
                     )
 
+        # ── Let winners run: a position in solid profit AND still near its peak
+        # (small pullback from max_gain = making higher highs) is exempt from
+        # RANK_DROP and EXIT_REGIME regardless of current rank, and rides a wide
+        # trail. Captures the breakout fat tail (faded-rank runners we were clipping
+        # at +7%). Hard stop + trailing stop still apply.
+        _winner_running = False
+        if settings.let_winners_run_enabled:
+            _wu = ctx.get("unrealized_pnl_pct")
+            _wmg = ctx.get("max_gain_pct")
+            if (_wu is not None and _wu >= settings.win_run_min_profit_pct
+                    and (_wmg is None or (_wmg - _wu) <= settings.win_run_pullback_band_pct)):
+                _winner_running = True
+                if not _is_runner:  # widen the leash so the run isn't trailed out early
+                    trailing = max(trailing, settings.graduation_winner_trail_pct)
+
         # EOD confirmation: stop only fires if day_low breached the level AND
         # the close also confirms (stock didn't recover by EOD). This prevents
         # intraday dips from killing positions that close back above the stop.
@@ -574,7 +611,7 @@ class ExitMonitorService:
         # RANK_DROP keeps the P-15 day-5 grace — it rotates out winners on a faded
         # rank (302/303 of its exits are green); it is not the early-churn problem.
         if (not _analytical_exits_suppressed and not _in_alpha_decay_cooldown
-                and not _grad_suppress_analytical):
+                and not _grad_suppress_analytical and not _winner_running):
             results.append(check_rank_drop(ctx.get("current_rank"), ctx.get("entry_rank")))
 
         # ALPHA_DECAY timing (P-26): judge thesis decay at alpha_decay_grace_days
@@ -593,9 +630,10 @@ class ExitMonitorService:
                 decay_threshold_day=_decay_threshold,
             ))
 
-        # Hard exits always fire regardless of hold period — EXCEPT a runner, which is
-        # deliberately held through regime flips to ride a confirmed multibagger.
-        if not _is_runner:
+        # Hard exits always fire regardless of hold period — EXCEPT a runner or a
+        # still-rising winner, both deliberately held through regime flips to ride the
+        # move (ATGL: regime-cut at +1%, then +213%).
+        if not _is_runner and not _winner_running:
             results.append(check_regime_change(
                 regime_posture,
                 self._resolve_regime_posture(pos.entry_date),

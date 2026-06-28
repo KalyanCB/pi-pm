@@ -35,9 +35,12 @@ from app.core.config import get_settings
 from app.core.constants import (
     DEFAULT_BENCHMARK_SYMBOL,
     RANKING_STRATEGY_BREAKOUT_V1,
+    RANKING_STRATEGY_BREAKOUT_V2,
     RANKING_STRATEGY_LOW_VOL_V1,
     RANKING_STRATEGY_MOMENTUM_V1,
+    RANKING_STRATEGY_MOMENTUM_V2,
     RANKING_STRATEGY_REVERSAL_V1,
+    RANKING_STRATEGY_REVERSION_V2,
 )
 from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
 from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
@@ -87,7 +90,7 @@ _VER = "1.0.0"
 
 # Regime → active strategy (mirrors paper_pilot_ops._REGIME_STRATEGY). Trades use only
 # this strategy, so the foreground ranks only it. Keep in sync with the pilot.
-_REGIME_STRATEGY: dict[str, str] = {
+_REGIME_STRATEGY_V1: dict[str, str] = {
     "BULL_LOW_VOL": RANKING_STRATEGY_BREAKOUT_V1,
     "BULL_HIGH_VOL": RANKING_STRATEGY_MOMENTUM_V1,
     "BEAR_LOW_VOL": RANKING_STRATEGY_REVERSAL_V1,
@@ -95,12 +98,24 @@ _REGIME_STRATEGY: dict[str, str] = {
     "NEUTRAL_LOW_VOL": RANKING_STRATEGY_MOMENTUM_V1,
     "NEUTRAL_HIGH_VOL": RANKING_STRATEGY_MOMENTUM_V1,
 }
-_ALL_STRATEGIES = [
-    RANKING_STRATEGY_BREAKOUT_V1,
-    RANKING_STRATEGY_MOMENTUM_V1,
-    RANKING_STRATEGY_REVERSAL_V1,
-    RANKING_STRATEGY_LOW_VOL_V1,
-]
+# v2 suite (STRATEGY_SUITE=v2): forward-IC validation killed momentum_v2 (IC -0.027)
+# and reversion_v2 (bear IC -0.005). The ONLY validated edge is breakout_v2 — "quiet
+# stocks near their highs" — bull composite IC +0.048, out-of-sample confirmed +0.051.
+# So the honest suite is breakout_v2 across all regimes; in bear few names are near
+# their highs, so it naturally finds few candidates and holds mostly cash.
+_REGIME_STRATEGY_V2: dict[str, str] = {
+    "BULL_LOW_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "BULL_HIGH_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "BEAR_LOW_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "BEAR_HIGH_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "NEUTRAL_LOW_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "NEUTRAL_HIGH_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+}
+_SUITE = os.getenv("STRATEGY_SUITE", "v1").lower()
+_REGIME_STRATEGY: dict[str, str] = (
+    _REGIME_STRATEGY_V2 if _SUITE == "v2" else _REGIME_STRATEGY_V1
+)
+_ALL_STRATEGIES = sorted(set(_REGIME_STRATEGY.values()))
 
 # Background runs in separate PROCESSES (true multi-core — sidesteps the GIL that caps
 # a single process at one core). The preloaded bar store is shared with the workers via

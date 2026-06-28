@@ -355,6 +355,35 @@ RANKING_STRATEGY_LOW_VOL_V1_VERSION = "1.0.0"
 RANKING_STRATEGY_REVERSAL_V1 = "reversal_v1"
 RANKING_STRATEGY_REVERSAL_V1_VERSION = "1.0.0"
 
+# --- v2 strategies: anticipation-weighted, calibrated on forward IC (2026-06) ---
+# v1 strategies loaded heavily on AFTER-the-fact confirmation factors (volume_surge,
+# atr_expansion, relative_strength*) which carry NEGATIVE forward IC (you buy the top).
+# v2 leads with the EARLY/setup factors that actually predict: consolidation_breakout
+# (+0.027 IC, bull), short-term oversold reversion in bear (+2.57% fwd / 59% recover),
+# and EARLY momentum (low base, just turning up: +1.75% fwd) — not already-gained.
+RANKING_STRATEGY_BREAKOUT_V2 = "breakout_v2"
+RANKING_STRATEGY_BREAKOUT_V2_VERSION = "1.0.0"
+
+RANKING_STRATEGY_MOMENTUM_V2 = "momentum_v2"
+RANKING_STRATEGY_MOMENTUM_V2_VERSION = "1.0.0"
+
+RANKING_STRATEGY_REVERSION_V2 = "reversion_v2"
+RANKING_STRATEGY_REVERSION_V2_VERSION = "1.0.0"
+
+# reversion_v3: PURE deep-oversold bear reversion. v2 failed (bear IC ~0) because its
+# `stabilizing` factor backfired (IC -0.024) and it used a 10d horizon. Full-sample
+# validation (82 bear weeks) shows the pure crushed signal works: trailing-20d/60d
+# return, bottom quintile, ~20d hold -> bear cross-sectional IC ~-0.08 (|0.08| > breakout).
+RANKING_STRATEGY_REVERSION_V3 = "reversion_v3"
+RANKING_STRATEGY_REVERSION_V3_VERSION = "1.0.0"
+
+# momentum_v3: CLASSIC long-horizon momentum. momentum_v2 failed (IC -0.027) because it
+# used a 10d horizon where momentum REVERTS. Full-sample validation: 12mo (252d) trailing
+# return -> 60d-fwd, BULL cross-sectional IC +0.075 (stronger than breakout). Needs a
+# ~quarter HOLD. Bull-only (bear IC -0.066 = momentum crash).
+RANKING_STRATEGY_MOMENTUM_V3 = "momentum_v3"
+RANKING_STRATEGY_MOMENTUM_V3_VERSION = "1.0.0"
+
 BENCHMARK_DEPENDENT_FACTORS = frozenset(
     {"relative_strength", "relative_strength_acceleration"}
 )

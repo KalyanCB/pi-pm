@@ -74,12 +74,18 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
 
     # Foreground/background split (replay_fast): the FOREGROUND ranks only the active
     # (regime-gated) strategy each day → distinct as_of_date == trade-days done. The
-    # BACKGROUND fills the other 3 strategies for research (lagging). A day is fully
-    # researched once all 4 strategies have ranked it; the lag = foreground − research.
+    # BACKGROUND fills the other strategies for research (lagging). A day is fully
+    # researched once every strategy in the suite has ranked it; the lag = foreground
+    # − research. Suite size is detected from the data (was hardcoded 4 — broke for the
+    # v2 single-strategy runs, pinning research at 0%).
+    n_strat = db.execute(text(
+        "SELECT COALESCE(MAX(c), 1) FROM (SELECT COUNT(DISTINCT strategy_name) c "
+        "FROM ranking_runs GROUP BY as_of_date) x"
+    )).scalar() or 1
     research_done = db.execute(text(
         "SELECT COUNT(*) FROM (SELECT as_of_date FROM ranking_runs "
-        "GROUP BY as_of_date HAVING COUNT(DISTINCT strategy_name) >= 4) x"
-    )).scalar() or 0
+        "GROUP BY as_of_date HAVING COUNT(DISTINCT strategy_name) >= :n) x"
+    ), {"n": n_strat}).scalar() or 0
     bg_lag = max(0, processed - research_done)
     active_strategy = db.execute(text(
         "SELECT strategy_name FROM recommendation_runs "
@@ -123,7 +129,7 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="30">
-<title>V17+Gold Backtest</title>
+<title>Pi-PM Replay &middot; {active_strategy}</title>
 <style>
  body{{font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:16px;
    background:#0b1020;color:#e6e9f0;-webkit-text-size-adjust:100%}}
@@ -145,7 +151,7 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
  <div class="sub">TRADES (foreground): {processed:,} / {total:,} days &middot; current: <b>{cur_date or '—'}</b>
    &middot; active: <b>{active_strategy}</b></div>
  <div class="bar" style="background:#2a2433"><div class="fill" style="width:{research_pct}%;background:linear-gradient(90deg,#a855f7,#f59e0b)"></div></div>
- <div class="sub">RESEARCH (background, all 4 strat): {research_done:,} / {total:,} days
+ <div class="sub">RESEARCH (background, {n_strat} strat): {research_done:,} / {total:,} days
    &middot; lag <span class="{bg_cls}">{bg_lag:,} d</span></div>
  <div class="sub" style="margin-top:8px">started <b>{started_str}</b> &middot; elapsed <b>{elapsed_str}</b>
    &middot; ~<b>{per_day_str}</b>/trade-day</div>
@@ -158,6 +164,6 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
  <div><div class="k">Paper trades</div><div class="v">{trades:,}</div></div>
  <div><div class="k">Ranking rows</div><div class="v">{rankings:,}</div></div>
 </div></div>
-<div class="sub" style="text-align:center">₹10L start &middot; foreground=active-only (identical trades) &middot; background=research async</div>
+<div class="sub" style="text-align:center">&#8377;{initial_capital:,.0f} start &middot; foreground=active-only (identical trades) &middot; background=research async</div>
 </body></html>"""
     return HTMLResponse(content=html)

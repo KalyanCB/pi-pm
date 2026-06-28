@@ -709,7 +709,12 @@ class PaperPilotOps:
         # BEAR_LOW_VOL: reversal has RCEE edge (ic_lo95=+0.010, hr=58.5%).
         # BEAR_HIGH_VOL: reversal is lethal (ic_lo95=-0.114); use low_vol instead.
         # BULL_HIGH_VOL: breakout underperforms in high-vol; momentum is safer.
-        _REGIME_STRATEGY: dict[str, str] = {
+        # MUST stay in sync with scripts/replay_fast.py _REGIME_STRATEGY. Suite-aware:
+        # STRATEGY_SUITE=v2 routes trades to the forward-IC-validated v2/v3 sleeves
+        # (currently breakout_v2 across regimes for the honest single-edge backtest;
+        # extend to reversion_v3/momentum_v3 when wiring the multi-sleeve system).
+        import os as _os
+        _REGIME_STRATEGY_V1 = {
             "BULL_LOW_VOL":    "breakout_v1",
             "BULL_HIGH_VOL":   "momentum_v1",
             "BEAR_LOW_VOL":    "reversal_v1",
@@ -717,6 +722,12 @@ class PaperPilotOps:
             "NEUTRAL_LOW_VOL": "momentum_v1",
             "NEUTRAL_HIGH_VOL":"momentum_v1",
         }
+        _REGIME_STRATEGY_V2 = {k: "breakout_v2" for k in _REGIME_STRATEGY_V1}
+        _REGIME_STRATEGY: dict[str, str] = (
+            _REGIME_STRATEGY_V2
+            if _os.getenv("STRATEGY_SUITE", "v1").lower() == "v2"
+            else _REGIME_STRATEGY_V1
+        )
         from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
         from app.core.constants import DEFAULT_BENCHMARK_SYMBOL
         _regime_repo = RegimeAnalyticsRepository(self.db)

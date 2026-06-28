@@ -6,9 +6,14 @@ from app.core.constants import (
 )
 from app.core.exceptions import StrategyNotFoundError
 from app.ranking.strategies.breakout_v1 import BreakoutV1Strategy
+from app.ranking.strategies.breakout_v2 import BreakoutV2Strategy
 from app.ranking.strategies.low_vol_v1 import LowVolV1Strategy
 from app.ranking.strategies.momentum_v1 import MomentumV1Strategy
+from app.ranking.strategies.momentum_v2 import MomentumV2Strategy
+from app.ranking.strategies.momentum_v3 import MomentumV3Strategy
 from app.ranking.strategies.reversal_v1 import ReversalV1Strategy
+from app.ranking.strategies.reversion_v2 import ReversionV2Strategy
+from app.ranking.strategies.reversion_v3 import ReversionV3Strategy
 from app.ranking.strategy import RankingStrategy
 
 
@@ -19,6 +24,14 @@ class RankingStrategyRegistry:
         self.register(BreakoutV1Strategy())
         self.register(LowVolV1Strategy())
         self.register(ReversalV1Strategy())
+        # v2: anticipation-weighted, forward-IC-calibrated (2026-06)
+        self.register(BreakoutV2Strategy())
+        self.register(MomentumV2Strategy())
+        self.register(ReversionV2Strategy())
+        # v3: validated edges that need longer holds — deep-oversold bear reversion
+        # (~20d) and classic 12mo momentum (~quarter)
+        self.register(ReversionV3Strategy())
+        self.register(MomentumV3Strategy())
 
     def register(self, strategy: RankingStrategy) -> None:
         self._strategies[(strategy.name, strategy.version)] = strategy
