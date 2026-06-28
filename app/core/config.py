@@ -326,6 +326,11 @@ class Settings(BaseSettings):
     # OPEN, the first price you could actually trade at. Applies to entries AND exits.
     next_open_fills_enabled: bool = False
 
+    # Exit-monitor SELLs fill at the DECISION day's close ("D close as mocked") — the
+    # exit fired on this bar, so selling at its close is the conservative backtest mock.
+    # Overrides next_open/ohlc for SELLs only; entries (band-mid) are unaffected.
+    exit_fills_at_close_enabled: bool = False
+
     # ── Execution realism: entry-band LIMIT fills (price-tag gate) ────────────
     # Each BUY rec carries a price band [entry_low, entry_high] (reference_close ±
     # 0.5×ATR). With this ON, a BUY is treated as a limit order on the band: it fills

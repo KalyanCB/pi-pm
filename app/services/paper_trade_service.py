@@ -539,19 +539,26 @@ class PaperTradeService:
         """
         self._last_fill_quote = None
 
-        # Entry-band LIMIT fill (price-tag): a BUY is a limit on the rec's band. Fill at
-        # the lowest of D+1's O/H/L/C that lands IN the band; else (gap-down/straddle —
-        # gap-up is gated upstream in the pilot) at min(open, entry_high). No extra
-        # slippage — the band dispersion IS the cost model.
+        # Entry-band BUY (momentum-confirmed): the pilot already gated this on the price
+        # trading INTO the band (gap-up AND gap-down → not fired). Fill at the committed
+        # band level — HIGH of band by default ("at least high of band"), MID optional —
+        # NOT the open/day-low. The band dispersion IS the cost model (no extra slippage).
         if (side == "BUY" and self.settings.entry_band_fills_enabled
                 and entry_low is not None and entry_high is not None):
-            nxt = self.market_data_repo.get_first_bar_after(stock_id, fill_date)
-            if nxt is not None and nxt.open is not None:
-                # Realistic limit fill (gap-up already gated upstream in the pilot):
-                # transact at the OPEN if it's at/below the limit, else at ENTRY_HIGH
-                # when it dips in. NOT the day's low (that over-captured the range).
-                ref = min(float(nxt.open), float(entry_high))
-                return round(ref, 4), ref
+            level = (self.settings.entry_band_fill_level or "high").lower()
+            ref = float(entry_high) if level == "high" else (float(entry_low) + float(entry_high)) / 2.0
+            return round(ref, 4), ref
+
+        # Exit (backtest mock): the exit monitor decided on this bar, so SELL at the
+        # DECISION day's close ("D close as mocked") — overrides next_open/ohlc for SELLs.
+        if side == "SELL" and self.settings.exit_fills_at_close_enabled:
+            bars = self.market_data_repo.get_by_stock_and_date_range(
+                stock_id, end_date=fill_date, limit=1
+            )
+            if not bars:
+                raise ValueError(f"No market data for stock {stock_id} on or before {fill_date}")
+            c = float(bars[0].close)
+            return round(c, 4), c
 
         if self.settings.ohlc_fills_enabled:
             # Smarter daily-OHLC fill: execute on the NEXT session (no same-bar look-
