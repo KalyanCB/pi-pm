@@ -39,8 +39,10 @@ from app.core.constants import (
     RANKING_STRATEGY_LOW_VOL_V1,
     RANKING_STRATEGY_MOMENTUM_V1,
     RANKING_STRATEGY_MOMENTUM_V2,
+    RANKING_STRATEGY_MOMENTUM_V3,
     RANKING_STRATEGY_REVERSAL_V1,
     RANKING_STRATEGY_REVERSION_V2,
+    RANKING_STRATEGY_REVERSION_V3,
 )
 from app.db.repositories.daily_batch_artifact_repository import DailyBatchArtifactRepository
 from app.db.repositories.daily_batch_run_repository import DailyBatchRunRepository
@@ -111,11 +113,31 @@ _REGIME_STRATEGY_V2: dict[str, str] = {
     "NEUTRAL_LOW_VOL": RANKING_STRATEGY_BREAKOUT_V2,
     "NEUTRAL_HIGH_VOL": RANKING_STRATEGY_BREAKOUT_V2,
 }
+# lifecycle suite (STRATEGY_SUITE=lifecycle): regime-aware sleeves — breakout_v2 in
+# bull/neutral (the 3-way entry gate sits out actual SIDEWAYS), reversion_v3 in bear.
+# Ranks ALL FIVE lifecycle strategies each day so the cross-rank handoff exit has the
+# active ranks (breakout_v1 / reversal_v1) available. Pair with LIFECYCLE_ENTRY_ENABLED
+# + LIFECYCLE_HANDOFF_EXITS_ENABLED.
+_REGIME_STRATEGY_LIFECYCLE: dict[str, str] = {
+    "BULL_LOW_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "BULL_HIGH_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "BEAR_LOW_VOL": RANKING_STRATEGY_REVERSION_V3,
+    "BEAR_HIGH_VOL": RANKING_STRATEGY_REVERSION_V3,
+    "NEUTRAL_LOW_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+    "NEUTRAL_HIGH_VOL": RANKING_STRATEGY_BREAKOUT_V2,
+}
+_LIFECYCLE_ALL = [
+    RANKING_STRATEGY_BREAKOUT_V2, RANKING_STRATEGY_BREAKOUT_V1,
+    RANKING_STRATEGY_MOMENTUM_V3, RANKING_STRATEGY_REVERSION_V3,
+    RANKING_STRATEGY_REVERSAL_V1,
+]
 _SUITE = os.getenv("STRATEGY_SUITE", "v1").lower()
-_REGIME_STRATEGY: dict[str, str] = (
-    _REGIME_STRATEGY_V2 if _SUITE == "v2" else _REGIME_STRATEGY_V1
-)
-_ALL_STRATEGIES = sorted(set(_REGIME_STRATEGY.values()))
+if _SUITE == "lifecycle":
+    _REGIME_STRATEGY = _REGIME_STRATEGY_LIFECYCLE
+    _ALL_STRATEGIES = _LIFECYCLE_ALL
+else:
+    _REGIME_STRATEGY = _REGIME_STRATEGY_V2 if _SUITE == "v2" else _REGIME_STRATEGY_V1
+    _ALL_STRATEGIES = sorted(set(_REGIME_STRATEGY.values()))
 
 # Background runs in separate PROCESSES (true multi-core — sidesteps the GIL that caps
 # a single process at one core). The preloaded bar store is shared with the workers via

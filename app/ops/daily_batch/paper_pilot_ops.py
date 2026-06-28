@@ -788,9 +788,17 @@ class PaperPilotOps:
             "NEUTRAL_HIGH_VOL":"momentum_v1",
         }
         _REGIME_STRATEGY_V2 = {k: "breakout_v2" for k in _REGIME_STRATEGY_V1}
+        # lifecycle: breakout_v2 in bull/neutral, reversion_v3 in bear (the 3-way entry
+        # gate sits out actual SIDEWAYS). Must match scripts/replay_fast _REGIME_STRATEGY_LIFECYCLE.
+        _REGIME_STRATEGY_LIFECYCLE = {
+            "BULL_LOW_VOL": "breakout_v2", "BULL_HIGH_VOL": "breakout_v2",
+            "BEAR_LOW_VOL": "reversion_v3", "BEAR_HIGH_VOL": "reversion_v3",
+            "NEUTRAL_LOW_VOL": "breakout_v2", "NEUTRAL_HIGH_VOL": "breakout_v2",
+        }
+        _suite = _os.getenv("STRATEGY_SUITE", "v1").lower()
         _REGIME_STRATEGY: dict[str, str] = (
-            _REGIME_STRATEGY_V2
-            if _os.getenv("STRATEGY_SUITE", "v1").lower() == "v2"
+            _REGIME_STRATEGY_LIFECYCLE if _suite == "lifecycle"
+            else _REGIME_STRATEGY_V2 if _suite == "v2"
             else _REGIME_STRATEGY_V1
         )
         from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
