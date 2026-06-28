@@ -28,6 +28,42 @@ _52W_WINDOW = 252
 _BREADTH_BEAR_THRESHOLD = 0.45  # P-14: <45% of universe above 50-SMA → BEAR
 
 
+def _trend_3way(bars: list[PriceBar], close, ma200, ma50) -> str:
+    """3-way trend BULL/BEAR/SIDEWAYS. A confirmed trend needs price vs the 200-SMA,
+    the 50/200 alignment AND the 200-SMA 20-bar slope (with a flat-band) to agree;
+    anything mixed/transitional is SIDEWAYS (the chop where breakouts whipsaw and
+    reversions have no bounce). Shared by the market regime and per-stock trend."""
+    ma200_prev = (
+        simple_moving_average(bars[:-REGIME_SLOPE_LOOKBACK], REGIME_MA_WINDOW)
+        if len(bars) >= REGIME_MA_WINDOW + REGIME_SLOPE_LOOKBACK
+        else None
+    )
+    slope = (
+        float((ma200 - ma200_prev) / ma200_prev) if ma200_prev not in (None, 0) else 0.0
+    )
+    if close > ma200 and (ma50 is not None and ma50 > ma200) and slope > REGIME_SLOPE_FLAT_PCT:
+        return TREND_REGIME_BULL
+    if close < ma200 and (ma50 is not None and ma50 < ma200) and slope < -REGIME_SLOPE_FLAT_PCT:
+        return TREND_REGIME_BEAR
+    return TREND_REGIME_SIDEWAYS
+
+
+def classify_stock_trend(bars: list[PriceBar], as_of_date: date) -> str | None:
+    """On-the-fly 3-way trend (BULL/BEAR/SIDEWAYS) for a SINGLE stock from its own
+    bars — same MA/slope logic as the market 3-way, minus the market-only breadth
+    signal. Computed at entry/exit; never persisted (it's a pure function of the
+    stock's price already in memory). Returns None if too little history."""
+    bars = bars_on_or_before(bars, as_of_date)
+    if len(bars) < REGIME_MA_WINDOW:
+        return None
+    close = bars[-1].close
+    ma200 = simple_moving_average(bars, REGIME_MA_WINDOW)
+    if ma200 is None:
+        return None
+    ma50 = simple_moving_average(bars, _SMA50_WINDOW)
+    return _trend_3way(bars, close, ma200, ma50)
+
+
 def classify_regime(
     benchmark_bars: list[PriceBar],
     as_of_date: date,
@@ -68,29 +104,8 @@ def classify_regime(
         else TREND_REGIME_BULL
     )
 
-    # ── 3-way trend (additive): BULL/BEAR/SIDEWAYS. A confirmed trend needs price,
-    # the 50/200 alignment AND the 200-SMA slope to agree; anything mixed/transitional
-    # is SIDEWAYS (the chop where breakouts whipsaw and reversions have no bounce).
-    # Validated on the lifecycle panel: trade breakout in BULL, reversion in BEAR,
-    # sit out SIDEWAYS — and only EXIT on confirmed BEAR (hold through sideways).
-    ma200_prev = (
-        simple_moving_average(bars[:-REGIME_SLOPE_LOOKBACK], REGIME_MA_WINDOW)
-        if len(bars) >= REGIME_MA_WINDOW + REGIME_SLOPE_LOOKBACK
-        else None
-    )
-    slope = (
-        float((ma200 - ma200_prev) / ma200_prev)
-        if ma200_prev not in (None, 0)
-        else 0.0
-    )
-    ma200_rising = slope > REGIME_SLOPE_FLAT_PCT
-    ma200_falling = slope < -REGIME_SLOPE_FLAT_PCT
-    if close > ma200 and (ma50 is not None and ma50 > ma200) and ma200_rising:
-        trend3 = TREND_REGIME_BULL
-    elif close < ma200 and (ma50 is not None and ma50 < ma200) and ma200_falling:
-        trend3 = TREND_REGIME_BEAR
-    else:
-        trend3 = TREND_REGIME_SIDEWAYS
+    # 3-way trend (additive): BULL/BEAR/SIDEWAYS — see _trend_3way.
+    trend3 = _trend_3way(bars, close, ma200, ma50)
 
     vol = annualized_volatility(bars, REGIME_VOL_WINDOW)
     if vol is None:
