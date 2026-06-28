@@ -632,7 +632,9 @@ class PaperPilotOps:
         """Keep only BUY candidates that clear the lifecycle entry gate (regime sleeve +
         top-pick + stock trend). Returns [] in SIDEWAYS (sit out the chop)."""
         from sqlalchemy import text as _text
+        from app.core.config import get_settings as _gs
         from app.lifecycle.entry import entry_strategy_for_regime, should_enter
+        _top_rank = _gs().lifecycle_entry_top_rank
         m3 = self.db.execute(_text(
             "SELECT market_regime_3way FROM regime_history "
             "WHERE as_of_date = :d AND benchmark_symbol = '^NSEI'"
@@ -653,6 +655,7 @@ class PaperPilotOps:
                 rank=int(rec.rank) if rec.rank is not None else None,
                 pool_size=int(pool) if pool else None,
                 entry_top_pct=top_pct,
+                top_rank=_top_rank,
             ):
                 kept.append(rec)
         return kept

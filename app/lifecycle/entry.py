@@ -59,6 +59,7 @@ def should_enter(
     rank: int | None,
     pool_size: int | None,
     entry_top_pct: float = DEFAULT_ENTRY_TOP_PCT,
+    top_rank: int = 0,
 ) -> bool:
     """Per-stock entry gate for the lifecycle. True => BUY this stock today.
 
@@ -71,8 +72,12 @@ def should_enter(
     if entry_strategy_for_regime(market_regime_3way) != strategy:
         return False
 
-    # 2. Top-percentile pick in that sleeve?
-    if not is_top_pick(rank, pool_size, entry_top_pct):
+    # 2. Top pick? An absolute rank cap (top_rank>0, e.g. top-5 bucket) takes precedence
+    #    over the percentile gate when set.
+    if top_rank > 0:
+        if rank is None or rank > top_rank:
+            return False
+    elif not is_top_pick(rank, pool_size, entry_top_pct):
         return False
 
     # 3. Stock-trend gate.

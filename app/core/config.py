@@ -286,6 +286,12 @@ class Settings(BaseSettings):
     # BEAR->reversion_v3, SIDEWAYS->cash), a top pick, and clears the stock-trend gate.
     lifecycle_entry_enabled: bool = False
     lifecycle_entry_top_pct: float = 0.20
+    # Slot experiment: many small slots restricted to the top-N rank bucket. When
+    # lifecycle_max_positions > 0 it overrides the regime slot cap; sizing auto-falls to
+    # ~deployable/max_positions (18 slots ≈ 5%/name). top_rank>0 admits only rank<=N.
+    lifecycle_max_positions: int = 0
+    lifecycle_max_buy_per_day: int = 0
+    lifecycle_entry_top_rank: int = 0
     # EXIT: add the cross-rank HANDOFF exit — a breakout_v2 position exits on
     # breakout_v1 (B1) fade, a reversion_v3 position on reversal_v1 (RV1) recovery.
     # The legacy regime exit / hard stop / trailing stop are unchanged.

@@ -189,6 +189,9 @@ class PortfolioService:
             _cap = float(cfg.single_name_cap_pct) if cfg and cfg.single_name_cap_pct else 0.18
             max_positions = _s.mega_diversifier_total_slots
             deployable = total_equity * min(0.95, max_positions * _cap)
+        # Lifecycle slot experiment: many small slots → each slot ≈ deployable/max_positions.
+        if _s.lifecycle_max_positions > 0:
+            max_positions = _s.lifecycle_max_positions
         slots_available = max(0, max_positions - active_count)
 
         return PortfolioSummary(
@@ -264,6 +267,12 @@ class PortfolioService:
                 max_buy = max(max_buy, _s.mega_diversifier_crisis_max_buy)
             if regime_posture in ("defensive", "crisis"):
                 max_pos = _s.mega_diversifier_total_slots   # 5 slots; gold fills residual
+        # Lifecycle slot experiment: override the regime slot/buy caps (e.g. 18 slots,
+        # 6 buys/day). Position sizing then auto-falls to ~deployable/max_positions.
+        if _s.lifecycle_max_positions > 0:
+            max_pos = _s.lifecycle_max_positions
+            if _s.lifecycle_max_buy_per_day > 0:
+                max_buy = _s.lifecycle_max_buy_per_day
         slots_avail = max(0, max_pos - active_count)
 
         # Count BUYs today (paper trades filled today)
