@@ -140,6 +140,8 @@ class RegimeHistory(Base, UUIDPrimaryKeyMixin):
     trend_regime: Mapped[str] = mapped_column(String(16), nullable=False)
     vol_regime: Mapped[str] = mapped_column(String(16), nullable=False)
     regime_label: Mapped[str] = mapped_column(String(32), nullable=False)
+    # 3-way NIFTY regime (BULL/BEAR/SIDEWAYS) — additive; nullable for legacy rows.
+    market_regime_3way: Mapped[str | None] = mapped_column(String(16))
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

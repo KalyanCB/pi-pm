@@ -32,6 +32,7 @@ class RegimeAnalyticsRepository:
         trend_regime: str,
         vol_regime: str,
         regime_label: str,
+        market_regime_3way: str | None = None,
     ) -> RegimeHistory:
         existing = self.db.scalar(
             select(RegimeHistory).where(
@@ -43,6 +44,7 @@ class RegimeAnalyticsRepository:
             existing.trend_regime = trend_regime
             existing.vol_regime = vol_regime
             existing.regime_label = regime_label
+            existing.market_regime_3way = market_regime_3way
             existing.recorded_at = datetime.now(UTC)
             self.db.flush()
             return existing
@@ -52,6 +54,7 @@ class RegimeAnalyticsRepository:
             trend_regime=trend_regime,
             vol_regime=vol_regime,
             regime_label=regime_label,
+            market_regime_3way=market_regime_3way,
             recorded_at=datetime.now(UTC),
         )
         self.db.add(row)

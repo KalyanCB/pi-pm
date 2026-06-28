@@ -106,6 +106,7 @@ class RegimeAnalyticsService:
             trend_regime=regime.trend_regime,
             vol_regime=regime.vol_regime,
             regime_label=regime.regime_label,
+            market_regime_3way=regime.market_regime_3way,
         )
 
     def _compute_breadth(self, as_of_date: date) -> float | None:
