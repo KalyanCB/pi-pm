@@ -140,9 +140,16 @@ _FOREGROUND_SYNC: set[str] = set()
 if _SUITE == "lifecycle":
     _REGIME_STRATEGY = _REGIME_STRATEGY_LIFECYCLE
     _ALL_STRATEGIES = _LIFECYCLE_ALL
+    # Belt-and-suspenders: ALL lifecycle strategies synchronous — both entry sleeves
+    # (breakout_v2/reversion_v3) AND the handoff ranks (breakout_v1/momentum_v3/reversal_v1).
+    # Guarantees no trade ever reads a background-lagged rank, even if future code reads
+    # the non-active sleeve. Background becomes a no-op (factor-IC off). Foreground does
+    # all 5/day (slower) but fully correct.
     _FOREGROUND_SYNC = {
+        RANKING_STRATEGY_BREAKOUT_V2,
         RANKING_STRATEGY_BREAKOUT_V1,
         RANKING_STRATEGY_MOMENTUM_V3,
+        RANKING_STRATEGY_REVERSION_V3,
         RANKING_STRATEGY_REVERSAL_V1,
     }
 else:
@@ -262,6 +269,10 @@ def run_background(day: date, active: str, factor_ic_day: bool) -> None:
         # pure research (non-handoff sleeves + factor-IC).
         others = [_spec(n) for n in _ALL_STRATEGIES
                   if n != active and n not in _FOREGROUND_SYNC]
+        # Belt-and-suspenders: with every strategy ranked synchronously in the foreground,
+        # there is no leftover research to do (factor-IC is off by default) — skip.
+        if not others and not factor_ic_day:
+            return
         batch_svc = _build_batch_service(db, _GLOBAL_STORE)
         request = _base_request(
             day, others,
