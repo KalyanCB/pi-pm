@@ -132,9 +132,19 @@ _LIFECYCLE_ALL = [
     RANKING_STRATEGY_REVERSAL_V1,
 ]
 _SUITE = os.getenv("STRATEGY_SUITE", "v1").lower()
+# Strategies the TRADE path reads SAME-DAY and must therefore be ranked in the SYNC
+# foreground, not the lagging background. The lifecycle handoff exit reads breakout_v1
+# (B1), momentum_v3 (trend leg) and reversal_v1 (RV1) for open positions — deferring
+# them to background research made the exit fire on stale (bg_pending-day-old) ranks.
+_FOREGROUND_SYNC: set[str] = set()
 if _SUITE == "lifecycle":
     _REGIME_STRATEGY = _REGIME_STRATEGY_LIFECYCLE
     _ALL_STRATEGIES = _LIFECYCLE_ALL
+    _FOREGROUND_SYNC = {
+        RANKING_STRATEGY_BREAKOUT_V1,
+        RANKING_STRATEGY_MOMENTUM_V3,
+        RANKING_STRATEGY_REVERSAL_V1,
+    }
 else:
     _REGIME_STRATEGY = _REGIME_STRATEGY_V2 if _SUITE == "v2" else _REGIME_STRATEGY_V1
     _ALL_STRATEGIES = sorted(set(_REGIME_STRATEGY.values()))
@@ -217,10 +227,13 @@ def run_foreground(day: date, paper_trade: bool, global_store) -> tuple[str, str
         label = (row.regime_label if row else None) or "NEUTRAL_LOW_VOL"
         active = _REGIME_STRATEGY.get(label, RANKING_STRATEGY_MOMENTUM_V1)
 
-        # 2. Batch with ONLY the active strategy — identical trades.
+        # 2. Batch the active strategy PLUS any trade-critical handoff strategies the exit
+        #    reads same-day (lifecycle: breakout_v1/momentum_v3/reversal_v1). Ranking them
+        #    here (not background) means the handoff sees CURRENT ranks, matching live.
+        _fg_specs = [_spec(active)] + [_spec(n) for n in _FOREGROUND_SYNC if n != active]
         batch_svc = _build_batch_service(db, global_store)
         request = _base_request(
-            day, [_spec(active)],
+            day, _fg_specs,
             DailyBatchPhaseFlags(
                 ingest=False, rankings=True, validation=True, recommendations=True,
                 regime_history=False, regime_performance=False, factor_ic=False,
@@ -244,7 +257,11 @@ def run_background(day: date, active: str, factor_ic_day: bool) -> None:
     state. Reads the fork-inherited _GLOBAL_STORE (not passed, to avoid pickling it)."""
     db = get_session_factory()()
     try:
-        others = [_spec(n) for n in _ALL_STRATEGIES if n != active]
+        # Exclude the active AND the foreground-sync handoff strategies — those are now
+        # ranked synchronously on the trade path, so the background only does the leftover
+        # pure research (non-handoff sleeves + factor-IC).
+        others = [_spec(n) for n in _ALL_STRATEGIES
+                  if n != active and n not in _FOREGROUND_SYNC]
         batch_svc = _build_batch_service(db, _GLOBAL_STORE)
         request = _base_request(
             day, others,
