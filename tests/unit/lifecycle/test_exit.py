@@ -3,10 +3,12 @@ from __future__ import annotations
 import pytest
 
 from app.lifecycle.exit import (
-    EXIT_B1_FADE,
+    EXIT_MOMENTUM_FADE,
     EXIT_RV1_RECOVERED,
     b1_has_peaked,
     exit_rank_strategy,
+    momentum_alive,
+    momentum_strategy,
     pct_from_rank,
     should_exit_on_handoff,
 )
@@ -41,10 +43,31 @@ def test_b1_has_peaked():
     assert b1_has_peaked(None) is False
 
 
-# ── breakout handoff: exit on B1 FADE, only after a spike ─────────────────────
-def test_breakout_exits_on_b1_fade_after_spike():
-    fired, reason = should_exit_on_handoff(entry_strategy=BV2, handoff_pct=0.30, has_peaked=True)
-    assert fired and reason == EXIT_B1_FADE
+# ── breakout 2-leg handoff: B1 fade -> momentum leg -> EXIT_MOMENTUM_FADE ──────
+def test_momentum_strategy_routing():
+    assert momentum_strategy(BV2) == "momentum_v3"
+    assert momentum_strategy(RV3) is None
+
+
+def test_momentum_alive():
+    assert momentum_alive(0.70) is True
+    assert momentum_alive(0.50) is True
+    assert momentum_alive(0.30) is False
+    assert momentum_alive(None) is False
+
+
+def test_breakout_exits_when_b1_AND_momentum_faded():
+    # B1 spiked then faded, and momentum is also dead -> exit on the trend-leg fade
+    fired, reason = should_exit_on_handoff(
+        entry_strategy=BV2, handoff_pct=0.30, has_peaked=True, momentum_pct=0.20)
+    assert fired and reason == EXIT_MOMENTUM_FADE
+
+
+def test_breakout_holds_when_momentum_alive_after_b1_fade():
+    # B1 faded but momentum_v3 is still strong -> HOLD (ride the trend, don't sell early)
+    fired, _ = should_exit_on_handoff(
+        entry_strategy=BV2, handoff_pct=0.30, has_peaked=True, momentum_pct=0.70)
+    assert fired is False
 
 
 def test_breakout_holds_while_b1_strong():

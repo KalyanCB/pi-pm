@@ -31,6 +31,8 @@ from app.models.ranking_run import RankingRun
 from app.lifecycle.exit import (
     b1_has_peaked,
     exit_rank_strategy,
+    momentum_alive,
+    momentum_strategy,
     pct_from_rank,
     should_exit_on_handoff,
 )
@@ -80,7 +82,7 @@ class ExitMonitorService:
     # OHLC). "all" preserves the legacy single-pass behaviour.
     _SIGNAL_TRIGGERS = {"EXIT_RANK_DROP", "EXIT_ALPHA_DECAY", "EXIT_REGIME",
                         "EXIT_TIME", "EXIT_LIQUIDITY",
-                        "EXIT_B1_FADE", "EXIT_RV1_RECOVERED"}
+                        "EXIT_B1_FADE", "EXIT_MOMENTUM_FADE", "EXIT_RV1_RECOVERED"}
     _PRICE_TRIGGERS = {"EXIT_STOP_LOSS", "EXIT_TRAILING_STOP"}
 
     def run(self, as_of_date: date | None = None,
@@ -455,16 +457,11 @@ class ExitMonitorService:
         except Exception:
             return None
 
-    def _lifecycle_handoff(self, pos, as_of, days_held) -> "TriggerResult | None":
-        """Cross-rank HANDOFF exit: a position entered on breakout_v2/reversion_v3 is
-        judged on the OLD active rank (breakout_v1/reversal_v1). Reads the position's
-        rank+pool in the handoff strategy from entry to ``as_of`` (percentile = (pool-
-        rank)/(pool-1)); B1 must have spiked before its fade arms the exit."""
-        handoff = exit_rank_strategy(getattr(pos, "strategy_name", None))
-        if handoff is None or pos.entry_date is None or as_of is None:
-            return None
-        from sqlalchemy import text as _t
-        rows = self.db.execute(_t("""
+    def _strategy_pcts(self, stock_id, strat, entry, as_of) -> list:
+        """Time-series of the stock's percentile in ``strat`` from entry→as_of."""
+        if strat is None or entry is None or as_of is None:
+            return []
+        rows = self.db.execute(_text("""
             SELECT res.rank AS rank,
                    (SELECT max(rank) FROM ranking_results WHERE ranking_run_id = rr.id) AS pool
             FROM ranking_runs rr
@@ -472,9 +469,26 @@ class ExitMonitorService:
             WHERE rr.strategy_name = :strat AND rr.status = 'completed'
               AND rr.as_of_date BETWEEN :entry AND :asof
             ORDER BY rr.as_of_date
-        """), {"sid": pos.stock_id, "strat": handoff,
-               "entry": pos.entry_date, "asof": as_of}).fetchall()
-        pcts = [p for p in (pct_from_rank(r.rank, r.pool) for r in rows) if p is not None]
+        """), {"sid": stock_id, "strat": strat, "entry": entry, "asof": as_of}).fetchall()
+        return [p for p in (pct_from_rank(r.rank, r.pool) for r in rows) if p is not None]
+
+    def _momentum_pct(self, pos, as_of) -> float | None:
+        """Latest momentum_v3 percentile for a breakout position's stock (trend leg).
+        Used by the handoff exit (ride momentum after the breakout fades) AND the
+        alpha-decay gate (don't retire a name momentum is still carrying)."""
+        mstrat = momentum_strategy(getattr(pos, "strategy_name", None))
+        pcts = self._strategy_pcts(pos.stock_id, mstrat, getattr(pos, "entry_date", None), as_of)
+        return pcts[-1] if pcts else None
+
+    def _lifecycle_handoff(self, pos, as_of, days_held, momentum_pct=None) -> "TriggerResult | None":
+        """Cross-rank HANDOFF exit: a position entered on breakout_v2/reversion_v3 is
+        judged on the OLD active rank. breakout_v2 rides breakout_v1 (breakout leg) then,
+        once B1 has spiked AND faded, hands off to momentum_v3 (``momentum_pct``) — held
+        while momentum is alive, exited only when the trend leg has ALSO faded."""
+        handoff = exit_rank_strategy(getattr(pos, "strategy_name", None))
+        if handoff is None or pos.entry_date is None or as_of is None:
+            return None
+        pcts = self._strategy_pcts(pos.stock_id, handoff, pos.entry_date, as_of)
         if not pcts:
             return None
         fired, reason = should_exit_on_handoff(
@@ -482,12 +496,14 @@ class ExitMonitorService:
             handoff_pct=pcts[-1],
             has_peaked=any(b1_has_peaked(p) for p in pcts),
             days_held=days_held,
+            momentum_pct=momentum_pct,
         )
         if not fired:
             return None
         return TriggerResult(
             True, reason,
-            {"handoff_strategy": handoff, "handoff_pct": round(pcts[-1], 3)},
+            {"handoff_strategy": handoff, "handoff_pct": round(pcts[-1], 3),
+             "momentum_pct": round(momentum_pct, 3) if momentum_pct is not None else None},
             urgency="NORMAL",
         )
 
@@ -562,6 +578,10 @@ class ExitMonitorService:
         _lc = settings.lifecycle_handoff_exits_enabled
         _m3 = self._market_regime_3way(as_of) if (_lc and as_of) else None
         _st3 = self._stock_trend_3way(pos.stock_id, as_of) if (_lc and as_of) else None
+        # momentum_v3 percentile (trend leg) — drives the 2nd handoff leg and the
+        # alpha-decay gate: a name momentum is still carrying is NOT a decayed thesis.
+        _mom_pct = self._momentum_pct(pos, as_of) if (_lc and as_of) else None
+        _mom_alive = momentum_alive(_mom_pct) if _lc else False
 
         # ADR-037 P-15: suppress analytical exits (rank drop, alpha decay) for the
         # first N days. 48% of losers recover +14.7% avg within 10 days — premature
@@ -725,7 +745,8 @@ class ExitMonitorService:
         # spares the recoverers (green by day 15), not the genuine decayers.
         _alpha_decay_grace = settings.alpha_decay_grace_days
         if (days_held >= _alpha_decay_grace and not _in_alpha_decay_cooldown
-                and not _grad_suppress_analytical):
+                and not _grad_suppress_analytical
+                and not _mom_alive):  # momentum_v3 still carrying it -> not a decayed thesis
             _decay_threshold = 15 if _alpha_decay_grace <= 5 else 10**6
             results.append(check_alpha_decay(
                 ctx.get("unrealized_pnl_pct"), days_held,
@@ -763,7 +784,7 @@ class ExitMonitorService:
         # breakout_v1 fade; reversion_v3 -> exit on reversal_v1 recovery. Additive to
         # the legacy regime/stop triggers above.
         if settings.lifecycle_handoff_exits_enabled:
-            _handoff = self._lifecycle_handoff(pos, as_of, days_held)
+            _handoff = self._lifecycle_handoff(pos, as_of, days_held, momentum_pct=_mom_pct)
             if _handoff is not None:
                 results.append(_handoff)
 

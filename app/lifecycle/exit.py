@@ -17,6 +17,7 @@ from __future__ import annotations
 from app.core.constants import (
     RANKING_STRATEGY_BREAKOUT_V1,
     RANKING_STRATEGY_BREAKOUT_V2,
+    RANKING_STRATEGY_MOMENTUM_V3,
     RANKING_STRATEGY_REVERSAL_V1,
     RANKING_STRATEGY_REVERSION_V3,
 )
@@ -27,14 +28,36 @@ LIFECYCLE_EXIT_RANK_STRATEGY: dict[str, str] = {
     RANKING_STRATEGY_REVERSION_V3: RANKING_STRATEGY_REVERSAL_V1,   # R1 in, RV1 exits
 }
 
+# 2nd-leg handoff: once the breakout (B1) is spent, ride MOMENTUM (M3) before exiting.
+# breakout_v2 -> breakout_v1 (breakout leg) -> momentum_v3 (trend leg) -> exit.
+LIFECYCLE_MOMENTUM_STRATEGY: dict[str, str] = {
+    RANKING_STRATEGY_BREAKOUT_V2: RANKING_STRATEGY_MOMENTUM_V3,
+}
+
 # Thresholds (percentile, high = strong), from the validated lifecycle:
 B1_SPIKE_PCT = 0.65      # the breakout has fired once B1 reaches here
 B1_FADE_PCT = 0.45       # ...and is spent once B1 falls back below here
+MOMENTUM_HOLD_PCT = 0.50 # while momentum_v3 is at/above this, the trend leg is ALIVE — hold
 RV1_RECOVER_PCT = 0.40   # reversion done once the oversold rank drops below here
 RV1_GRACE_DAYS = 5       # don't take the reversion profit before the bounce develops
 
 EXIT_B1_FADE = "EXIT_B1_FADE"
+EXIT_MOMENTUM_FADE = "EXIT_MOMENTUM_FADE"
 EXIT_RV1_RECOVERED = "EXIT_RV1_RECOVERED"
+
+
+def momentum_strategy(entry_strategy: str | None) -> str | None:
+    """The trend-leg strategy a position rides AFTER its breakout fades (None if n/a)."""
+    if not entry_strategy:
+        return None
+    return LIFECYCLE_MOMENTUM_STRATEGY.get(entry_strategy)
+
+
+def momentum_alive(momentum_pct: float | None, hold_pct: float = MOMENTUM_HOLD_PCT) -> bool:
+    """True while the stock is still a strong momentum_v3 pick — the trend leg is alive,
+    so hold even though the breakout has faded. Used by the handoff exit AND the
+    alpha-decay gate (don't retire a name momentum is still carrying)."""
+    return momentum_pct is not None and momentum_pct >= hold_pct
 
 
 def exit_rank_strategy(entry_strategy: str | None) -> str | None:
@@ -64,22 +87,29 @@ def should_exit_on_handoff(
     handoff_pct: float | None,
     has_peaked: bool = False,
     days_held: int = 0,
+    momentum_pct: float | None = None,
     b1_fade_pct: float = B1_FADE_PCT,
     rv1_recover_pct: float = RV1_RECOVER_PCT,
     rv1_grace_days: int = RV1_GRACE_DAYS,
+    momentum_hold_pct: float = MOMENTUM_HOLD_PCT,
 ) -> tuple[bool, str | None]:
     """Lifecycle rank-handoff exit. ``handoff_pct`` is the position's CURRENT percentile
     in the handoff strategy (breakout_v1 / reversal_v1). Returns (exit?, reason).
 
-    - breakout_v2 position: exit when the active break has FADED (B1 < fade) — but only
-      after it actually spiked (``has_peaked``); a breakout that never fired is left to
-      the stop/cap, not cut here.
+    - breakout_v2 position (two-leg handoff): ride breakout_v1 (the breakout); once it has
+      spiked AND faded (B1 < fade) the breakout is spent — HAND OFF to momentum_v3. While
+      ``momentum_pct`` keeps the trend leg ALIVE, HOLD (ride the move); exit only when
+      momentum has ALSO faded -> EXIT_MOMENTUM_FADE. A breakout that never fired is left to
+      the stop, not cut here. (2021 audit: B1-fade exits left +20-35% on the table.)
     - reversion_v3 position: exit when the stock has RECOVERED out of the oversold zone
       (RV1 < recover), after a short grace so the bounce can develop.
     """
     if entry_strategy == RANKING_STRATEGY_BREAKOUT_V2:
         if has_peaked and handoff_pct is not None and handoff_pct < b1_fade_pct:
-            return True, EXIT_B1_FADE
+            # Breakout spent -> momentum leg. Hold while momentum is alive; else exit.
+            if momentum_alive(momentum_pct, momentum_hold_pct):
+                return False, None
+            return True, EXIT_MOMENTUM_FADE
     elif entry_strategy == RANKING_STRATEGY_REVERSION_V3:
         if (
             days_held >= rv1_grace_days
