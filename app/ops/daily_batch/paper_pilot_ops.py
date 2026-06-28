@@ -367,11 +367,15 @@ class PaperPilotOps:
             CREATE TABLE IF NOT EXISTS buy_trace (
               id bigserial PRIMARY KEY,
               as_of_date date, fill_date date, stock_id uuid, symbol text,
+              recommendation_id uuid,
               strategy text, conviction text,
               reference_close numeric, entry_low numeric, entry_high numeric,
               d1_open numeric, d1_high numeric, d1_low numeric, d1_close numeric,
               decision text, reason text, fill_price numeric,
               created_at timestamptz DEFAULT now())"""))
+        # backfill the column on pre-existing tables (retry queue keys off it)
+        self.db.execute(_t(
+            "ALTER TABLE buy_trace ADD COLUMN IF NOT EXISTS recommendation_id uuid"))
 
     def _log_buy_trace(self, as_of_date, rec, el, eh, d1, decision, reason, fill_price) -> None:
         """One row per BUY candidate evaluated — executed or skipped, with the band,
@@ -379,12 +383,13 @@ class PaperPilotOps:
         from sqlalchemy import text as _t
         try:
             self.db.execute(_t("""
-                INSERT INTO buy_trace (as_of_date, fill_date, stock_id, symbol, strategy,
-                  conviction, reference_close, entry_low, entry_high,
+                INSERT INTO buy_trace (as_of_date, fill_date, stock_id, symbol, recommendation_id,
+                  strategy, conviction, reference_close, entry_low, entry_high,
                   d1_open, d1_high, d1_low, d1_close, decision, reason, fill_price)
-                VALUES (:aod, :fd, :sid, (SELECT symbol FROM stocks WHERE id=:sid), :strat,
+                VALUES (:aod, :fd, :sid, (SELECT symbol FROM stocks WHERE id=:sid), :rid, :strat,
                   :conv, :rc, :el, :eh, :o, :h, :l, :c, :dec, :rsn, :fp)"""), {
                 "aod": as_of_date, "fd": (d1.date if d1 else None), "sid": rec.stock_id,
+                "rid": getattr(rec, "id", None),
                 "strat": getattr(rec, "strategy_name", None), "conv": rec.conviction_band,
                 "rc": float(rec.reference_close) if rec.reference_close is not None else None,
                 "el": el, "eh": eh,
@@ -397,22 +402,80 @@ class PaperPilotOps:
             pass
 
     def _entry_band_decision(self, d1, el, eh):
-        """Limit-fill on the rec's band [entry_low, entry_high]. Realistic limit-order
-        fill (NOT the day's low — that over-captured ~1.15% vs next-open):
-          - gap-up (D+1 low > entry_high, never reached band) → SKIP
-          - else → fill at min(D+1 open, entry_high): you transact at the OPEN if it's
-            already at/below your limit (in-band or gap-down/cheaper), else at ENTRY_HIGH
-            when the price dips into the band intraday.
+        """Momentum-confirmed band entry — mirrors the LIVE monitor: fire ONLY if D+1's
+        price actually trades INTO the band [entry_low, entry_high]; fill at the band
+        level (high by default, mid optional). Gap-up (price stays above) AND gap-down
+        (price stays below) both → NOT fired. No day-low / open capture.
         Returns (decision, fill_price, reason)."""
-        if d1 is None or d1.open is None:
+        if d1 is None or d1.high is None or d1.low is None:
             return ("SKIPPED", None, "NO_D1_DATA")
-        o = float(d1.open)
-        lo = float(d1.low) if d1.low is not None else o
-        if lo > eh:  # gap-up — band never reached
+        lo, hi = float(d1.low), float(d1.high)
+        from app.core.config import get_settings
+        level = (get_settings().entry_band_fill_level or "mid").lower()
+        target = eh if level == "high" else (el + eh) / 2.0   # default: MID of band
+        if lo <= target <= hi:            # price traded THROUGH the fill level → take it
+            return ("FILLED", round(target, 4), "BAND_" + level.upper())
+        # fill level not touched → not fired today; classify for the retry queue
+        if lo > eh:
             return ("SKIPPED", None, "PRICE_TAG_MISSED_GAPUP")
-        fill = round(min(o, eh), 4)
-        reason = "IN_BAND" if el <= fill <= eh else ("GAP_DOWN" if fill < el else "LIMIT_TOUCH")
-        return ("FILLED", fill, reason)
+        if hi < el:
+            return ("SKIPPED", None, "PRICE_TAG_MISSED_GAPDOWN")
+        return ("SKIPPED", None, "BAND_MID_NOT_TOUCHED")
+
+    _RETRY_REASONS = ("PRICE_TAG_MISSED_GAPUP", "PRICE_TAG_MISSED_GAPDOWN",
+                      "BAND_MID_NOT_TOUCHED")
+
+    def _collect_missed_recs(self, as_of_date, active_strategy, open_stock_ids,
+                             fresh_stock_ids, lookback_days):
+        """Missed-fill retry queue: BUY recs from the last ``lookback_days`` trading days
+        (of the CURRENTLY-active strategy only → 'falls on current regime') that missed
+        their band and were never since filled. Re-checked against today's bar by the
+        same band gate in the buy loop; returned ranked by ORIGINAL rank then
+        composite_score so they backfill open slots best-first."""
+        if not lookback_days or lookback_days <= 0:
+            return []
+        from sqlalchemy import text as _t
+        rows = self.db.execute(_t("""
+            WITH days AS (
+                SELECT DISTINCT as_of_date FROM buy_trace
+                WHERE as_of_date < :d AND strategy = :strat
+                ORDER BY as_of_date DESC LIMIT :n
+            ),
+            missed AS (
+                SELECT DISTINCT ON (bt.stock_id)
+                       bt.recommendation_id, bt.stock_id, bt.as_of_date
+                FROM buy_trace bt
+                WHERE bt.as_of_date IN (SELECT as_of_date FROM days)
+                  AND bt.strategy = :strat
+                  AND bt.decision = 'SKIPPED'
+                  AND bt.reason = ANY(:reasons)
+                  AND bt.recommendation_id IS NOT NULL
+                ORDER BY bt.stock_id, bt.as_of_date DESC
+            )
+            SELECT m.recommendation_id FROM missed m
+            WHERE NOT EXISTS (
+                SELECT 1 FROM buy_trace f
+                WHERE f.stock_id = m.stock_id AND f.decision = 'FILLED'
+                  AND f.as_of_date >= m.as_of_date)
+        """), {"d": as_of_date, "strat": active_strategy,
+               "n": int(lookback_days), "reasons": list(self._RETRY_REASONS)}).fetchall()
+        ids = [r[0] for r in rows if r[0] is not None]
+        if not ids:
+            return []
+        recs = self.db.scalars(select(RecommendationResult).where(
+            RecommendationResult.id.in_(ids),
+            RecommendationResult.action == RecommendationAction.BUY.value,
+        )).all()
+        recs = [r for r in recs
+                if r.stock_id not in open_stock_ids
+                and r.stock_id not in fresh_stock_ids
+                and not r.portfolio_position_id]
+        recs.sort(key=lambda r: (
+            r.rank if r.rank is not None else 1_000_000,
+            -(float(r.composite_score) if r.composite_score is not None else 0.0)))
+        for r in recs:
+            setattr(r, "_is_retry", True)
+        return recs
 
     # ── P-21 Trade Decision Layer ────────────────────────────────────────────
 
@@ -706,6 +769,23 @@ class PaperPilotOps:
         _ordered_recs = self._prioritize_entries(
             _fresh, _active_strategy, _regime_label, as_of_date
         )
+        # Missed-fill retry: pull band-misses from the last N trading days of the SAME
+        # (now-active) strategy and let them COMPETE HEAD-TO-HEAD with today's fresh
+        # picks — the merged pool is ranked by original rank then composite_score, so a
+        # strong 3-day-old rank can bump a weak fresh one. The buy loop's band gate
+        # re-checks each against today's bar and its slot/funding caps still apply.
+        from app.core.config import get_settings as _gs0
+        _retry_days = _gs0().entry_band_retry_days
+        if _retry_days and _retry_days > 0:
+            self._ensure_buy_trace_table()  # retry query reads buy_trace.recommendation_id
+            _fresh_sids = {r.stock_id for r in _ordered_recs}
+            _missed = self._collect_missed_recs(
+                as_of_date, _active_strategy, _open_stock_ids, _fresh_sids, _retry_days)
+            if _missed:
+                _ordered_recs = sorted(
+                    list(_ordered_recs) + _missed,
+                    key=lambda r: (r.rank if r.rank is not None else 1_000_000,
+                                   -(float(r.composite_score) if r.composite_score is not None else 0.0)))
 
         buys_today = 0
         from app.core.config import get_settings as _get_settings
@@ -812,6 +892,7 @@ class PaperPilotOps:
                 _el = float(rec.entry_low) if rec.entry_low is not None else None
                 _eh = float(rec.entry_high) if rec.entry_high is not None else None
                 _band_fill = None
+                _rsn = None
                 if _settings.entry_band_fills_enabled and _el is not None and _eh is not None:
                     _dec, _band_fill, _rsn = self._entry_band_decision(_d1, _el, _eh)
                     if _dec == "SKIPPED":
@@ -852,7 +933,10 @@ class PaperPilotOps:
                     entries.append(str(order.id))
                     buys_today += 1
                     _open_slots += 1  # live slot cap — count this new position
-                    self._log_buy_trace(as_of_date, rec, _el, _eh, _d1, "FILLED", _band_fill and "IN_BAND/GAP_DOWN" or "EXECUTED", _band_fill)
+                    _fill_rsn = (_rsn if _band_fill is not None else "EXECUTED")
+                    if getattr(rec, "_is_retry", False):
+                        _fill_rsn += "/RETRY"
+                    self._log_buy_trace(as_of_date, rec, _el, _eh, _d1, "FILLED", _fill_rsn, _band_fill)
                 except Exception as exc:
                     self._log_buy_trace(as_of_date, rec, _el, _eh, _d1, "SKIPPED", f"EXEC_ERROR: {str(exc)[:60]}", None)
                     skipped.append({

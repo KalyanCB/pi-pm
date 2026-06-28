@@ -182,6 +182,13 @@ class PortfolioService:
 
         active_count = len(positions)
         max_positions = slots["max_positions"]
+        # Mega diversifier bear structure: 5 total slots; equity capped per regime, gold
+        # fills the residual. Raise position capacity to the full slot count and the
+        # deploy ceiling to fund all slots (5 × single-name cap).
+        if _s.mega_diversifier_enabled and regime_posture in ("defensive", "crisis"):
+            _cap = float(cfg.single_name_cap_pct) if cfg and cfg.single_name_cap_pct else 0.18
+            max_positions = _s.mega_diversifier_total_slots
+            deployable = total_equity * min(0.95, max_positions * _cap)
         slots_available = max(0, max_positions - active_count)
 
         return PortfolioSummary(
@@ -245,6 +252,18 @@ class PortfolioService:
         active_count = len(positions)
         max_pos = slots["max_positions"]
         max_buy = slots["max_buy_per_day"]
+        # Mega diversifier: bear/crisis normally cap buys at 0 (→ gold fills the slots).
+        # When on, let a few mega buys through so the bear-resilient mega names actually
+        # get bought instead of leaving the defensive allocation to gold.
+        from app.core.config import get_settings as _gs
+        _s = _gs()
+        if _s.mega_diversifier_enabled:
+            if regime_posture == "defensive":
+                max_buy = max(max_buy, _s.mega_diversifier_bear_max_buy)
+            elif regime_posture == "crisis":
+                max_buy = max(max_buy, _s.mega_diversifier_crisis_max_buy)
+            if regime_posture in ("defensive", "crisis"):
+                max_pos = _s.mega_diversifier_total_slots   # 5 slots; gold fills residual
         slots_avail = max(0, max_pos - active_count)
 
         # Count BUYs today (paper trades filled today)

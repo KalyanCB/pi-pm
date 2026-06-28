@@ -297,10 +297,20 @@ class Settings(BaseSettings):
     # Each BUY rec carries a price band [entry_low, entry_high] (reference_close ±
     # 0.5×ATR). With this ON, a BUY is treated as a limit order on the band: it fills
     # ONLY if D+1's intraday range OVERLAPS the band (D+1_low ≤ entry_high AND
-    # D+1_high ≥ entry_low), at clamp(D+1_open, entry_low, entry_high). If D+1 gaps
-    # entirely away from the band (up = chasing, down = possibly broken), the order is
-    # SKIPPED — no chasing the signal price. Supersedes next_open for entries when on.
+    # D+1_high ≥ entry_low), filling at the committed band level (see
+    # entry_band_fill_level). If D+1 gaps entirely away from the band (up = chasing,
+    # down = possibly broken/no momentum into band), the order is SKIPPED — mirrors the
+    # live momentum monitor that only fires inside the band. Supersedes next_open.
     entry_band_fills_enabled: bool = False
+    # Where in the band a momentum-confirmed entry fills: "mid" = band midpoint
+    # (reference_close — fires only if D+1 trades THROUGH the mid), "high" = entry_high
+    # (top of band). Only applies when entry_band_fills_enabled.
+    entry_band_fill_level: str = "mid"
+    # Missed-fill retry: when a BUY misses its band/mid, keep it eligible for this many
+    # subsequent trading days. On each later day it's re-checked against that day's bar
+    # and, if the mid is touched + regime still active + an open slot exists, executed —
+    # ranked by its ORIGINAL rank then composite_score. 0 disables the retry queue.
+    entry_band_retry_days: int = 3
 
     # ── Fast-deploy: refill bull/neutral slots faster (idle-cash fix) ─────────
     # In bull regimes max_buy_per_day is 2 (1 neutral), so after a batch exit the
