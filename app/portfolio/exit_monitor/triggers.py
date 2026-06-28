@@ -79,8 +79,19 @@ def check_regime_change(
     own_trend_intact: bool | None = None,
     per_stock_trend_hold: bool = False,
     intra_bear_hold: bool = True,
+    market_regime_3way: str | None = None,
+    stock_trend_3way: str | None = None,
+    hold_through_sideways: bool = False,
 ) -> TriggerResult:
     """EXIT_REGIME: regime turned defensive or crisis (R-EXIT-03).
+
+    Lifecycle 3-way mode (``hold_through_sideways`` + ``market_regime_3way`` given):
+    the legacy 4-way regime whipsaws BULL<->BEAR through chop, market-selling winners
+    that then recover (2021 audit: PAGEIND +17% / PGHH/ZFCVINDIA +7-10% left after a
+    regime cut). So judge the exit on the *3-way* regime instead — HOLD through every
+    SIDEWAYS bar, exit only on a CONFIRMED BEAR, and even then keep a name whose OWN
+    trend is still BULL (ride the strong stock in a weak tape). ``crisis`` still always
+    exits (systemic). Legacy path is unchanged when the 3-way inputs aren't supplied.
 
     P-20: make the regime exit *selective* rather than a blanket liquidation.
     A defensive flip previously sold every open position regardless of the
@@ -105,6 +116,10 @@ def check_regime_change(
     """
     if current_regime_posture == "crisis":
         fired = True
+    elif hold_through_sideways and market_regime_3way is not None:
+        # Lifecycle 3-way: hold through SIDEWAYS; exit only on confirmed BEAR, and keep
+        # a stock whose own trend is still BULL.
+        fired = (market_regime_3way == "BEAR" and stock_trend_3way != "BULL")
     elif current_regime_posture == "defensive":
         weak_pnl = unrealized_pnl_pct is not None and unrealized_pnl_pct < 0
         weak_rank = current_rank is not None and current_rank > entry_pool_size
@@ -146,6 +161,8 @@ def check_regime_change(
             "current_rank": current_rank,
             "own_trend_intact": own_trend_intact,
             "per_stock_trend_hold": per_stock_trend_hold,
+            "market_regime_3way": market_regime_3way,
+            "stock_trend_3way": stock_trend_3way,
         },
         urgency=urgency,
     )

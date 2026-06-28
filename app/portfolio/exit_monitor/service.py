@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text as _text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -97,6 +97,10 @@ class ExitMonitorService:
         as_of = as_of_date or date.today()
         cfg = self._get_config()
         positions = self._get_open_positions()
+        # A buy decided on D-1 fills NEXT session (entry_date = D). Don't exit-evaluate a
+        # position before its own fill session — skip future-dated entries this batch.
+        positions = [p for p in positions
+                     if not (as_of and p.entry_date and p.entry_date > as_of)]
         regime_posture = self._resolve_regime_posture(as_of)
 
         if not positions:
@@ -512,6 +516,31 @@ class ExitMonitorService:
         except Exception:
             return None
 
+    def _market_regime_3way(self, as_of: date) -> str | None:
+        """Persisted 3-way NIFTY regime (BULL/BEAR/SIDEWAYS) on/just before as_of."""
+        try:
+            return self.db.execute(_text(
+                "SELECT market_regime_3way FROM regime_history "
+                "WHERE as_of_date <= :d AND benchmark_symbol = '^NSEI' "
+                "ORDER BY as_of_date DESC LIMIT 1"), {"d": as_of}).scalar()
+        except Exception:
+            return None
+
+    def _stock_trend_3way(self, stock_id: UUID, as_of: date) -> str | None:
+        """Per-stock 3-way trend on as_of (close vs 50/200-SMA + 200-SMA slope)."""
+        try:
+            from app.ranking.math_utils import PriceBar
+            from app.validation.regimes import classify_stock_trend
+            rows = self.db.execute(_text(
+                "SELECT date, close FROM market_data WHERE stock_id = :s AND date <= :d "
+                "AND source = 'kite' ORDER BY date DESC LIMIT 260"), {"s": stock_id, "d": as_of}).fetchall()
+            if len(rows) < 220:
+                return None
+            bars = [PriceBar(date=r[0], close=float(r[1]), volume=None) for r in reversed(rows)]
+            return classify_stock_trend(bars, as_of)
+        except Exception:
+            return None
+
     def _evaluate_triggers(
         self,
         pos: PortfolioPosition,
@@ -526,6 +555,13 @@ class ExitMonitorService:
         settings = get_settings()
         single_cap = float(cfg.single_name_cap_pct * 100) if cfg else 18.0
         days_held = ctx.get("days_held", 0)
+
+        # Lifecycle exit tuning: 3-way market regime + the stock's own 3-way trend, used
+        # for the regime exit (hold through SIDEWAYS), the regime/stock-tiered hard stop,
+        # and the alpha-decay tolerance. Computed once; only when the lifecycle is on.
+        _lc = settings.lifecycle_handoff_exits_enabled
+        _m3 = self._market_regime_3way(as_of) if (_lc and as_of) else None
+        _st3 = self._stock_trend_3way(pos.stock_id, as_of) if (_lc and as_of) else None
 
         # ADR-037 P-15: suppress analytical exits (rank drop, alpha decay) for the
         # first N days. 48% of losers recover +14.7% avg within 10 days — premature
@@ -583,8 +619,22 @@ class ExitMonitorService:
                                 settings.atr_stop_floor_pct, settings.atr_stop_cap_pct)
 
         # P-17: use the tighter of progressive stop vs regime stop (after day 10)
-        if days_held > 10:
+        if days_held > 10 and not _lc:
             stop_loss = max(stop_loss, _progressive_stop)
+
+        # Lifecycle regime/stock-tiered hard stop (8/6/4/2%). Replaces the progressive
+        # day-stop that was cutting names near 0% after day 10 (2021 audit: stops fired
+        # at -1.2% then the stock ran +12-20%). Give a strong name in a strong tape room;
+        # tighten only as the regime weakens.
+        if _lc:
+            if _m3 == "BEAR":
+                stop_loss = -settings.lifecycle_stop_bear_pct
+            elif _m3 == "SIDEWAYS":
+                stop_loss = -settings.lifecycle_stop_sideways_pct
+            elif _m3 == "BULL" and _st3 == "BULL":
+                stop_loss = -settings.lifecycle_stop_bull_bull_pct
+            else:
+                stop_loss = -settings.lifecycle_stop_bull_pct
 
         trailing = (
             _clamp(settings.atr_trail_mult_normal * _atr_pct100,
@@ -680,6 +730,8 @@ class ExitMonitorService:
             results.append(check_alpha_decay(
                 ctx.get("unrealized_pnl_pct"), days_held,
                 decay_threshold_day=_decay_threshold,
+                # Lifecycle: don't retire a name at -0.4%; require a real adverse move.
+                decay_min_alpha=(-settings.lifecycle_alpha_decay_tolerance_pct if _lc else 0.0),
             ))
 
         # Hard exits always fire regardless of hold period — EXCEPT a runner or a
@@ -694,6 +746,9 @@ class ExitMonitorService:
                 own_trend_intact=ctx.get("own_trend_intact"),
                 per_stock_trend_hold=settings.regime_exit_per_stock_trend_enabled,
                 intra_bear_hold=settings.regime_exit_intra_bear_hold,
+                market_regime_3way=_m3,
+                stock_trend_3way=_st3,
+                hold_through_sideways=(_lc and settings.lifecycle_regime_exit_3way),
             ))
         results += [
             check_stop_loss(stop_pnl, stop_loss),

@@ -1007,11 +1007,16 @@ class PaperPilotOps:
 
                 try:
                     approval_id = self._latest_approval_id(rec.id)
+                    # D-1 rec → fill on D: date the entry on the gated next-session bar
+                    # (_d1) so the position reflects when it actually filled, not the rec day.
+                    _entry_as_of = as_of_date
+                    if _settings.entry_execute_next_session and _d1 is not None:
+                        _entry_as_of = _d1[0]
                     order = self.execution_service.submit_from_recommendation(
                         recommendation_id=rec.id,
                         approval_id=approval_id,
                         requested_by=self._pilot_actor_id,
-                        as_of_date=as_of_date,
+                        as_of_date=_entry_as_of,
                         idempotency_key=f"pilot-entry:{rec.id}",
                     )
                     entries.append(str(order.id))

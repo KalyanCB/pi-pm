@@ -290,6 +290,18 @@ class Settings(BaseSettings):
     # breakout_v1 (B1) fade, a reversion_v3 position on reversal_v1 (RV1) recovery.
     # The legacy regime exit / hard stop / trailing stop are unchanged.
     lifecycle_handoff_exits_enabled: bool = False
+    # Lifecycle EXIT tuning (active only with lifecycle_handoff_exits_enabled):
+    #  1) regime exit on the 3-way regime — HOLD through SIDEWAYS chop, exit only on a
+    #     CONFIRMED BEAR, and even then keep a stock whose OWN trend is still BULL.
+    #  2) regime/stock-tiered hard stop (8/6/4/2%) instead of the progressive day-stop
+    #     that was cutting names at ~0% after day 10.
+    #  3) alpha-decay tolerance — don't retire a name at -0.4%; give it room.
+    lifecycle_regime_exit_3way: bool = True
+    lifecycle_stop_bull_bull_pct: float = 8.0   # market BULL + stock BULL
+    lifecycle_stop_bull_pct: float = 6.0        # market BULL, stock not BULL
+    lifecycle_stop_sideways_pct: float = 4.0    # market SIDEWAYS
+    lifecycle_stop_bear_pct: float = 2.0        # market BEAR
+    lifecycle_alpha_decay_tolerance_pct: float = 5.0  # alpha-decay only if down > this
 
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
@@ -325,6 +337,11 @@ class Settings(BaseSettings):
     # executable live). ON = the day-D-close decision fills at the NEXT trading day's
     # OPEN, the first price you could actually trade at. Applies to entries AND exits.
     next_open_fills_enabled: bool = False
+
+    # Date the entry on the FILL session, not the rec session: a BUY decided on D-1's
+    # close fills the NEXT session (D, where the band gate already runs), so the position
+    # is dated D — not D-1. Off = legacy (entry dated on the rec/batch day).
+    entry_execute_next_session: bool = False
 
     # Exit-monitor SELLs fill at the DECISION day's close ("D close as mocked") — the
     # exit fired on this bar, so selling at its close is the conservative backtest mock.
