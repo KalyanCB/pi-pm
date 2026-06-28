@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-09T00:56:52Z
+generated_at: 2026-06-28T03:28:38Z
 generator: scripts/generate_context.py
 ---
 
@@ -17,15 +17,18 @@ generator: scripts/generate_context.py
 | `scripts/run_walkforward.py` | Walk-Forward OOS Evaluation CLI. |
 | `scripts/backtest_all_strategies.py` | Pi-PM Multi-Strategy Backtest — Simulating live trading from Jan 2022. |
 | `scripts/analyze_committee_effectiveness.py` | Read-only committee overlap / uniqueness analysis for ARGS research ru... |
+| `scripts/backfill_intraday_fills.py` | Phase 1 — targeted intraday backfill for realistic next-session VWAP f... |
 | `scripts/backfill_sprint7_traceability.py` | Sprint 7.1 — backfill traceability tables from persisted ranking/valid... |
 | `scripts/backfill_sprint82_factor_analytics.py` | Sprint 8.2 — backfill factor predictive power analytics from ranking t... |
 | `scripts/backfill_sprint83_exit_research.py` | Sprint 8.3 — backfill exit research metrics from validated ranking sig... |
 | `scripts/backtest_honest.py` | Honest Paper-Trade Backtest |
 | `scripts/backtest_inmemory.py` | Pi-PM In-Memory Backtest — no DB writes, pure simulation. |
+| `scripts/backtest_regime_stop.py` | Pi-PM In-Memory Backtest with REGIME-DYNAMIC STOP-LOSS — no DB writes. |
 | `scripts/backtest_reversal_v1.py` | Backtest: reversal_v1 strategy — Jan 2022 to Jun 2026 |
 | `scripts/batch1_eod_pipeline.py` | Batch 1 — End-of-Day Ingestion & Signal Generation Pipeline (ADR-034). |
 | `scripts/batch2_intraday_exit.py` | Batch 2 — Intraday Exit Monitor (ADR-035). |
 | `scripts/batch3_paper_trade_entry.py` | Batch 3 — Morning Paper Trade Execution (ADR-036). |
+| `scripts/cleanup_dups.py` | Delete duplicate rec run results using 10 parallel threads, one rec_ru... |
 | `scripts/export_args_research_run.py` | Export a full ARGS research run to markdown (packets, committees, gove... |
 | `scripts/fix_canonical_links.py` | Rewrite stale cross-references in context/canonical/ for self-containe... |
 | `scripts/generate_outcome_attribution_report.py` | Generate outcome attribution report from ranking runs and forward retu... |
@@ -38,15 +41,12 @@ generator: scripts/generate_context.py
 | `scripts/generate_see_v2_validation_report.py` | Generate SEE v2 validation report for breakout and momentum top-20 run... |
 | `scripts/generate_sprint85_research_intelligence.py` | Sprint 8.5 — generate executive research intelligence report pack. |
 | `scripts/init_regime_policy_presets.py` | Load Sprint 8.1 E1-E4 regime policy preset configurations. |
+| `scripts/kite_token_refresh.py` | Kite Connect daily access token refresh — headless login via Zerodha w... |
 | `scripts/load_nifty1000.py` | Bootstrap the NIFTY_1000 universe and ingest OHLCV via batched Yahoo F... |
 | `scripts/pipm_service_factory.py` | Shared service wiring for CLI scripts and batch orchestration. |
 | `scripts/prune_stale_ranking_runs.py` | Remove duplicate ranking runs, keeping the newest per (universe, strat... |
 | `scripts/qrc_sqe_ab_experiment.py` | A/B experiment: legacy QRC brief vs SQE condensation (deterministic me... |
 | `scripts/recover_recommendation_results.py` | Recovery script: regenerate recommendation_results from existing ranki... |
-| `scripts/recover_universe.py` | Sprint 5.1A — recover NIFTY 500 universe via batched Yahoo OHLCV inges... |
-| `scripts/reingest_symbols_since.py` | Re-ingest Yahoo bars from since_date for symbols listed in a file (one... |
-| `scripts/resume_rebuild_from_validation.py` | Resume rebuild from validation onward after pruning stale ranking runs... |
-| `scripts/run_args_top20.py` | Run ARGS (top-N) for latest or specified NIFTY_500 ranking runs. |
 
 ## Experiment configs (`configs/`)
 

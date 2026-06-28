@@ -1,7 +1,7 @@
 ---
-generated_at: 2026-06-09T00:56:52Z
-git_sha: ca1abeb
-git_branch: main
+generated_at: 2026-06-28T03:28:38Z
+git_sha: 6e7db17
+git_branch: feat/hybrid-regime-exit
 generator: scripts/generate_context.py
 stale_after_hours: 24
 ---
@@ -12,12 +12,12 @@ stale_after_hours: 24
 
 | Field | Value |
 |-------|-------|
-| Git SHA | `ca1abeb` |
-| Branch | `main` |
-| Migration head (latest file) | `20260611` |
-| Tests collected | 741 |
-| API route handlers | 147 |
-| DB tables (models) | 70 |
+| Git SHA | `6e7db17` |
+| Branch | `feat/hybrid-regime-exit` |
+| Migration head (latest file) | `20260625` |
+| Tests collected | 861 |
+| API route handlers | 152 |
+| DB tables (models) | 76 |
 
 ## Pipeline
 

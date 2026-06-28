@@ -278,6 +278,168 @@
         }
       }
     },
+    "/api/v1/backtest/replay-status": {
+      "get": {
+        "tags": [
+          "backtest"
+        ],
+        "summary": "Replay Status",
+        "operationId": "replay_status_api_v1_backtest_replay_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ops/kite/login": {
+      "get": {
+        "tags": [
+          "kite-auth"
+        ],
+        "summary": "Kite Login",
+        "description": "Return the Zerodha login URL. Visit it in a browser to authenticate.",
+        "operationId": "kite_login_api_v1_ops_kite_login_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ops/kite/callback": {
+      "get": {
+        "tags": [
+          "kite-auth"
+        ],
+        "summary": "Kite Callback",
+        "description": "Zerodha redirects here after login with ?request_token=...\nExchanges for access_token and persists it to DB.",
+        "operationId": "kite_callback_api_v1_ops_kite_callback_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ops/kite/token": {
+      "post": {
+        "tags": [
+          "kite-auth"
+        ],
+        "summary": "Set Access Token",
+        "description": "Manually set (or refresh) the Kite access token \u2014 for scripted daily renewal.",
+        "operationId": "set_access_token_api_v1_ops_kite_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/ops/kite/status": {
+      "get": {
+        "tags": [
+          "kite-auth"
+        ],
+        "summary": "Kite Status",
+        "description": "Check whether a Kite access token is available.",
+        "operationId": "kite_status_api_v1_ops_kite_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/stocks/bootstrap": {
       "post": {
         "tags": [
@@ -6564,6 +6726,18 @@
               "title": "Action"
             },
             "description": "Filter by action: BUY, WATCH, HOLD, REJECT"
+          },
+          {
+            "name": "include_rejected",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include REJECT/HOLD results. Off by default: the UI only shows BUY/WATCH/EXIT_APPROVED, and REJECTs are ~96% of a NIFTY_1000 day (2.5MB / ~12-32s vs ~80KB / ~2s). Ignored when `action` is set.",
+              "default": false,
+              "title": "Include Rejected"
+            },
+            "description": "Include REJECT/HOLD results. Off by default: the UI only shows BUY/WATCH/EXIT_APPROVED, and REJECTs are ~96% of a NIFTY_1000 day (2.5MB / ~12-32s vs ~80KB / ~2s). Ignored when `action` is set."
           }
         ],
         "responses": {
@@ -9990,7 +10164,7 @@
           "universe_code": {
             "type": "string",
             "title": "Universe Code",
-            "default": "NIFTY_500"
+            "default": "NIFTY_1000"
           },
           "benchmark_symbol": {
             "type": "string",
@@ -12100,11 +12274,16 @@
       "IngestPeriod": {
         "type": "string",
         "enum": [
+          "1d",
+          "5d",
           "1mo",
           "3mo",
           "6mo",
           "1y",
-          "5y"
+          "2y",
+          "5y",
+          "10y",
+          "max"
         ],
         "title": "IngestPeriod"
       },
@@ -13275,6 +13454,94 @@
               }
             ],
             "title": "Portfolio Position Id"
+          },
+          "reference_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Close"
+          },
+          "atr_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atr Pct"
+          },
+          "entry_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Low"
+          },
+          "entry_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry High"
+          },
+          "stop_advisory": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Advisory"
+          },
+          "stop_critical": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Critical"
+          },
+          "levels_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels Basis"
+          },
+          "ltp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ltp"
           }
         },
         "type": "object",
@@ -14007,6 +14274,19 @@
           "recommendation_id"
         ],
         "title": "SubmitOrderRequest"
+      },
+      "TokenRequest": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "TokenRequest"
       },
       "TokenResponse": {
         "properties": {

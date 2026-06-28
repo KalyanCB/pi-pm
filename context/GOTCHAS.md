@@ -90,6 +90,32 @@ Committee output is stored and displayed — **must not** change `action`, convi
 
 ---
 
+## Execution realism: fill precedence & cost stack
+
+`PaperTradeService._fill_price` resolves the fill in **this precedence** (all default OFF →
+legacy same-bar close fill, byte-identical):
+
+1. **`REALISTIC_FILLS_ENABLED`** — next-session **VWAP** (first `VWAP_WINDOW_MINUTES`) from
+   `market_data_intraday`, plus a **square-root market-impact** cost
+   (`IMPACT_SPREAD_BPS/2 + IMPACT_COEFF_BPS·√(order_value/ADV)`). See
+   `app/services/intraday_fill_service.py`. **Falls back** to (2) then (3) when intraday
+   data for the next session is missing.
+2. **`NEXT_OPEN_FILLS_ENABLED`** — next trading day's OPEN ± `COST_SLIPPAGE_BPS`.
+3. **Legacy** — `fill_date` close ± `COST_SLIPPAGE_BPS` (default 5 bps).
+
+**Gotchas:**
+- **Statutory charges are separate** from slippage — STT/stamp/exchange/SEBI/GST/brokerage
+  live in `_leg_cost` under **`TRANSACTION_COSTS_ENABLED`** (P-24), *not* in the fill price.
+  They **compose** with realistic fills automatically. Don't double-count STT in slippage.
+- Realistic fills need an **intraday backfill first**: `scripts/backfill_intraday_fills.py`
+  (targeted to traded symbols' entry/exit windows). Needs the **Kite historical add-on**.
+- Per-trade fill diagnostics (`vwap`, `impact_bps`, `participation_pct`) land in
+  `paper_trades.metadata_["fill_model"]` — only when a realistic quote was produced.
+- The hardcoded `"slippage_bps": 5.0` in trade metadata is **legacy/cosmetic** — trust
+  `fill_model.impact_bps` for the realistic path.
+
+---
+
 ## Common agent mistakes
 
 1. Assuming latest recommendations should be BUY — check validation status first.

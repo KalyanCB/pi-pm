@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-09T00:56:52Z
+generated_at: 2026-06-28T03:28:38Z
 generator: scripts/generate_context.py
 ---
 
@@ -10,6 +10,7 @@ generator: scripts/generate_context.py
 ## Table index
 
 - `committee_reviews` — `CommitteeReview` (`app/models/args.py`)
+- `company_news_events` — `CompanyNewsEvent` (`app/models/fil.py`)
 - `copilot_query_logs` — `CopilotQueryLog` (`app/models/copilot.py`)
 - `cro_reviews` — `CroReview` (`app/models/args.py`)
 - `daily_batch_run_artifacts` — `DailyBatchRunArtifact` (`app/models/daily_batch.py`)
@@ -25,6 +26,8 @@ generator: scripts/generate_context.py
 - `factor_daily_metrics` — `FactorDailyMetric` (`app/models/factor_analytics.py`)
 - `factor_performance_metrics` — `FactorPerformanceMetric` (`app/models/factor_analytics.py`)
 - `factor_performance_runs` — `FactorPerformanceRun` (`app/models/factor_analytics.py`)
+- `fil_conviction_boosts` — `FilConvictionBoost` (`app/models/fil.py`)
+- `fil_watch_list` — `FilWatchListEntry` (`app/models/fil.py`)
 - `full_universe_validation_campaigns` — `FullUniverseValidationCampaign` (`app/models/full_universe_validation.py`)
 - `full_universe_validation_deciles` — `FullUniverseValidationDecile` (`app/models/full_universe_validation.py`)
 - `full_universe_validation_metrics` — `FullUniverseValidationMetric` (`app/models/full_universe_validation.py`)
@@ -36,6 +39,7 @@ generator: scripts/generate_context.py
 - `llm_execution_records` — `LlmExecutionRecord` (`app/models/args.py`)
 - `market_data` — `MarketData` (`app/models/market_data.py`)
 - `market_data_ingestion_runs` — `MarketDataIngestionRun` (`app/models/market_data_ingestion_run.py`)
+- `market_data_intraday` — `MarketDataIntraday` (`app/models/market_data_intraday.py`)
 - `paper_trades` — `PaperTrade` (`app/models/paper_trade.py`)
 - `permissions` — `PermissionRecord` (`app/models/auth.py`)
 - `portfolio_cash_ledger` — `CashLedger` (`app/models/portfolio_analytics.py`)
@@ -68,6 +72,8 @@ generator: scripts/generate_context.py
 - `role_permissions` — `RolePermission` (`app/models/auth.py`)
 - `roles` — `Role` (`app/models/auth.py`)
 - `run_lineage_records` — `RunLineageRecord` (`app/models/platform_traceability.py`)
+- `sector_classifications` — `SectorClassification` (`app/models/fil.py`)
+- `sector_news_events` — `SectorNewsEvent` (`app/models/fil.py`)
 - `stock_setup_research` — `StockSetupResearch` (`app/models/stock_setup_research.py`)
 - `stock_setup_research_metrics` — `StockSetupResearchMetric` (`app/models/stock_setup_research.py`)
 - `stock_universes` — `StockUniverse` (`app/models/stock_universe.py`)
@@ -254,6 +260,13 @@ generator: scripts/generate_context.py
 | `prior_recommendation_id` | UUID | `recommendation_results.id` |
 | `args_research_run_id` | UUID | `research_runs.id` |
 | `recommendation_confidence` | String | — |
+| `reference_close` | Numeric | — |
+| `atr_pct` | Numeric | — |
+| `entry_low` | Numeric | — |
+| `entry_high` | Numeric | — |
+| `stop_advisory` | Numeric | — |
+| `stop_critical` | Numeric | — |
+| `levels_basis` | String | — |
 | `recommendation_run` | other | — |
 | `stock` | other | — |
 | `approvals` | other | — |

@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-09T00:56:52Z
+generated_at: 2026-06-28T03:28:38Z
 generator: scripts/generate_context.py
 ---
 
@@ -17,6 +17,7 @@ generator: scripts/generate_context.py
 | `auth` | POST | `/register` |
 | `backtest` | POST | `/generate-rankings` |
 | `backtest` | GET | `/summary` |
+| `backtest_status` | GET | `/replay-status` |
 | `copilot` | POST | `/ask` |
 | `copilot` | GET | `/audit` |
 | `daily_batch` | POST | `/runs` |
@@ -56,6 +57,10 @@ generator: scripts/generate_context.py
 | `investment_committee` | GET | `/{review_id}/report` |
 | `investment_committee` | GET | `/{review_id}/explain` |
 | `investment_committee` | GET | `/committees/members` |
+| `kite_auth` | GET | `/login` |
+| `kite_auth` | GET | `/callback` |
+| `kite_auth` | POST | `/token` |
+| `kite_auth` | GET | `/status` |
 | `market_data` | POST | `/ingest` |
 | `market_data` | POST | `/ingest-universe` |
 | `observability` | GET | `/health/platform` |

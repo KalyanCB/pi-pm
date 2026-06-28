@@ -1,11 +1,11 @@
 ---
-generated_at: 2026-06-09T00:56:52Z
+generated_at: 2026-06-28T03:28:38Z
 generator: scripts/generate_context.py
 ---
 
 # API Schemas Summary
 
-> 142 paths from FastAPI OpenAPI. Full spec: `context/generated/API_SCHEMAS.json`
+> 147 paths from FastAPI OpenAPI. Full spec: `context/generated/API_SCHEMAS.json`
 
 | Method | Path | Summary |
 |--------|------|---------|
@@ -42,6 +42,7 @@ generator: scripts/generate_context.py
 | POST | `/api/v1/auth/refresh` | Refresh |
 | POST | `/api/v1/auth/register` | Register |
 | POST | `/api/v1/backtest/generate-rankings` | Generate Rankings |
+| GET | `/api/v1/backtest/replay-status` | Replay Status |
 | GET | `/api/v1/backtest/summary` | Get Backtest Summary |
 | POST | `/api/v1/copilot/ask` | Ask |
 | GET | `/api/v1/copilot/audit` | Get Audit |
@@ -82,6 +83,10 @@ generator: scripts/generate_context.py
 | GET | `/api/v1/ops/daily-batch/runs` | List Daily Batch Runs |
 | GET | `/api/v1/ops/daily-batch/runs/{run_id}` | Get Daily Batch Run |
 | GET | `/api/v1/ops/daily-batch/runs/{run_id}/trace` | Get Daily Batch Trace |
+| GET | `/api/v1/ops/kite/callback` | Kite Callback |
+| GET | `/api/v1/ops/kite/login` | Kite Login |
+| GET | `/api/v1/ops/kite/status` | Kite Status |
+| POST | `/api/v1/ops/kite/token` | Set Access Token |
 | GET | `/api/v1/pilot/alerts` | Get Alerts |
 | GET | `/api/v1/pilot/command-center` | Get Command Center |
 | GET | `/api/v1/pilot/dashboard/committee` | Get Committee Dashboard |

@@ -1,5 +1,5 @@
 ---
-generated_at: 2026-06-09T00:56:52Z
+generated_at: 2026-06-28T03:28:38Z
 generator: scripts/generate_context.py
 ---
 
@@ -61,6 +61,14 @@ generator: scripts/generate_context.py
 - `tests/unit/factor_analytics/test_weight_resolver.py`
 - `tests/unit/factor_analytics/test_window.py`
 
+## `fil`
+
+- `tests/unit/fil/test_extraction.py`
+- `tests/unit/fil/test_sector.py`
+- `tests/unit/fil/test_sector_classification_repo.py`
+- `tests/unit/fil/test_service.py`
+- `tests/unit/fil/test_watch_list.py`
+
 ## `integration/api`
 
 - `tests/integration/api/test_auth_api.py`
@@ -118,6 +126,7 @@ generator: scripts/generate_context.py
 - `tests/unit/portfolio/test_portfolio_service.py`
 - `tests/unit/portfolio/test_position_sizing.py`
 - `tests/unit/portfolio/test_reconciliation.py`
+- `tests/unit/portfolio/test_regime_stops.py`
 
 ## `providers`
 
@@ -156,7 +165,11 @@ generator: scripts/generate_context.py
 - `tests/unit/recommendation/test_engine.py`
 - `tests/unit/recommendation/test_engine_rcee.py`
 - `tests/unit/recommendation/test_exit_signals.py`
+- `tests/unit/recommendation/test_rcee_regime_sample_floor.py`
 - `tests/unit/recommendation/test_regime_edge_engine.py`
+- `tests/unit/recommendation/test_service_trade_levels.py`
+- `tests/unit/recommendation/test_trade_levels.py`
+- `tests/unit/recommendation/test_trade_prioritizer.py`
 
 ## `recommendation_analytics`
 
@@ -176,11 +189,17 @@ generator: scripts/generate_context.py
 - `tests/unit/replay/test_metrics_collector.py`
 - `tests/unit/replay/test_portfolio_manager.py`
 
+## `root`
+
+- `tests/unit/test_intraday_fill_model.py`
+
 ## `services`
 
+- `tests/unit/services/test_exit_reason_precedence.py`
 - `tests/unit/services/test_exit_research_phases.py`
 - `tests/unit/services/test_exit_research_progress.py`
 - `tests/unit/services/test_market_data_service.py`
+- `tests/unit/services/test_next_open_fills.py`
 - `tests/unit/services/test_paper_trade_lineage.py`
 - `tests/unit/services/test_platform_traceability.py`
 - `tests/unit/services/test_ranking_service.py`
@@ -188,7 +207,7 @@ generator: scripts/generate_context.py
 - `tests/unit/services/test_sprint71_traceability.py`
 - `tests/unit/services/test_stock_service.py`
 - `tests/unit/services/test_universe_bootstrap_service.py`
-- `tests/unit/services/test_universe_coverage_service.py`
+- … +2 more
 
 ## `stock_setup_evidence`
 

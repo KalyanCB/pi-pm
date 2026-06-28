@@ -1,7 +1,7 @@
 ---
-generated_at: 2026-06-09T00:56:52Z
-git_sha: ca1abeb
-git_branch: main
+generated_at: 2026-06-28T03:28:38Z
+git_sha: 6e7db17
+git_branch: feat/hybrid-regime-exit
 ---
 
 # Pi-PM Agent Context
@@ -46,10 +46,10 @@ uv run python scripts/generate_context.py
 
 | Field | Value |
 |-------|-------|
-| git_sha | `ca1abeb` |
-| branch | `main` |
-| migration_head | `20260611` |
-| tests_collected | 741 |
+| git_sha | `6e7db17` |
+| branch | `feat/hybrid-regime-exit` |
+| migration_head | `20260625` |
+| tests_collected | 861 |
 | proposed_items | 1 |
 | not_started_items | 3 |
 | partial_items | 20 |
