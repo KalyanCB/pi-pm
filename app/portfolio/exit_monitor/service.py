@@ -654,8 +654,16 @@ class ExitMonitorService:
         # being cut by rank-drop/alpha-decay.
         # RANK_DROP keeps the P-15 day-5 grace — it rotates out winners on a faded
         # rank (302/303 of its exits are green); it is not the early-churn problem.
+        # Lifecycle positions are judged on the OLD active rank (breakout_v1/reversal_v1)
+        # via _lifecycle_handoff, NOT their own entry rank — which fades by design the
+        # moment the move works. So suppress the legacy (entry-rank) RANK_DROP for them.
+        _lifecycle_handoff_pos = (
+            settings.lifecycle_handoff_exits_enabled
+            and exit_rank_strategy(getattr(pos, "strategy_name", None)) is not None
+        )
         if (not _analytical_exits_suppressed and not _in_alpha_decay_cooldown
-                and not _grad_suppress_analytical and not _winner_running):
+                and not _grad_suppress_analytical and not _winner_running
+                and not _lifecycle_handoff_pos):
             results.append(check_rank_drop(ctx.get("current_rank"), ctx.get("entry_rank")))
 
         # ALPHA_DECAY timing (P-26): judge thesis decay at alpha_decay_grace_days
