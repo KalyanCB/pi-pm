@@ -29,9 +29,13 @@ from app.models.ranking_result import RankingResult
 from app.models.ranking_run import RankingRun
 from app.schemas.ranking import RankingRunRequest
 
+import _bulk_index as bi  # noqa: E402  (scripts/ is on sys.path)
+
 _BATCH = int(os.getenv("BULK_BATCH", "10000"))
 _DIFF = os.getenv("BULK_DIFF_TEST", "0") == "1"
 _WORKERS = int(os.getenv("BULK_WORKERS", "6"))
+_DROP_IDX = os.getenv("BULK_DROP_INDEXES", "0") == "1"
+_DUP_INDEX = "ix_ranking_results_run_rank"  # redundant dup of uq_ranking_result_run_rank — don't recreate
 _STORE = None  # fork-inherited by workers (set in main before the pool)
 
 
@@ -120,6 +124,16 @@ def main() -> int:
 
     if _DIFF:
         return _diff_test(db, _ranking_service(db, _STORE), days)
+
+    # WRITE-HEAVY: drop the random-UUID indexes so inserts are flat heap appends (not a
+    # B-tree that thrashes the 128MB cache and slows day-by-day). Rebuilt after the load.
+    idx_state = None
+    if _DROP_IDX:
+        cons, idx = bi.capture(db, "ranking_results")
+        bi.drop(db, "ranking_results", cons, idx)
+        idx_state = (cons, idx)
+        print(f"DROP-INDEX: dropped {len(cons)} unique + {len(idx)} plain on ranking_results "
+              f"→ load is flat heap appends", flush=True)
     db.close()
 
     # Parallel by DAY: interleaved chunks (each worker spans the full range for balance).
@@ -136,6 +150,13 @@ def main() -> int:
             total += n
             print(f"  worker {done}/{_WORKERS} done | {total:,} results | "
                   f"{(time.perf_counter()-t0)/60:.1f}m", flush=True)
+
+    if idx_state:
+        print("Rebuilding indexes (sorted bulk build, skip duplicate)...", flush=True)
+        rdb = get_session_factory()()
+        bi.restore(rdb, "ranking_results", *idx_state, skip={_DUP_INDEX})
+        rdb.close()
+        print(f"  rebuilt (dropped redundant {_DUP_INDEX}).", flush=True)
     print(f"Done. {total:,} ranking_results in {(time.perf_counter()-t0)/60:.1f}m", flush=True)
     return 0
 
