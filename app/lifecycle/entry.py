@@ -24,11 +24,13 @@ from app.validation.constants import (
     TREND_REGIME_SIDEWAYS,
 )
 
-# 3-way regime -> the strategy whose top ranks we ENTER. None = sit out (cash).
+# 3-way regime -> the strategy whose top ranks we ENTER.
+# Tier 1: SIDEWAYS no longer sits out — a choppy/range tape is where oversold BOUNCES
+# live, so it trades mean-reversion (reversion_v3) instead of leaving slots idle.
 LIFECYCLE_ENTRY_STRATEGY: dict[str, str | None] = {
     TREND_REGIME_BULL: RANKING_STRATEGY_BREAKOUT_V2,
     TREND_REGIME_BEAR: RANKING_STRATEGY_REVERSION_V3,
-    TREND_REGIME_SIDEWAYS: None,
+    TREND_REGIME_SIDEWAYS: RANKING_STRATEGY_REVERSION_V3,
 }
 
 # Top fraction of the entry strategy treated as buy candidates (b2/r1 >= 0.80).
@@ -67,12 +69,7 @@ def should_enter(
     entry sleeve). The stock enters only if that sleeve is the regime's entry sleeve,
     the stock is a top pick, and the stock-trend gate passes.
     """
-    # 1. Is this the regime's entry sleeve? (BULL->breakout_v2, BEAR->reversion_v3,
-    #    SIDEWAYS->cash -> nothing matches -> no entry.)
-    if entry_strategy_for_regime(market_regime_3way) != strategy:
-        return False
-
-    # 2. Top pick? An absolute rank cap (top_rank>0, e.g. top-5 bucket) takes precedence
+    # 1. Top pick? An absolute rank cap (top_rank>0, e.g. top-5 bucket) takes precedence
     #    over the percentile gate when set.
     if top_rank > 0:
         if rank is None or rank > top_rank:
@@ -80,15 +77,19 @@ def should_enter(
     elif not is_top_pick(rank, pool_size, entry_top_pct):
         return False
 
-    # 3. Stock-trend gate.
+    # 2. Unified stock-trend gate (Tiers 1-3). The STOCK's own trend (relative to the
+    #    market) decides the playbook, not the market regime alone:
+    bull_market = market_regime_3way == TREND_REGIME_BULL
+    bull_stock = stock_trend_3way == TREND_REGIME_BULL
     if strategy == RANKING_STRATEGY_BREAKOUT_V2:
-        # A breakout needs the stock in its OWN uptrend — don't "break out" a
-        # downtrending/sideways name (those are the failed-breakout losers).
-        return stock_trend_3way == TREND_REGIME_BULL
+        # LEADER / breakout: stock in its OWN uptrend. Welcome in ANY regime — a bull
+        # breakout, OR (Tier 3) a relative-strength leader bucking a bear/sideways tape.
+        # A downtrending/sideways name is a failed breakout — skip.
+        return bull_stock
     if strategy == RANKING_STRATEGY_REVERSION_V3:
-        # Reversion buys the crushed in a bear; the stock is down by design, so no
-        # uptrend requirement — but skip a name still in a confirmed uptrend (not
-        # actually washed out).
-        return stock_trend_3way != TREND_REGIME_BULL
+        # BOUNCE / mean-reversion (Tiers 1-2): a washed-out name (not in its own uptrend)
+        # in a NON-bull market. Don't buy dips in a bull (chase leaders instead), and
+        # don't "revert" a name already trending up (it isn't washed out).
+        return (not bull_stock) and (not bull_market)
 
     return True

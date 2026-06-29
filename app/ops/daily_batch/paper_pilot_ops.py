@@ -536,6 +536,17 @@ class PaperPilotOps:
         if not fresh_recs:
             return []
 
+        # Lifecycle dual-sleeve gather (Tiers 1-3): replace the single active-strategy
+        # recs with regime-aware candidates from BOTH sleeves — LEADERS (breakout_v2, any
+        # regime) + BOUNCES (reversion_v3, non-bull) — each routed by the unified
+        # stock-trend gate. Recs for all sleeves already exist (all-5-sync ranking).
+        from app.core.config import get_settings as _get_settings_lc
+        _ls = _get_settings_lc()
+        if _ls.lifecycle_entry_enabled:
+            fresh_recs = self._lifecycle_gather(as_of_date, _ls)
+            if not fresh_recs:
+                return []
+
         # Batch trend/volume context for all candidate stocks in one query.
         # close_20d (rn=20) supports the P-13 synthetic relative-strength check.
         from sqlalchemy import text as _text
@@ -560,17 +571,7 @@ class PaperPilotOps:
         """), {"sids": sids, "d": as_of_date}).fetchall()
         ctx = {r.stock_id: r for r in ctx_rows}
 
-        # Lifecycle entry gate (flag-gated): regime-aware sleeve + top-pick + stock
-        # trend. SIDEWAYS -> sit out; otherwise keep only candidates that clear
-        # should_enter for the regime's entry sleeve.
-        from app.core.config import get_settings as _get_settings_lc
-        _ls = _get_settings_lc()
-        if _ls.lifecycle_entry_enabled:
-            fresh_recs = self._lifecycle_entry_filter(
-                fresh_recs, ctx, active_strategy, as_of_date, _ls.lifecycle_entry_top_pct
-            )
-            if not fresh_recs:
-                return []
+        # (Lifecycle candidates were already gathered above, before the ctx query.)
 
         # P-14 breadth + P-13 synthetic universe benchmark (equal-weight 20-day mean
         # return) — one universe-wide query, the absolute market/segment context the
@@ -628,37 +629,63 @@ class PaperPilotOps:
         # Map prioritized queue back to RecommendationResult objects, preserving order.
         return [rec_by_id[pc.candidate.recommendation_id] for pc in ordered]
 
-    def _lifecycle_entry_filter(self, recs, ctx, active_strategy, as_of_date, top_pct):
-        """Keep only BUY candidates that clear the lifecycle entry gate (regime sleeve +
-        top-pick + stock trend). Returns [] in SIDEWAYS (sit out the chop)."""
+    def _lifecycle_gather(self, as_of_date, settings):
+        """Dual-sleeve lifecycle entry (Tiers 1-3). Pull the top-N BUY recs from BOTH
+        sleeves — breakout_v2 (LEADERS, any regime) and, in a non-bull market,
+        reversion_v3 (BOUNCES) — and keep the ones that clear the unified stock-trend
+        gate. Recs for all sleeves already exist (all-5-sync ranking)."""
         from sqlalchemy import text as _text
-        from app.core.config import get_settings as _gs
-        from app.lifecycle.entry import entry_strategy_for_regime, should_enter
-        _top_rank = _gs().lifecycle_entry_top_rank
+        from app.lifecycle.entry import should_enter
         m3 = self.db.execute(_text(
             "SELECT market_regime_3way FROM regime_history "
             "WHERE as_of_date = :d AND benchmark_symbol = '^NSEI'"
         ), {"d": as_of_date}).scalar()
-        if entry_strategy_for_regime(m3) is None:
-            return []  # SIDEWAYS / unknown regime -> no entries
-        pool = self.db.execute(_text(
-            "SELECT max(res.rank) FROM ranking_runs rr "
-            "JOIN ranking_results res ON res.ranking_run_id = rr.id "
-            "WHERE rr.strategy_name = :s AND rr.as_of_date = :d AND rr.status = 'completed'"
-        ), {"s": active_strategy, "d": as_of_date}).scalar()
-        kept = []
-        for rec in recs:
+        if not m3:
+            return []
+        # leaders always; bounces only when the market is NOT bull (Tier 1: chop too).
+        sleeves = ["breakout_v2"] if m3 == "BULL" else ["breakout_v2", "reversion_v3"]
+        top_rank = settings.lifecycle_entry_top_rank or 5
+        rows = self.db.execute(_text("""
+            SELECT res.id AS rid, res.stock_id AS sid, res.rank AS rank, rr.strategy_name AS strat,
+                   (SELECT max(rank) FROM ranking_results WHERE ranking_run_id = rr.ranking_run_id) AS pool
+            FROM recommendation_results res
+            JOIN recommendation_runs rr ON rr.id = res.recommendation_run_id
+            WHERE rr.as_of_date = :d AND rr.strategy_name = ANY(:sl) AND res.action = 'BUY'
+                  AND res.rank IS NOT NULL AND res.rank <= :tr
+            ORDER BY res.rank
+        """), {"d": as_of_date, "sl": sleeves, "tr": top_rank}).fetchall()
+        kept_ids = []
+        for r in rows:
             if should_enter(
-                strategy=active_strategy,
+                strategy=r.strat,
                 market_regime_3way=m3,
-                stock_trend_3way=self._stock_trend3(ctx.get(rec.stock_id)),
-                rank=int(rec.rank) if rec.rank is not None else None,
-                pool_size=int(pool) if pool else None,
-                entry_top_pct=top_pct,
-                top_rank=_top_rank,
+                stock_trend_3way=self._stock_trend3_bars(r.sid, as_of_date),
+                rank=int(r.rank),
+                pool_size=int(r.pool) if r.pool else None,
+                entry_top_pct=settings.lifecycle_entry_top_pct,
+                top_rank=top_rank,
             ):
-                kept.append(rec)
-        return kept
+                kept_ids.append(r.rid)
+        if not kept_ids:
+            return []
+        from app.models.recommendation import RecommendationResult
+        return list(self.db.scalars(
+            select(RecommendationResult).where(RecommendationResult.id.in_(kept_ids))
+        ).all())
+
+    def _stock_trend3_bars(self, stock_id, as_of) -> str | None:
+        """Per-stock 3-way trend from a bars query (used before the ctx is built)."""
+        from sqlalchemy import text as _text
+        from app.ranking.math_utils import PriceBar
+        from app.validation.regimes import classify_stock_trend
+        rows = self.db.execute(_text(
+            "SELECT date, close FROM market_data WHERE stock_id = :s AND date <= :d "
+            "AND source = 'kite' ORDER BY date DESC LIMIT 260"
+        ), {"s": stock_id, "d": as_of}).fetchall()
+        if len(rows) < 220:
+            return None
+        bars = [PriceBar(date=r[0], close=float(r[1]), volume=None) for r in reversed(rows)]
+        return classify_stock_trend(bars, as_of)
 
     def _stock_trend3(self, row) -> str | None:
         """Per-stock 3-way trend (BULL/BEAR/SIDEWAYS) from the entry context row

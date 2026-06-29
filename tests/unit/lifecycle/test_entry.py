@@ -24,7 +24,7 @@ def _series(fn, n=260):
 @pytest.mark.parametrize("regime,expected", [
     ("BULL", BV2),
     ("BEAR", RV3),
-    ("SIDEWAYS", None),
+    ("SIDEWAYS", RV3),   # Tier 1: chop trades mean-reversion bounces, not cash
     (None, None),
     ("GARBAGE", None),
 ])
@@ -57,14 +57,17 @@ def test_reversion_entry_skips_uptrending_names():
     assert should_enter(strategy=RV3, market_regime_3way="BEAR", stock_trend_3way="BULL", **_TOP) is False
 
 
-def test_sideways_sits_out():
-    assert should_enter(strategy=BV2, market_regime_3way="SIDEWAYS", stock_trend_3way="BULL", **_TOP) is False
-    assert should_enter(strategy=RV3, market_regime_3way="SIDEWAYS", stock_trend_3way="BEAR", **_TOP) is False
+def test_sideways_trades_bounces_and_leaders():
+    # Tier 1: a washed-out name in a SIDEWAYS chop is a mean-reversion BOUNCE -> enter.
+    assert should_enter(strategy=RV3, market_regime_3way="SIDEWAYS", stock_trend_3way="BEAR", **_TOP) is True
+    # Tier 3: a stock in its OWN uptrend during chop is a relative-strength LEADER -> enter.
+    assert should_enter(strategy=BV2, market_regime_3way="SIDEWAYS", stock_trend_3way="BULL", **_TOP) is True
 
 
-def test_wrong_sleeve_for_regime():
-    # breakout signal in a bear, or reversion in a bull -> not the regime's sleeve
-    assert should_enter(strategy=BV2, market_regime_3way="BEAR", stock_trend_3way="BULL", **_TOP) is False
+def test_leader_enters_in_bear_but_bounce_not_in_bull():
+    # Tier 3: breakout LEADER bucking a bear tape -> enter (own trend is BULL).
+    assert should_enter(strategy=BV2, market_regime_3way="BEAR", stock_trend_3way="BULL", **_TOP) is True
+    # No mean-reversion bounces in a BULL market (chase leaders instead).
     assert should_enter(strategy=RV3, market_regime_3way="BULL", stock_trend_3way="BEAR", **_TOP) is False
 
 
