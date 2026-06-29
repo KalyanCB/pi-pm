@@ -203,13 +203,19 @@ def check_stop_loss(
 
 
 def _trailing_pct(max_gain_pct: float) -> float:
-    """P-02: profit-ladder trailing stop — wider trail as gains grow."""
+    """Profit-ladder trailing stop — wider trail as gains grow. Tuned to bank the quick
+    pops (tight low tiers — the <60d give-back fix) while NOT shaking out multibaggers
+    (very wide top tiers — a +90% name routinely breathes 20%+)."""
+    if max_gain_pct >= 100.0:
+        return 25.0   # multibagger — ride it, don't get shaken out on a normal correction
+    if max_gain_pct >= 60.0:
+        return 20.0
     if max_gain_pct >= 35.0:
         return 15.0
     if max_gain_pct >= 20.0:
-        return 12.0
+        return 11.0
     if max_gain_pct >= 10.0:
-        return 8.0
+        return 7.0    # tightened from 8 — capture the +10-20% pops we were round-tripping
     return 5.0
 
 
@@ -226,8 +232,14 @@ def check_trailing_stop(
     effective_trail = _trailing_pct(max_gain_pct)
     drawback = max_gain_pct - unrealized_pnl_pct
 
-    # P-03: hard profit floor — once max_gain >= 20%, exit level never drops below 50% of max
-    profit_floor = max_gain_pct * 0.5 if max_gain_pct >= 20.0 else None
+    # Hard profit floor — engages earlier (15%) so the long winners that round-tripped
+    # keep half their peak; on a multibagger (>=60%) lock 65% so a +400% name banks >=+260%.
+    if max_gain_pct >= 60.0:
+        profit_floor = max_gain_pct * 0.65
+    elif max_gain_pct >= 15.0:
+        profit_floor = max_gain_pct * 0.50
+    else:
+        profit_floor = None
     exit_level = max_gain_pct - effective_trail
     if profit_floor is not None:
         exit_level = max(exit_level, profit_floor)

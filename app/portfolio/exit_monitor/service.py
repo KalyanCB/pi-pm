@@ -427,7 +427,7 @@ class ExitMonitorService:
             # the dual-condition check (low breach + close confirmation).
             ctx["intraday_pnl_pct"] = (day_low - avg_cost) / avg_cost * 100 if day_low else ctx["unrealized_pnl_pct"]
 
-        ctx["max_gain_pct"] = self._get_max_gain(pos)
+        ctx["max_gain_pct"] = self._get_max_gain(pos, as_of)
 
         # P-07: entry_rank for relative deterioration check
         ctx["entry_rank"] = self._get_entry_rank(pos)
@@ -480,7 +480,8 @@ class ExitMonitorService:
         pcts = self._strategy_pcts(pos.stock_id, mstrat, getattr(pos, "entry_date", None), as_of)
         return pcts[-1] if pcts else None
 
-    def _lifecycle_handoff(self, pos, as_of, days_held, momentum_pct=None) -> "TriggerResult | None":
+    def _lifecycle_handoff(self, pos, as_of, days_held, momentum_pct=None,
+                           momentum_hold_pct=0.50) -> "TriggerResult | None":
         """Cross-rank HANDOFF exit: a position entered on breakout_v2/reversion_v3 is
         judged on the OLD active rank. breakout_v2 rides breakout_v1 (breakout leg) then,
         once B1 has spiked AND faded, hands off to momentum_v3 (``momentum_pct``) — held
@@ -497,6 +498,7 @@ class ExitMonitorService:
             has_peaked=any(b1_has_peaked(p) for p in pcts),
             days_held=days_held,
             momentum_pct=momentum_pct,
+            momentum_hold_pct=momentum_hold_pct,
         )
         if not fired:
             return None
@@ -517,18 +519,21 @@ class ExitMonitorService:
         except Exception:
             return None
 
-    def _get_max_gain(self, pos: PortfolioPosition) -> float | None:
+    def _get_max_gain(self, pos: PortfolioPosition, as_of: date | None = None) -> float | None:
+        """Running PEAK gain (high-water mark) since entry, from the bar history — the
+        live number the trailing stop needs. (RecommendationOutcome.max_gain_pct is not
+        populated in replay/paper, so reading it left the trail permanently inert.)"""
         try:
-            if pos.recommendation_result_id is None:
+            if pos.entry_price is None or pos.entry_date is None:
                 return None
-            from app.models.recommendation import RecommendationOutcome
-
-            outcome = self.db.scalar(
-                select(RecommendationOutcome).where(
-                    RecommendationOutcome.recommendation_result_id == pos.recommendation_result_id
-                )
-            )
-            return float(outcome.max_gain_pct) if outcome and outcome.max_gain_pct else None
+            _end = as_of or date.today()
+            peak = self.db.execute(_text(
+                "SELECT max(close) FROM market_data WHERE stock_id = :s "
+                "AND date BETWEEN :e AND :a AND source = 'kite'"
+            ), {"s": pos.stock_id, "e": pos.entry_date, "a": _end}).scalar()
+            if peak is None:
+                return None
+            return (float(peak) / float(pos.entry_price) - 1.0) * 100.0
         except Exception:
             return None
 
@@ -784,7 +789,12 @@ class ExitMonitorService:
         # breakout_v1 fade; reversion_v3 -> exit on reversal_v1 recovery. Additive to
         # the legacy regime/stop triggers above.
         if settings.lifecycle_handoff_exits_enabled:
-            _handoff = self._lifecycle_handoff(pos, as_of, days_held, momentum_pct=_mom_pct)
+            # Gain-scale the momentum exit: a name that has PEAKED big is a (forming)
+            # multibagger — give it more room so a transient momentum dip doesn't drop it.
+            _pk = ctx.get("max_gain_pct")
+            _mom_hold = 0.35 if (_pk is not None and _pk >= 25.0) else 0.50
+            _handoff = self._lifecycle_handoff(pos, as_of, days_held,
+                                               momentum_pct=_mom_pct, momentum_hold_pct=_mom_hold)
             if _handoff is not None:
                 results.append(_handoff)
 
