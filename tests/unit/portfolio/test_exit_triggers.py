@@ -1,15 +1,109 @@
 """Exit trigger tests — AC-PE-10."""
 
 from app.portfolio.exit_monitor.triggers import (
+    breakout_conviction_score,
     check_alpha_decay,
+    check_breakout_conviction_exit,
     check_concentration,
     check_liquidity,
     check_rank_drop,
     check_regime_change,
+    check_slot_recycle,
     check_stop_loss,
     check_time_stop,
     check_trailing_stop,
 )
+
+# ── Slot recycle (Pass 2 of the gauntlet) ─────────────────────────────────────
+
+def test_slot_recycle_fires_below_floor_after_grace():
+    # 0.05%/day < 0.12 floor, held 200d > 75 grace, momentum not rising → recycle
+    r = check_slot_recycle(0.05, days_held=200, momentum_rising=False,
+                           grace_days=75, slope_floor_pct_per_day=0.12)
+    assert r.fired is True and r.trigger_code == "EXIT_SLOT_RECYCLE"
+
+
+def test_slot_recycle_spared_inside_grace():
+    r = check_slot_recycle(0.05, days_held=40, grace_days=75)
+    assert r.fired is False
+
+
+def test_slot_recycle_spared_when_momentum_rising():
+    # dragging but coiling (momentum rising) → spared
+    r = check_slot_recycle(0.05, days_held=200, momentum_rising=True,
+                           grace_days=75, slope_floor_pct_per_day=0.12,
+                           spare_momentum_rising=True)
+    assert r.fired is False
+
+
+def test_slot_recycle_no_fire_when_compounding():
+    # 0.30%/day above floor → still earning its slot
+    r = check_slot_recycle(0.30, days_held=200, grace_days=75,
+                           slope_floor_pct_per_day=0.12)
+    assert r.fired is False
+
+
+def test_slot_recycle_none_slope_safe():
+    r = check_slot_recycle(None, days_held=200)
+    assert r.fired is False
+
+
+# ── Breakout conviction exit (consolidated breakout_v2 exit) ──────────────────
+
+def test_conviction_score_components():
+    # momentum dead (<.20)=50, panic bear=30, >10% below 200SMA=20, RSI<30=15 → 115
+    e, c = breakout_conviction_score(0.1, "BEAR_HIGH_VOL", 2, 20.0)
+    assert e == 115
+    assert c == {"M": 50, "K": 30, "S": 20, "R": 15}
+    # all healthy → 0
+    e0, c0 = breakout_conviction_score(0.9, "BULL_LOW_VOL", 0, 70.0)
+    assert e0 == 0 and c0 == {"M": 0, "K": 0, "S": 0, "R": 0}
+    # fading bull adds 10
+    assert breakout_conviction_score(0.9, "BULL_HIGH_VOL", 0, 70.0)[0] == 10
+
+
+def test_conviction_healthy_holds_through_deep_drag():
+    # score 0 → widest leash: a 35% drag (< 40%) does NOT fire
+    r = check_breakout_conviction_exit(
+        momentum_pct=0.9, market_label="BULL_LOW_VOL", stock_below_sma=0,
+        rsi14=65.0, drag_from_peak_pct=35.0, below_entry=False)
+    assert r.fired is False
+    assert r.details["score"] == 0
+
+
+def test_conviction_healthy_exits_past_low_tolerance():
+    # score 0 but drag 45% > 40% low tolerance → fire
+    r = check_breakout_conviction_exit(
+        momentum_pct=0.9, market_label="BULL_LOW_VOL", stock_below_sma=0,
+        rsi14=65.0, drag_from_peak_pct=45.0, below_entry=False)
+    assert r.fired is True
+
+
+def test_conviction_high_score_hard_exit():
+    # score ≥ 80 → exit immediately regardless of drag
+    r = check_breakout_conviction_exit(
+        momentum_pct=0.1, market_label="BEAR_HIGH_VOL", stock_below_sma=0,
+        rsi14=80.0, drag_from_peak_pct=0.0, below_entry=False)
+    assert r.details["score"] >= 80
+    assert r.fired is True and r.urgency == "HIGH"
+
+
+def test_conviction_mid_band_below_entry():
+    # score in 60-80 fires on below-entry even with small drag
+    # momentum .30→30 + BEAR_LOW 15 + below200 10 + RSI 30-40 →10 = 65
+    r = check_breakout_conviction_exit(
+        momentum_pct=0.30, market_label="BEAR_LOW_VOL", stock_below_sma=1,
+        rsi14=35.0, drag_from_peak_pct=2.0, below_entry=True)
+    assert 60 <= r.details["score"] < 80
+    assert r.fired is True
+
+
+def test_conviction_lenient_inputs_none_safe():
+    # all-None inputs → score 0, no drag → no fire (safe default)
+    r = check_breakout_conviction_exit(
+        momentum_pct=None, market_label=None, stock_below_sma=0,
+        rsi14=None, drag_from_peak_pct=None, below_entry=False)
+    assert r.fired is False and r.details["score"] == 0
 
 
 def test_rank_drop_fires_above_threshold():

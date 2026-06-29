@@ -350,6 +350,46 @@ class Settings(BaseSettings):
     lifecycle_stall_grace_days: int = 60          # never fire before this hold
     lifecycle_stall_slope_floor_pct: float = 0.12  # gain%/day below this -> stall (~30%/yr)
 
+    #  5) Breakout conviction exit — ONE consolidated EXIT for breakout_v2 entries.
+    #     A daily conviction score E = momentum_fade(0-50) + market_regime(0-30) +
+    #     stock_200SMA(0-20) + RSI14(0-15) IS the trail/stop; breakout_v2 positions
+    #     skip the legacy stop/trailing/momentum-fade/analytical exits entirely. Action
+    #     by score: E>=80 -> exit; 60-80 -> cut on >tight_drag from peak OR below entry;
+    #     40-60 -> >mid_drag; <40 -> >low_drag (widest leash). The low-score drag is the
+    #     return/risk DIAL (40% aggressive: +9.9% excess vs ^NSEI / 6% deep-DD tail /
+    #     ~200d holds on the v21 panel; 30% trims the tail to ~3% at ~+8%). The gap-down
+    #     tail (~-57% worst) is capped by the wide catastrophe stop, not the score (a
+    #     daily-close rule cannot catch a single-bar gap). Flag-gated OFF; in-sample only
+    #     (reference_close) — validate honest fills + OOS before trusting live.
+    breakout_conviction_exit_enabled: bool = False          # PASS 1 (health)
+    breakout_conviction_low_score_drag_pct: float = 40.0   # E<40 leash (return/risk dial)
+    breakout_conviction_mid_score_drag_pct: float = 25.0   # 40<=E<60 leash
+    breakout_conviction_tight_drag_pct: float = 12.0       # 60<=E<80 leash
+    breakout_conviction_catastrophe_stop_pct: float = 30.0  # wide hard stop for the gap tail
+    #     The breakout_v2 exit is a 3-PASS GAUNTLET — a position must survive all
+    #     enabled passes to keep its slot; the first pass that fires exits it (short-
+    #     circuit). Each pass is independently flag-gated so it can be A/B'd and only
+    #     kept if it improves the backtest:
+    #       PASS 1 conviction (above)     — "is the trend breaking?"  (health)
+    #       PASS 2 slot recycle (below)   — "is this slot earning its keep?" (absolute)
+    #       PASS 3 opportunity swap        — "is a better setup blocked on me?" (relative)
+    # PASS 2 — recycle a slot whose RECENT velocity has stalled (dead money clogging a
+    # slot a fresh setup could compound). Uses recent slope (last N trading days), not
+    # since-entry, so a banked winner still drifting up is kept while never-ran draggers
+    # (e.g. +35% over 2yr = 0.05%/day) are freed. momentum-rising guard spares coilers.
+    breakout_conviction_recycle_enabled: bool = False
+    breakout_conviction_recycle_grace_days: int = 75            # don't recycle before this hold
+    breakout_conviction_recycle_slope_floor_pct: float = 0.12   # recent %/day below this = drag
+    breakout_conviction_recycle_recent_days: int = 20           # recent-slope window (trading days)
+    breakout_conviction_recycle_spare_momentum_rising: bool = True  # spare a coiling name
+    # PASS 3 — evict the weakest slot only when the book is full AND a fresh high-rank
+    # breakout_v2 challenger is blocked (opportunity-aware). The allocation layer marks
+    # the weakest incumbent; the exit monitor turns that mark into EXIT_SLOT_SWAP.
+    slot_recycle_opportunity_enabled: bool = False
+    slot_recycle_challenger_max_rank: int = 2                   # only a rank<=this can evict
+    slot_recycle_incumbent_slope_floor_pct: float = 0.12        # only evict an incumbent below this
+    slot_recycle_min_hold_days: int = 60                        # never evict a fresh incumbent
+
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
     # CAGR are reported NET of costs (the legacy behaviour applied only a flat

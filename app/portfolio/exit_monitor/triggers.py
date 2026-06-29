@@ -323,6 +323,149 @@ def check_concentration(
     )
 
 
+def breakout_conviction_score(
+    momentum_pct: float | None,
+    market_label: str | None,
+    stock_below_sma: int,
+    rsi14: float | None,
+) -> tuple[int, dict]:
+    """Exit conviction score (0-115) for a breakout_v2 position — higher = more
+    pressure to exit. Four INDEPENDENT signals (the redundant ones — market-tier
+    granularity, RS-vs-benchmark — were tested and added nothing):
+
+      M momentum_v3 percentile (RELATIVE rank, 1.0=best): >=.50→0 .40→15 .30→30 .20→40 <.20→50
+      K market regime (4-way vol label): BULL_LOW→0 BULL_HIGH(fading)→10 BEAR_LOW→15 BEAR_HIGH→30
+      S stock vs own 200-SMA (0 above / 1 below / 2 >10% below): →0 / 10 / 20
+      R RSI(14) — own ABSOLUTE thrust (independent of M's relative rank): >=50→0 40→5 30→10 <30→15
+    """
+    if momentum_pct is None or momentum_pct >= 0.50:
+        m = 0
+    elif momentum_pct >= 0.40:
+        m = 15
+    elif momentum_pct >= 0.30:
+        m = 30
+    elif momentum_pct >= 0.20:
+        m = 40
+    else:
+        m = 50
+
+    lab = (market_label or "").upper()
+    if "BEAR_HIGH" in lab:
+        k = 30
+    elif "BEAR" in lab:
+        k = 15
+    elif "BULL_HIGH" in lab:
+        k = 10  # fading bull (high vol in an uptrend = topping)
+    else:
+        k = 0
+
+    s = {2: 20, 1: 10}.get(stock_below_sma, 0)
+
+    if rsi14 is None or rsi14 >= 50:
+        r = 0
+    elif rsi14 >= 40:
+        r = 5
+    elif rsi14 >= 30:
+        r = 10
+    else:
+        r = 15
+
+    return m + k + s + r, {"M": m, "K": k, "S": s, "R": r}
+
+
+def check_breakout_conviction_exit(
+    momentum_pct: float | None,
+    market_label: str | None,
+    stock_below_sma: int,
+    rsi14: float | None,
+    drag_from_peak_pct: float | None,
+    below_entry: bool,
+    low_score_drag_pct: float = 40.0,
+    mid_score_drag_pct: float = 25.0,
+    tight_drag_pct: float = 12.0,
+) -> TriggerResult:
+    """EXIT_CONVICTION: the consolidated breakout_v2 exit. A daily conviction score IS
+    the trail/stop — the leash tightens as exit conviction rises:
+
+        E >= 80        → EXIT now
+        60 <= E < 80   → EXIT if drag-from-peak > tight   OR position below entry
+        40 <= E < 60   → EXIT if drag-from-peak > mid
+        E < 40         → EXIT if drag-from-peak > low      (widest patience while healthy)
+
+    ``drag_from_peak_pct`` is the % drawdown from the peak CLOSE since entry (0..100).
+    No separate fixed stop / trailing / momentum-fade — they are all subsumed here; the
+    gap-down tail is handled by a wide catastrophe stop outside this score."""
+    score, comp = breakout_conviction_score(
+        momentum_pct, market_label, stock_below_sma, rsi14
+    )
+    drag = drag_from_peak_pct if drag_from_peak_pct is not None else 0.0
+    if score >= 80:
+        fired, rule = True, "score>=80"
+    elif score >= 60:
+        fired = drag > tight_drag_pct or bool(below_entry)
+        rule = "60-80:drag>tight|below_entry"
+    elif score >= 40:
+        fired = drag > mid_score_drag_pct
+        rule = "40-60:drag>mid"
+    else:
+        fired = drag > low_score_drag_pct
+        rule = "<40:drag>low"
+    urgency = "HIGH" if score >= 80 else ("NORMAL" if fired else "LOW")
+    return TriggerResult(
+        fired=fired,
+        trigger_code="EXIT_CONVICTION",
+        details={
+            "score": score,
+            **comp,
+            "drag_from_peak_pct": round(drag, 2),
+            "below_entry": bool(below_entry),
+            "momentum_pct": round(momentum_pct, 3) if momentum_pct is not None else None,
+            "rsi14": round(rsi14, 1) if rsi14 is not None else None,
+            "market_label": market_label,
+            "stock_below_sma": stock_below_sma,
+            "rule": rule,
+        },
+        urgency=urgency,
+    )
+
+
+def check_slot_recycle(
+    recent_slope_pct_per_day: float | None,
+    days_held: int,
+    momentum_rising: bool | None = None,
+    grace_days: int = 75,
+    slope_floor_pct_per_day: float = 0.12,
+    spare_momentum_rising: bool = True,
+) -> TriggerResult:
+    """EXIT_SLOT_RECYCLE — PASS 2 of the breakout_v2 gauntlet (slot efficiency). A
+    position that has survived the conviction (health) pass but whose RECENT velocity
+    has stalled (recent slope < floor after a grace window) is dead money clogging a
+    slot a fresh setup could compound — recycle it.
+
+    Uses RECENT slope (last N trading days), not since-entry, so a banked winner that's
+    still drifting up keeps its slot while genuine draggers (e.g. +35% over 2yr ≈
+    0.05%/day) are freed. The momentum-rising guard spares a coiling name about to break.
+    Opportunity-blind by design (Pass 3 adds the opportunity test); set the floor to the
+    engine's hurdle (≈0.12%/day ≈ 30%/yr)."""
+    if recent_slope_pct_per_day is None or days_held < grace_days:
+        return TriggerResult(False, "EXIT_SLOT_RECYCLE", {})
+    fired = recent_slope_pct_per_day < slope_floor_pct_per_day
+    if fired and spare_momentum_rising and momentum_rising is True:
+        fired = False
+    return TriggerResult(
+        fired=fired,
+        trigger_code="EXIT_SLOT_RECYCLE",
+        details={
+            "recent_slope_pct_per_day": round(recent_slope_pct_per_day, 3),
+            "slope_floor_pct_per_day": slope_floor_pct_per_day,
+            "days_held": days_held,
+            "grace_days": grace_days,
+            "momentum_rising": momentum_rising,
+        },
+        urgency="NORMAL" if fired else "LOW",
+    )
+
+
 def check_liquidity(
     avg_daily_volume: float | None,
     position_value: float | None,

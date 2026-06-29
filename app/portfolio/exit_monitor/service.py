@@ -16,7 +16,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, text as _text
+from sqlalchemy import case, func, select
+from sqlalchemy import text as _text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -24,10 +25,6 @@ from app.core.constants import DEFAULT_BENCHMARK_SYMBOL
 from app.db.repositories.market_data_repository import MarketDataRepository
 from app.db.repositories.ranking_run_repository import RankingRunRepository
 from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
-from app.models.portfolio_analytics import ExitRecommendation
-from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
-from app.models.ranking_result import RankingResult
-from app.models.ranking_run import RankingRun
 from app.lifecycle.exit import (
     b1_has_peaked,
     exit_rank_strategy,
@@ -36,20 +33,24 @@ from app.lifecycle.exit import (
     pct_from_rank,
     should_exit_on_handoff,
 )
+from app.models.portfolio_analytics import ExitRecommendation
+from app.models.portfolio_position import PortfolioConfig, PortfolioPosition
+from app.models.ranking_result import RankingResult
+from app.models.ranking_run import RankingRun
 from app.portfolio.exit_monitor.triggers import (
     TriggerResult,
     check_alpha_decay,
-    check_concentration,
+    check_breakout_conviction_exit,
     check_liquidity,
     check_rank_drop,
     check_regime_change,
+    check_slot_recycle,
     check_stall,
     check_stop_loss,
     check_time_stop,
     check_trailing_stop,
 )
 from app.portfolio.regime_stops import resolve_stop_pcts
-
 
 # Horizon-aware exits: per-strategy minimum-hold (trading days) during which analytical
 # exits (rank-drop / alpha-decay) are suppressed and the progressive stop is stretched,
@@ -83,8 +84,12 @@ class ExitMonitorService:
     # OHLC). "all" preserves the legacy single-pass behaviour.
     _SIGNAL_TRIGGERS = {"EXIT_RANK_DROP", "EXIT_ALPHA_DECAY", "EXIT_REGIME",
                         "EXIT_TIME", "EXIT_LIQUIDITY",
-                        "EXIT_B1_FADE", "EXIT_MOMENTUM_FADE", "EXIT_RV1_RECOVERED"}
-    _PRICE_TRIGGERS = {"EXIT_STOP_LOSS", "EXIT_TRAILING_STOP"}
+                        "EXIT_B1_FADE", "EXIT_MOMENTUM_FADE", "EXIT_RV1_RECOVERED",
+                        # gauntlet passes 2 & 3 are daily slot-allocation signals
+                        "EXIT_SLOT_RECYCLE", "EXIT_SLOT_SWAP"}
+    # EXIT_CONVICTION blends signal (momentum/regime) and price (drag/RSI) but is
+    # evaluated on the live close, so it rides the PRICE pass with the stops.
+    _PRICE_TRIGGERS = {"EXIT_STOP_LOSS", "EXIT_TRAILING_STOP", "EXIT_CONVICTION"}
 
     def run(self, as_of_date: date | None = None,
             trigger_group: str = "all") -> list[ExitRecommendation]:
@@ -239,6 +244,98 @@ class ExitMonitorService:
                 if r.atr14 and r.last_close and float(r.last_close) > 0 and r.n and r.n >= 10:
                     atr_map[r.stock_id] = float(r.atr14) / float(r.last_close)  # fraction
 
+        # ── Batch prefetch: RSI(14) + 200-SMA for the breakout conviction exit ──
+        # Only computed when the consolidated breakout_v2 exit is enabled; both are
+        # single windowed queries across all positions (the conviction score's two
+        # price-derived inputs — own-thrust RSI and the stock's 200-SMA tier).
+        rsi_map: dict = {}
+        sma200_map: dict = {}
+        if settings.breakout_conviction_exit_enabled:
+            ranked_px = (
+                select(
+                    MarketDataModel.stock_id,
+                    MarketDataModel.close,
+                    func.lag(MarketDataModel.close)
+                    .over(partition_by=MarketDataModel.stock_id,
+                          order_by=MarketDataModel.date)
+                    .label("prev_close"),
+                    func.row_number()
+                    .over(partition_by=MarketDataModel.stock_id,
+                          order_by=MarketDataModel.date.desc())
+                    .label("rn"),
+                )
+                .where(MarketDataModel.stock_id.in_(stock_ids),
+                       MarketDataModel.date <= as_of)
+                .subquery()
+            )
+            _chg = ranked_px.c.close - ranked_px.c.prev_close
+            px_rows = self.db.execute(
+                select(
+                    ranked_px.c.stock_id,
+                    func.avg(case((_chg > 0, _chg), else_=0.0)).filter(ranked_px.c.rn <= 14).label("avg_gain"),
+                    func.avg(case((_chg < 0, -_chg), else_=0.0)).filter(ranked_px.c.rn <= 14).label("avg_loss"),
+                    func.count().filter(ranked_px.c.rn <= 14).label("n14"),
+                    func.avg(ranked_px.c.close).filter(ranked_px.c.rn <= 200).label("sma200"),
+                    func.max(ranked_px.c.close).filter(ranked_px.c.rn == 1).label("last_close"),
+                    func.count().filter(ranked_px.c.rn <= 200).label("n200"),
+                )
+                .where(ranked_px.c.rn <= 200)
+                .group_by(ranked_px.c.stock_id)
+            ).all()
+            for r in px_rows:
+                # RSI(14): needs prev_close (≥10 valid changes); avg_loss 0 → RSI 100.
+                if r.avg_gain is not None and r.avg_loss is not None and r.n14 and r.n14 >= 10:
+                    if float(r.avg_loss) == 0.0:
+                        rsi_map[r.stock_id] = 100.0
+                    else:
+                        rs = float(r.avg_gain) / float(r.avg_loss)
+                        rsi_map[r.stock_id] = 100.0 - 100.0 / (1.0 + rs)
+                # 200-SMA tier needs enough history (≥150 bars).
+                if r.sma200 and r.n200 and r.n200 >= 150:
+                    sma200_map[r.stock_id] = float(r.sma200)
+
+        # ── Batch prefetch: recent slope (last-N-day price velocity) for PASS 2 & 3 ──
+        # recent_slope = (close_now / close_N_bars_ago − 1)*100 / N  (%/day). Flag-gated.
+        recent_slope_map: dict = {}
+        if (settings.breakout_conviction_recycle_enabled
+                or settings.slot_recycle_opportunity_enabled):
+            _N = settings.breakout_conviction_recycle_recent_days
+            ranked_rs = (
+                select(
+                    MarketDataModel.stock_id,
+                    MarketDataModel.close,
+                    func.row_number()
+                    .over(partition_by=MarketDataModel.stock_id,
+                          order_by=MarketDataModel.date.desc())
+                    .label("rn"),
+                )
+                .where(MarketDataModel.stock_id.in_(stock_ids),
+                       MarketDataModel.date <= as_of)
+                .subquery()
+            )
+            rs_rows = self.db.execute(
+                select(
+                    ranked_rs.c.stock_id,
+                    func.max(ranked_rs.c.close).filter(ranked_rs.c.rn == 1).label("c_now"),
+                    func.max(ranked_rs.c.close).filter(ranked_rs.c.rn == _N).label("c_ago"),
+                    func.count().filter(ranked_rs.c.rn <= _N).label("n"),
+                )
+                .where(ranked_rs.c.rn <= _N)
+                .group_by(ranked_rs.c.stock_id)
+            ).all()
+            for r in rs_rows:
+                if r.c_now and r.c_ago and float(r.c_ago) > 0 and r.n and r.n >= _N:
+                    recent_slope_map[r.stock_id] = (
+                        (float(r.c_now) / float(r.c_ago) - 1.0) * 100.0 / _N
+                    )
+
+        # ── PASS 3 pre-pass: pick the one slot (if any) to evict for a blocked
+        # challenger. Decided book-wide once; applied per-position via ctx below.
+        evict_position_id = (
+            self._compute_slot_eviction(positions, as_of, recent_slope_map)
+            if settings.slot_recycle_opportunity_enabled else None
+        )
+
         results: list[ExitRecommendation] = []
 
         for pos in positions:
@@ -263,8 +360,11 @@ class ExitMonitorService:
 
             context = self._build_position_context(
                 pos, as_of, price_map=price_map, rank_map=rank_map, trend_map=trend_map,
-                atr_map=atr_map,
+                atr_map=atr_map, rsi_map=rsi_map, sma200_map=sma200_map,
+                recent_slope_map=recent_slope_map,
             )
+            if settings.slot_recycle_opportunity_enabled:
+                context["slot_swap_evict"] = (pos.id == evict_position_id)
             fired_triggers = self._evaluate_triggers(
                 pos, context, cfg, regime_posture, as_of, trigger_group=trigger_group)
 
@@ -373,6 +473,158 @@ class ExitMonitorService:
         except Exception:
             return "neutral"
 
+    def _market_regime_label(self, as_of: date) -> str | None:
+        """Raw 4-way regime label (BULL/BEAR × LOW/HIGH_VOL) — the breakout conviction
+        score grades market depth on it (fading-bull/orderly/panic). None if unavailable."""
+        try:
+            regime = self.regime_repo.get_current(
+                benchmark_symbol=DEFAULT_BENCHMARK_SYMBOL, as_of_date=as_of
+            )
+            return (regime.regime_label or "").upper() if regime else None
+        except Exception:
+            return None
+
+    def _compute_slot_eviction(self, positions, as_of, recent_slope_map):
+        """PASS 3 (opportunity swap): when the book is FULL and a fresh breakout_v2
+        rank<=N challenger is BLOCKED, return the id of the single WEAKEST evictable
+        breakout_v2 incumbent (lowest recent slope, below the incumbent floor,
+        held>=min_hold, momentum not rising) so its slot is freed for the challenger.
+        None when no swap is warranted (book not full / no challenger / no dragger)."""
+        settings = get_settings()
+        max_slots = settings.lifecycle_max_positions or 0
+        if max_slots <= 0 or len(positions) < max_slots:
+            return None  # book not full → no slot contention
+        held_ids = {p.stock_id for p in positions}
+        b2_run = self.db.scalar(
+            select(RankingRun)
+            .where(
+                RankingRun.status == "completed",
+                RankingRun.strategy_name == "breakout_v2",
+                RankingRun.as_of_date <= as_of,
+            )
+            .order_by(RankingRun.as_of_date.desc())
+            .limit(1)
+        )
+        if b2_run is None:
+            return None
+        chall = self.db.execute(
+            select(RankingResult.stock_id).where(
+                RankingResult.ranking_run_id == b2_run.id,
+                RankingResult.rank <= settings.slot_recycle_challenger_max_rank,
+            )
+        ).all()
+        if not any(c.stock_id not in held_ids for c in chall):
+            return None  # no blocked challenger → keep everyone
+        best = None  # (recent_slope, position_id) — the weakest evictable incumbent
+        for p in positions:
+            if getattr(p, "strategy_name", None) != "breakout_v2":
+                continue
+            sl = recent_slope_map.get(p.stock_id)
+            if sl is None or sl >= settings.slot_recycle_incumbent_slope_floor_pct:
+                continue
+            dh = (as_of - p.entry_date).days if p.entry_date else 0
+            if dh < settings.slot_recycle_min_hold_days:
+                continue
+            if self._momentum_rising(p, as_of) is True:
+                continue  # coiling → spare
+            if best is None or sl < best[0]:
+                best = (sl, p.id)
+        return best[1] if best else None
+
+    def _evaluate_breakout_conviction(
+        self, pos, ctx: dict, as_of: date | None, single_cap: float, trigger_group: str
+    ) -> list:
+        """Consolidated breakout_v2 exit: the conviction score IS the trail/stop. Replaces
+        the legacy stop/trailing/momentum-fade/analytical exits for breakout_v2 positions;
+        keeps only a wide catastrophe stop (gap tail) and the liquidity safety net."""
+        settings = get_settings()
+        mom_pct = self._momentum_pct(pos, as_of) if as_of else None
+        market_label = self._market_regime_label(as_of) if as_of else None
+
+        last = ctx.get("last_price")
+        sma = ctx.get("sma200")
+        if sma and last:
+            stock_below = 2 if last < sma * 0.9 else (1 if last < sma else 0)
+        else:
+            stock_below = 0
+
+        # Drag = % drawdown from the peak CLOSE since entry, from peak/current gain.
+        mg = ctx.get("max_gain_pct")
+        pnl = ctx.get("unrealized_pnl_pct")
+        peak_factor = 1.0 + max(mg or 0.0, 0.0) / 100.0
+        cur_factor = 1.0 + (pnl or 0.0) / 100.0
+        drag = max(0.0, (1.0 - cur_factor / peak_factor) * 100.0)
+
+        # Always-on safety rails (orthogonal to the gauntlet): wide catastrophe stop —
+        # the score can't catch a single-bar gap-down — plus the liquidity net. These can
+        # force an exit even when every pass survives, and ride along with whichever pass
+        # fires.
+        safety_fired = [
+            r for r in (
+                check_stop_loss(
+                    ctx.get("unrealized_pnl_pct"),
+                    -settings.breakout_conviction_catastrophe_stop_pct,
+                ),
+                check_liquidity(
+                    ctx.get("avg_daily_volume"),
+                    float(pos.market_value) if pos.market_value else None,
+                    ctx.get("last_price"),
+                ),
+            ) if r.fired
+        ]
+
+        def _emit(passres: TriggerResult | None) -> list:
+            fired = ([passres] if (passres is not None and passres.fired) else []) + safety_fired
+            if trigger_group == "signal":
+                fired = [r for r in fired if r.trigger_code in self._SIGNAL_TRIGGERS]
+            elif trigger_group == "price":
+                fired = [r for r in fired if r.trigger_code in self._PRICE_TRIGGERS]
+            return fired
+
+        # ── PASS 1 — CONVICTION (health): is the trend breaking? ──────────────
+        p1 = check_breakout_conviction_exit(
+            momentum_pct=mom_pct,
+            market_label=market_label,
+            stock_below_sma=stock_below,
+            rsi14=ctx.get("rsi14"),
+            drag_from_peak_pct=drag,
+            below_entry=(pnl is not None and pnl < 0),
+            low_score_drag_pct=settings.breakout_conviction_low_score_drag_pct,
+            mid_score_drag_pct=settings.breakout_conviction_mid_score_drag_pct,
+            tight_drag_pct=settings.breakout_conviction_tight_drag_pct,
+        )
+        if p1.fired:
+            return _emit(p1)
+
+        # ── PASS 2 — SLOT EFFICIENCY (recycle): is this slot earning its keep? ──
+        if settings.breakout_conviction_recycle_enabled:
+            p2 = check_slot_recycle(
+                ctx.get("recent_slope"),
+                ctx.get("days_held", 0) or 0,
+                momentum_rising=self._momentum_rising(pos, as_of) if as_of else None,
+                grace_days=settings.breakout_conviction_recycle_grace_days,
+                slope_floor_pct_per_day=settings.breakout_conviction_recycle_slope_floor_pct,
+                spare_momentum_rising=settings.breakout_conviction_recycle_spare_momentum_rising,
+            )
+            if p2.fired:
+                return _emit(p2)
+
+        # ── PASS 3 — OPPORTUNITY (swap): is a better setup blocked on me? ──────
+        # The allocation layer (paper_pilot_ops) marks the weakest incumbent in
+        # ctx['slot_swap_evict'] when the book is full and a rank<=N challenger is
+        # blocked; here we turn that mark into the exit. Flag-gated.
+        if settings.slot_recycle_opportunity_enabled and ctx.get("slot_swap_evict"):
+            p3 = TriggerResult(
+                True, "EXIT_SLOT_SWAP",
+                {"challenger_rank": ctx.get("slot_swap_challenger_rank"),
+                 "recent_slope": ctx.get("recent_slope")},
+                urgency="NORMAL",
+            )
+            return _emit(p3)
+
+        # ── SURVIVED all enabled passes → HOLD (unless a safety rail tripped) ──
+        return _emit(None)
+
     def _build_position_context(
         self,
         pos: PortfolioPosition,
@@ -381,6 +633,9 @@ class ExitMonitorService:
         rank_map: dict | None = None,
         trend_map: dict | None = None,
         atr_map: dict | None = None,
+        rsi_map: dict | None = None,
+        sma200_map: dict | None = None,
+        recent_slope_map: dict | None = None,
     ) -> dict:
         ctx: dict = {}
 
@@ -392,6 +647,14 @@ class ExitMonitorService:
         # Per-stock ATR% (fraction) for dynamic stops/trails. None when flag off.
         if atr_map:
             ctx["atr_pct"] = atr_map.get(pos.stock_id)
+
+        # Breakout conviction exit inputs (None when that flag is off).
+        if rsi_map:
+            ctx["rsi14"] = rsi_map.get(pos.stock_id)
+        if sma200_map:
+            ctx["sma200"] = sma200_map.get(pos.stock_id)
+        if recent_slope_map:
+            ctx["recent_slope"] = recent_slope_map.get(pos.stock_id)
 
         if pos.entry_date:
             ctx["days_held"] = (as_of - pos.entry_date).days
@@ -515,7 +778,7 @@ class ExitMonitorService:
         return None
 
     def _lifecycle_handoff(self, pos, as_of, days_held, momentum_pct=None,
-                           momentum_hold_pct=0.50) -> "TriggerResult | None":
+                           momentum_hold_pct=0.50) -> TriggerResult | None:
         """Cross-rank HANDOFF exit: a position entered on breakout_v2/reversion_v3 is
         judged on the OLD active rank. breakout_v2 rides breakout_v1 (breakout leg) then,
         once B1 has spiked AND faded, hands off to momentum_v3 (``momentum_pct``) — held
@@ -610,6 +873,15 @@ class ExitMonitorService:
         settings = get_settings()
         single_cap = float(cfg.single_name_cap_pct * 100) if cfg else 18.0
         days_held = ctx.get("days_held", 0)
+
+        # ── Consolidated breakout_v2 exit (flag-gated): the conviction score IS the
+        # trail/stop. Route breakout_v2 positions here and skip the legacy stack
+        # entirely so the single exit logic isn't double-fired by stop/trailing/fade.
+        if (settings.breakout_conviction_exit_enabled
+                and getattr(pos, "strategy_name", None) == "breakout_v2"):
+            return self._evaluate_breakout_conviction(
+                pos, ctx, as_of, single_cap, trigger_group
+            )
 
         # Lifecycle exit tuning: 3-way market regime + the stock's own 3-way trend, used
         # for the regime exit (hold through SIDEWAYS), the regime/stock-tiered hard stop,
