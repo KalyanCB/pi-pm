@@ -20,6 +20,7 @@ from datetime import UTC, date, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import replay_fast as rf  # reuse env (START_DATE/END_DATE/UNIVERSE/BENCHMARK/_ALL_STRATEGIES), store, helpers
+from sqlalchemy import text
 
 from app.db.session import get_session_factory
 from app.db.repositories.market_data_repository import MarketDataRepository
@@ -37,6 +38,8 @@ _WORKERS = int(os.getenv("BULK_WORKERS", "6"))
 _DROP_IDX = os.getenv("BULK_DROP_INDEXES", "0") == "1"
 _DUP_INDEX = "ix_ranking_results_run_rank"  # redundant dup of uq_ranking_result_run_rank — don't recreate
 _STORE = None  # fork-inherited by workers (set in main before the pool)
+_BENCH_BARS = None  # benchmark PriceBar series (fork-inherited) for regime_history
+_HIGH_VOL = None    # vol threshold (Decimal), fork-inherited
 
 
 def _trading_days(db):
@@ -79,12 +82,24 @@ def _compute_day(rsvc, day):
 
 def _worker_chunk(days_chunk: list) -> int:
     """Compute + bulk-write a chunk of days (parallel worker). Uses the fork-inherited
-    store; bulk inserts contend far less than the old per-run transactions."""
+    store; bulk inserts contend far less than the old per-run transactions. Also writes
+    regime_history per day (market_regime_3way) so Phase-2's entry gather can read it."""
+    from app.db.repositories.regime_analytics_repository import RegimeAnalyticsRepository
+    from app.validation.regimes import classify_regime
     db = get_session_factory()()
     rsvc = _ranking_service(db, _STORE)
+    regrepo = RegimeAnalyticsRepository(db)
     run_buf, res_buf, total = [], [], 0
     try:
         for day in days_chunk:
+            # regime_history (benchmark-bar 3-way; breadth=None — same as the ranking path's
+            # own regime_label, and the 3-way the gather reads never uses breadth anyway).
+            reg = classify_regime(_BENCH_BARS, day, _HIGH_VOL, breadth_pct=None)
+            if reg is not None:
+                regrepo.upsert_regime(
+                    as_of_date=day, benchmark_symbol=rf.BENCHMARK,
+                    trend_regime=reg.trend_regime, vol_regime=reg.vol_regime,
+                    regime_label=reg.regime_label, market_regime_3way=reg.market_regime_3way)
             rr, res = _compute_day(rsvc, day)
             run_buf.extend(rr); res_buf.extend(res)
             if len(res_buf) >= _BATCH:
@@ -95,8 +110,8 @@ def _worker_chunk(days_chunk: list) -> int:
         if res_buf:
             db.bulk_insert_mappings(RankingRun, run_buf)
             db.bulk_insert_mappings(RankingResult, res_buf)
-            db.commit()
             total += len(res_buf)
+        db.commit()  # final ranking batch + any trailing regime upserts
     finally:
         db.close()
     return total
@@ -118,9 +133,20 @@ def main() -> int:
     stocks = UniverseRepository(db).list_stocks_in_universe(rf.UNIVERSE)
     bench = StockRepository(db).get_by_symbol(rf.BENCHMARK)
     ids = [s.id for s in stocks] + ([bench.id] if bench else [])
-    global _STORE
+    global _STORE, _BENCH_BARS, _HIGH_VOL
     _STORE = GlobalBarStore.load(MarketDataRepository(db), ids, end_date=days[-1], source="kite")
     print(f"Preloaded {len(_STORE._all_bars)} stocks.", flush=True)
+
+    # Benchmark series + vol threshold for the per-day regime_history write (fork-inherited).
+    from decimal import Decimal
+    from app.core.config import get_settings
+    from app.ranking.math_utils import PriceBar
+    _HIGH_VOL = Decimal(str(get_settings().validation_high_vol_threshold))
+    _bench_rows = db.execute(text(
+        "SELECT date, close FROM market_data WHERE stock_id = :s AND source = 'kite' ORDER BY date"
+    ), {"s": bench.id}).fetchall() if bench else []
+    _BENCH_BARS = [PriceBar(date=r[0], close=float(r[1]), volume=None) for r in _bench_rows]
+    print(f"Benchmark bars for regime_history: {len(_BENCH_BARS)}", flush=True)
 
     if _DIFF:
         return _diff_test(db, _ranking_service(db, _STORE), days)
