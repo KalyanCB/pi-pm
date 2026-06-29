@@ -237,6 +237,42 @@ class RankingService:
             self.db.commit()
             raise RankingError(str(exc)) from exc
 
+    def compute_ranking_only(self, payload: RankingRunRequest):
+        """PURE in-memory ranking compute — NO DB writes (no dedup, run row, save_results,
+        or traceability). Returns (output, regime_label, strategy, filter_config_hash).
+        For bulk replays: compute everything in memory, then bulk-insert the results."""
+        universe_code = payload.universe_code or self.settings.ranking_default_universe_code
+        strategy_name = payload.strategy_name or self.settings.ranking_default_strategy
+        strategy_version = payload.strategy_version or self.settings.ranking_default_strategy_version
+        as_of_date = payload.as_of_date or date.today()
+        filter_config = self._build_filter_config(payload, universe_code)
+        strategy = self.strategy_registry.get(strategy_name, strategy_version)
+        benchmark_symbol = (payload.benchmark_symbol or self.settings.ranking_default_benchmark).upper()
+
+        if self.global_bar_store is not None:
+            market_data_cache = self.global_bar_store.as_cache(self.universe_filter_service.market_data_repo)
+        else:
+            market_data_cache = MarketDataCache(self.universe_filter_service.market_data_repo)
+        universe_stocks = self.universe_repo.list_stocks_in_universe(universe_code)
+        market_data_cache.bulk_preload(
+            [s.id for s in universe_stocks], as_of_date, source=filter_config.market_data_source)
+        benchmark_stock = self.stock_repo.get_by_symbol(benchmark_symbol)
+        benchmark_stock_id = benchmark_stock.id if benchmark_stock else None
+        regime_label = self._resolve_regime_label(benchmark_stock_id, as_of_date, market_data_cache)
+        if self.settings.mega_diversifier_enabled and regime_label and (
+                "BEAR" in regime_label.upper() or "HIGH_VOL" in regime_label.upper()):
+            mega_floor = Decimal(str(self.settings.mega_min_adtv_inr))
+            if filter_config.min_avg_daily_traded_value < mega_floor:
+                filter_config = replace(filter_config, min_avg_daily_traded_value=mega_floor)
+        tradable_universe = self.universe_filter_service.build_tradable_universe(
+            as_of_date, filter_config, market_data_cache)
+        engine = RankingEngine(MarketDataLoader(market_data_cache))
+        output = engine.run(
+            tradable_universe=tradable_universe, strategy=strategy,
+            benchmark_symbol=benchmark_symbol, benchmark_stock_id=benchmark_stock_id,
+            as_of_date=as_of_date)
+        return output, regime_label, strategy, tradable_universe.filter_config_hash
+
     def get_run(self, run_id: UUID) -> RankingRun:
         run = self.ranking_run_repo.get_by_id(run_id)
         if run is None:
