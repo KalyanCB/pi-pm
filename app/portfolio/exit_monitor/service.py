@@ -663,7 +663,19 @@ class ExitMonitorService:
         # at -1.2% then the stock ran +12-20%). Give a strong name in a strong tape room;
         # tighten only as the regime weakens.
         if _lc:
-            if _m3 == "BEAR":
+            # Bounce sleeve (reversion_v3): the tiered regime stop (-2 BEAR / -4 SIDEWAYS)
+            # whipsaws an oversold mean-reversion — it pulls back WITHIN the recovery
+            # (confirmed-turn bounces dip ~-5% median then 88% recover +16%). Give it a
+            # WIDE, volatility-scaled stop (~3x ATR, floor -8% = the p25 dip, cap -15%) so
+            # the pullback rides to the RV1-recovered exit. Leaders keep the tiered stop.
+            if getattr(pos, "strategy_name", None) == "reversion_v3":
+                if _atr_pct100 is not None:
+                    stop_loss = -_clamp(settings.reversion_atr_stop_mult * _atr_pct100,
+                                        settings.reversion_atr_stop_floor_pct,
+                                        settings.reversion_atr_stop_cap_pct)
+                else:
+                    stop_loss = -settings.reversion_atr_stop_floor_pct  # ATR off → fixed wide
+            elif _m3 == "BEAR":
                 stop_loss = -settings.lifecycle_stop_bear_pct
             elif _m3 == "SIDEWAYS":
                 stop_loss = -settings.lifecycle_stop_sideways_pct

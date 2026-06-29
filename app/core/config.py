@@ -308,6 +308,13 @@ class Settings(BaseSettings):
     # after the turn removes that knife-dip + the stop whipsaw at the source.
     reversion_turn_confirm_enabled: bool = True
     reversion_turn_confirm_sma: int = 5
+    #  reversion_v3 STOP: oversold bounces pull back WITHIN the recovery, so the tiered
+    #  regime stop (-2/-4) whipsaws them (confirmed-turn bounces dip ~-5% median, 88% then
+    #  recover +16%). Give the bounce sleeve a wide, volatility-scaled stop (~3x ATR, floor
+    #  -8% = the p25 dip, cap -15%) routed through the ATR path; leaders keep the tiered stop.
+    reversion_atr_stop_mult: float = 3.0
+    reversion_atr_stop_floor_pct: float = 8.0
+    reversion_atr_stop_cap_pct: float = 15.0
     # Slot experiment: many small slots restricted to the top-N rank bucket. When
     # lifecycle_max_positions > 0 it overrides the regime slot cap; sizing auto-falls to
     # ~deployable/max_positions (18 slots ≈ 5%/name). top_rank>0 admits only rank<=N.
