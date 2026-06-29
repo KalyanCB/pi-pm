@@ -1,12 +1,22 @@
-"""ADR-037 v18 Tier-1/2 features are flag-gated and default OFF (v17 baseline safe)."""
+"""ADR-037 v18 Tier-1/2 feature flags.
+
+Winner-protection (graduation / runner / let-winners-run) is now the intended lifecycle
+baseline — it lets the fat-tail names ride the wide trail instead of being clipped by the
+MOMENTUM_FADE handoff — so it defaults ON. Gold rotation stays OFF (opt-in).
+"""
 from app.core.config import Settings
 
 
-def test_v18_flags_default_off():
-    s = Settings()
-    assert s.graduation_enabled is False
-    assert s.runner_tier_enabled is False
-    assert s.gold_rotation_enabled is False
+def test_winner_protection_defaults_on():
+    # Assert the class DEFAULTS (env-independent — a local .env must not mask the intent).
+    f = Settings.model_fields
+    assert f["graduation_enabled"].default is True
+    assert f["runner_tier_enabled"].default is True
+    assert f["let_winners_run_enabled"].default is True
+
+
+def test_gold_rotation_defaults_off():
+    assert Settings.model_fields["gold_rotation_enabled"].default is False
 
 
 def test_v18_defaults_sane():

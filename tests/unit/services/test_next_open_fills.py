@@ -19,7 +19,12 @@ class _Repo:
 def _svc(repo, next_open_enabled):
     s = PaperTradeService.__new__(PaperTradeService)
     s.market_data_repo = repo
-    s.settings = SimpleNamespace(cost_slippage_bps=5.0, next_open_fills_enabled=next_open_enabled)
+    s.settings = SimpleNamespace(
+        cost_slippage_bps=5.0,
+        next_open_fills_enabled=next_open_enabled,
+        realistic_fills_enabled=False,
+        ohlc_fills_enabled=False,
+    )
     return s
 
 

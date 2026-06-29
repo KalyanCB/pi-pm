@@ -60,7 +60,6 @@ def _run_with_fit(
 ) -> list:
     cfg = EngineConfig(
         regime_posture=regime,
-        max_buy_slots=5,
         regime_fit=regime_fit,
     )
     val = ValidationSummary(status=validation_status, ic_20d=ic_20d, top_decile_spread=0.02)

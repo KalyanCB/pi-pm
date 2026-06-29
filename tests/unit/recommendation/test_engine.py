@@ -22,10 +22,9 @@ def _run(
     validation_status: str = "completed",
     ic_20d: float = 0.06,
     regime: str = "risk_on",
-    max_buy_slots: int = 5,
     active_positions: set | None = None,
 ) -> list:
-    cfg = EngineConfig(regime_posture=regime, max_buy_slots=max_buy_slots)
+    cfg = EngineConfig(regime_posture=regime)
     val = ValidationSummary(status=validation_status, ic_20d=ic_20d, top_decile_spread=0.02)
     results, _ = run(
         ranking_run_id=uuid.uuid4(),
@@ -73,12 +72,17 @@ def test_defensive_regime_blocks_buy():
         assert r.action != RecommendationAction.BUY
 
 
-# R-ENTRY-05: slot limit enforced
-def test_slot_limit_enforced():
+# R-ENTRY-05: engine emits the PURE signal — no portfolio/slot cap. Every eligible
+# top-pool candidate becomes BUY; capacity is an admission decision enforced downstream.
+def test_no_portfolio_slot_cap_in_engine():
     rows = [_row(r) for r in range(1, 16)]
-    results = _run(rows, max_buy_slots=3)
+    results = _run(rows)
     buys = [r for r in results if r.action == RecommendationAction.BUY]
-    assert len(buys) <= 3
+    # Far more than the old 5/10-slot cap — all eligible names get BUY.
+    assert len(buys) > 5
+    # PORTFOLIO_FULL must never be emitted by the recommendation engine.
+    for r in results:
+        assert "PORTFOLIO_FULL" not in r.reason_codes
 
 
 # R-HOLD-01: active positions get HOLD
