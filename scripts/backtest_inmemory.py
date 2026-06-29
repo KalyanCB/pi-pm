@@ -32,16 +32,17 @@ from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://pipm:pipm@localhost:5432/pipm")
 
 # ── Config ────────────────────────────────────────────────────────────────────
-INITIAL_CAPITAL   = 10_000_000.0   # ₹1 crore
-MAX_SLOTS         = 10
-MAX_SLOT_ALLOC    = 500_000.0      # ₹5 lakh per slot
-STOP_LOSS_PCT     = -4.0           # -4%
-STOP_LOSS_FACTOR  = 1.0 + (STOP_LOSS_PCT / 100)   # 0.96
+INITIAL_CAPITAL   = 1_000_000.0    # ₹10 lakh
+MAX_SLOTS         = 5
+MAX_SLOT_ALLOC    = 200_000.0      # ₹2 lakh per slot
+STOP_LOSS_PCT     = -8.0           # -8% (prod advisory stop)
+STOP_LOSS_FACTOR  = 1.0 + (STOP_LOSS_PCT / 100)   # 0.92
 MAX_HOLD_DAYS     = 30             # trading days
 RANK_DROP_THRESH  = 40
+ALPHA_DECAY_GRACE = 15             # day-15 grace: cut only if STILL red at/after day 15
 SLIPPAGE_BPS      = 5.0
-START_DATE        = "2022-06-01"
-END_DATE          = "2026-06-07"
+START_DATE        = "2021-01-01"
+END_DATE          = "2026-06-18"
 CONVICTION_MULT   = {"EXCEPTIONAL": 1.15, "HIGH": 1.00, "MEDIUM": 0.75}
 
 
@@ -187,6 +188,7 @@ def run():
         stop_exits = 0
         time_exits = 0
         rank_exits = 0
+        alpha_exits = 0
         day_num    = 0
         prev_month = ""
 
@@ -279,6 +281,34 @@ def run():
 
             positions = [p for p in positions if p.stock_id not in exited_ids]
 
+            # ── 4b. Alpha-decay (day-15 grace): cut ONLY if still red at/after day 15 ──
+            for pos in list(positions):
+                if pos.trading_days_held < ALPHA_DECAY_GRACE:
+                    continue
+                close = get_eod_close(conn, pos.stock_id, today)
+                if close is None:
+                    continue
+                if close >= pos.entry_price:        # green by day 15 → hold (recoverer escapes)
+                    continue
+                exit_price = slip(close, "SELL")
+                proceeds   = pos.qty * exit_price
+                pnl        = proceeds - pos.cost
+                trades.append(Trade(
+                    symbol=pos.symbol, strategy=pos.strategy,
+                    entry_date=pos.entry_date, exit_date=today,
+                    entry_price=pos.entry_price, exit_price=exit_price,
+                    qty=pos.qty, cost=pos.cost, pnl=pnl,
+                    pnl_pct=pnl / pos.cost * 100,
+                    hold_days=pos.trading_days_held,
+                    exit_reason="ALPHA_DECAY",
+                    conviction_band=pos.conviction_band,
+                ))
+                cash += proceeds
+                exited_ids.add(pos.stock_id)
+                alpha_exits += 1
+
+            positions = [p for p in positions if p.stock_id not in exited_ids]
+
             # ── 5. Entries ─────────────────────────────────────────────────────
             if today in buy_signals:
                 open_ids   = {p.stock_id for p in positions}
@@ -334,7 +364,7 @@ def run():
             if day_num % 250 == 0:
                 print(f"  [{today}] {len(positions)} open | "
                       f"₹{cash:,.0f} cash | NAV ₹{mtm:,.0f} | "
-                      f"stops={stop_exits} time={time_exits} rank={rank_exits}")
+                      f"stops={stop_exits} time={time_exits} rank={rank_exits} alpha={alpha_exits}")
 
         # ── Force-close remaining at last price ───────────────────────────────
         last_day = trading_days[-1]
@@ -361,7 +391,7 @@ def run():
         final_nav   = cash
         total_pnl   = final_nav - INITIAL_CAPITAL
         total_ret   = total_pnl / INITIAL_CAPITAL * 100
-        years       = (last_day - date(2022, 6, 1)).days / 365.25
+        years       = (last_day - trading_days[0]).days / 365.25
         cagr        = ((final_nav / INITIAL_CAPITAL) ** (1 / years) - 1) * 100 if years > 0 else 0
 
         wins   = [t for t in trades if t.pnl > 0]

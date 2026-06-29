@@ -45,6 +45,7 @@ from app.models.full_universe_validation import (
     FullUniverseValidationRun,
 )
 from app.models.market_data import MarketData
+from app.models.market_data_intraday import MarketDataIntraday
 from app.models.market_data_ingestion_run import MarketDataIngestionRun
 from app.models.paper_trade import PaperTrade
 from app.models.platform_traceability import (
@@ -93,6 +94,7 @@ from app.models.universe_membership import UniverseMembership
 __all__ = [
     "Stock",
     "MarketData",
+    "MarketDataIntraday",
     "StockUniverse",
     "UniverseMembership",
     "MarketDataIngestionRun",

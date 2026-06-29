@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 # Kite historical_data max date range per request (days)
 _MAX_DAYS_PER_CALL = 365
+# Intraday history is capped tighter by Kite (≈100 days for 60min, 60 for minute);
+# 60 is safe across intraday intervals.
+_MAX_DAYS_PER_CALL_INTRADAY = 60
 # Throttle: Kite allows 3 req/sec on historical API
 _MIN_INTERVAL_SEC = 0.34
 
@@ -174,6 +177,65 @@ class KiteConnectProvider:
             cursor = chunk_end + timedelta(days=1)
 
         return bars
+
+    def fetch_intraday_since(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        interval: str = "60minute",
+    ) -> list[dict]:
+        """Fetch intraday OHLCV bars (timestamped) for ``symbol`` over a date range.
+
+        Returns raw dicts {ts, open, high, low, close, volume} — kept separate from
+        the daily ``fetch_history_since`` path (which collapses to date) so the
+        intraday-fill ingest preserves bar timestamps. Kite caps intraday requests to
+        a smaller window, so chunk tighter than the daily 365-day stride.
+        """
+        if symbol.startswith("^"):
+            return []
+
+        from app.providers.kite import instruments
+        instruments.ensure_loaded(self._kite)
+
+        token = instruments.get_token(symbol)
+        if token is None:
+            raise InvalidSymbolError(f"Symbol not found in Kite NSE instruments: {symbol}")
+        if start_date > end_date:
+            return []
+
+        stride = _MAX_DAYS_PER_CALL_INTRADAY
+        out: list[dict] = []
+        cursor = start_date
+        while cursor <= end_date:
+            chunk_end = min(cursor + timedelta(days=stride - 1), end_date)
+            self._throttle()
+            try:
+                records = self._kite.historical_data(
+                    token,
+                    from_date=datetime(cursor.year, cursor.month, cursor.day),
+                    to_date=datetime(chunk_end.year, chunk_end.month, chunk_end.day, 23, 59, 59),
+                    interval=interval,
+                )
+            except Exception as exc:
+                logger.exception("Kite intraday fetch failed for %s (%d)", symbol, token)
+                raise ProviderError(f"Kite intraday fetch failed for {symbol}") from exc
+            for r in records:
+                close = _to_decimal(r.get("close"))
+                if close is None:
+                    continue
+                out.append(
+                    {
+                        "ts": r["date"],  # tz-aware datetime from Kite
+                        "open": _to_decimal(r.get("open")),
+                        "high": _to_decimal(r.get("high")),
+                        "low": _to_decimal(r.get("low")),
+                        "close": close,
+                        "volume": int(r["volume"]) if r.get("volume") is not None else None,
+                    }
+                )
+            cursor = chunk_end + timedelta(days=1)
+        return out
 
     def fetch_fundamentals(self, symbol: str) -> dict:
         return self._get_yahoo().fetch_fundamentals(symbol)

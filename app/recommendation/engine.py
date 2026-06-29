@@ -14,7 +14,12 @@ Why-not evaluation order (16_WHY_NOT_RECOMMENDED_FRAMEWORK.md §4):
   2. REGIME_NO_EDGE / VALIDATION_PENDING (R-ENTRY-02-RCE or legacy R-ENTRY-02)
   3. REGIME_BLOCK
   4. Conviction scoring
-  5. CONVICTION_LOW / PORTFOLIO_FULL → WATCH or BUY
+  5. CONVICTION_LOW → WATCH; otherwise → BUY
+
+The engine emits the PURE entry signal (eligibility + conviction + regime). It does
+NOT apply portfolio capacity / daily-buy throttles — those are admission decisions that
+depend on live portfolio state and are enforced downstream (portfolio_service /
+replay buy loop). A BUY here means "we'd want to own this", not "we have a free slot".
 """
 
 from __future__ import annotations
@@ -30,7 +35,6 @@ from app.core.constants import (
     REC_REASON_CONVICTION_LOW,
     REC_REASON_EXIT_RISK,
     REC_REASON_LOW_EXPECTANCY,
-    REC_REASON_PORTFOLIO_FULL,
     REC_REASON_RANK_OUTSIDE_POOL,
     REC_REASON_RANK_POOL_TOP20,
     REC_REASON_REGIME_BLOCK,
@@ -77,7 +81,6 @@ class EngineConfig:
     config_version: str = "rec_v1.0.0"
     conviction_config_version: str = "conv_v1.1.0"
     top_pool_size: int = CONVICTION_TOP_POOL_SIZE
-    max_buy_slots: int = 5
     regime_posture: str = "neutral"
     factor_ic_median: float | None = None
     rank_v2_promoted: bool = False
@@ -162,10 +165,10 @@ def run(
     top20_scores = [r.composite_score for r in ranking_results if r.rank <= config.top_pool_size]
 
     results: list[RecommendationRow] = []
-    buy_count = 0
     exceptional_count = 0
 
-    # Sort by rank so slot limits apply in rank order
+    # Sort by rank so the (per-run) exceptional-conviction cap is applied in rank order,
+    # keeping output deterministic and rank-priority.
     sorted_results = sorted(ranking_results, key=lambda r: r.rank)
 
     for rr in sorted_results:
@@ -180,7 +183,6 @@ def run(
             top20_scores=top20_scores,
             is_active_position=is_active,
             exit_signal=exit_signal,
-            buy_count=buy_count,
             exceptional_count=exceptional_count,
         )
 
@@ -190,7 +192,6 @@ def run(
             reason_codes = list(reason_codes) + ["RECENT_STOP_EXIT"]
 
         if action == RecommendationAction.BUY:
-            buy_count += 1
             if conviction.band == ConvictionBand.EXCEPTIONAL:
                 exceptional_count += 1
 
@@ -220,7 +221,6 @@ def _evaluate(
     top20_scores: list[float],
     is_active_position: bool,
     exit_signal: ExitSignal,
-    buy_count: int,
     exceptional_count: int,
 ) -> tuple[str, str | None, list[str], ConvictionResult, RecommendationConfidence | None]:
     reason_codes: list[str] = []
@@ -316,10 +316,12 @@ def _evaluate(
         reason_codes.append(REC_REASON_REGIME_BLOCK)
         return RecommendationAction.WATCH, None, reason_codes, conviction, None
 
-    # Slot limit (R-ENTRY-05b)
-    if buy_count >= config.max_buy_slots:
-        reason_codes.append(REC_REASON_PORTFOLIO_FULL)
-        return RecommendationAction.WATCH, None, reason_codes, conviction, None
+    # NOTE: portfolio capacity / daily-buy throttle (the former R-ENTRY-05b
+    # "PORTFOLIO_FULL" gate) is intentionally NOT applied here. It is an admission
+    # decision that requires live portfolio state (free slots, buys-already-today) and
+    # is enforced downstream (portfolio_service.RegimeLimits / the replay buy loop).
+    # Keeping it out of the engine makes recommendation_results the pure, reusable
+    # signal and removes path-dependence on the run-time portfolio trajectory.
 
     # Exceptional daily cap
     if (
