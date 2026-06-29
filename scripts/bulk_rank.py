@@ -31,6 +31,8 @@ from app.schemas.ranking import RankingRunRequest
 
 _BATCH = int(os.getenv("BULK_BATCH", "10000"))
 _DIFF = os.getenv("BULK_DIFF_TEST", "0") == "1"
+_WORKERS = int(os.getenv("BULK_WORKERS", "6"))
+_STORE = None  # fork-inherited by workers (set in main before the pool)
 
 
 def _trading_days(db):
@@ -71,6 +73,31 @@ def _compute_day(rsvc, day):
     return run_rows, res_rows
 
 
+def _worker_chunk(days_chunk: list) -> int:
+    """Compute + bulk-write a chunk of days (parallel worker). Uses the fork-inherited
+    store; bulk inserts contend far less than the old per-run transactions."""
+    db = get_session_factory()()
+    rsvc = _ranking_service(db, _STORE)
+    run_buf, res_buf, total = [], [], 0
+    try:
+        for day in days_chunk:
+            rr, res = _compute_day(rsvc, day)
+            run_buf.extend(rr); res_buf.extend(res)
+            if len(res_buf) >= _BATCH:
+                db.bulk_insert_mappings(RankingRun, run_buf)
+                db.bulk_insert_mappings(RankingResult, res_buf)
+                db.commit()
+                total += len(res_buf); run_buf, res_buf = [], []
+        if res_buf:
+            db.bulk_insert_mappings(RankingRun, run_buf)
+            db.bulk_insert_mappings(RankingResult, res_buf)
+            db.commit()
+            total += len(res_buf)
+    finally:
+        db.close()
+    return total
+
+
 def main() -> int:
     if rf.START_DATE is None:
         print("ERROR: set REPLAY_START_DATE"); return 1
@@ -81,40 +108,35 @@ def main() -> int:
     print(f"Bulk-rank {len(days)} days x {len(rf._ALL_STRATEGIES)} strat = "
           f"{len(days)*len(rf._ALL_STRATEGIES):,} runs | suite={rf._SUITE}", flush=True)
 
-    # Preload bars once (shared, in-memory).
+    # Preload bars once → module global so forked workers inherit it (copy-on-write).
     print("Preloading bars...", flush=True)
     from app.db.repositories.universe_repository import UniverseRepository
     stocks = UniverseRepository(db).list_stocks_in_universe(rf.UNIVERSE)
     bench = StockRepository(db).get_by_symbol(rf.BENCHMARK)
     ids = [s.id for s in stocks] + ([bench.id] if bench else [])
-    store = GlobalBarStore.load(MarketDataRepository(db), ids, end_date=days[-1], source="kite")
-    print(f"Preloaded {len(store._all_bars)} stocks.", flush=True)
-    rsvc = _ranking_service(db, store)
+    global _STORE
+    _STORE = GlobalBarStore.load(MarketDataRepository(db), ids, end_date=days[-1], source="kite")
+    print(f"Preloaded {len(_STORE._all_bars)} stocks.", flush=True)
 
     if _DIFF:
-        return _diff_test(db, rsvc, days)
-
-    run_buf, res_buf, t0, total_res = [], [], time.perf_counter(), 0
-    for i, day in enumerate(days, 1):
-        rr, res = _compute_day(rsvc, day)
-        run_buf.extend(rr); res_buf.extend(res)
-        if len(res_buf) >= _BATCH:
-            db.bulk_insert_mappings(RankingRun, run_buf)
-            db.bulk_insert_mappings(RankingResult, res_buf)
-            db.commit()
-            total_res += len(res_buf)
-            run_buf, res_buf = [], []
-        if i % 100 == 0 or i == len(days):
-            el = time.perf_counter() - t0
-            print(f"  [{i}/{len(days)}] {day} | {total_res:,} results | {el/60:.1f}m | "
-                  f"eta ~{(el/i)*(len(days)-i)/60:.0f}m", flush=True)
-    if run_buf:
-        db.bulk_insert_mappings(RankingRun, run_buf)
-        db.bulk_insert_mappings(RankingResult, res_buf)
-        db.commit()
-        total_res += len(res_buf)
-    print(f"Done. {total_res:,} ranking_results in {(time.perf_counter()-t0)/60:.1f}m", flush=True)
+        return _diff_test(db, _ranking_service(db, _STORE), days)
     db.close()
+
+    # Parallel by DAY: interleaved chunks (each worker spans the full range for balance).
+    # Workers compute in RAM + bulk-write their own chunk — bulk inserts contend far less
+    # than the old per-run transactions, so the DB stops being the wall.
+    import multiprocessing as mp
+    from concurrent.futures import ProcessPoolExecutor
+    chunks = [days[i::_WORKERS] for i in range(_WORKERS)]
+    t0, total = time.perf_counter(), 0
+    print(f"PARALLEL bulk-rank | {_WORKERS} workers | flush every {_BATCH:,}", flush=True)
+    with ProcessPoolExecutor(max_workers=_WORKERS, mp_context=mp.get_context("fork"),
+                             initializer=rf._proc_init) as ex:
+        for done, n in enumerate(ex.map(_worker_chunk, chunks), 1):
+            total += n
+            print(f"  worker {done}/{_WORKERS} done | {total:,} results | "
+                  f"{(time.perf_counter()-t0)/60:.1f}m", flush=True)
+    print(f"Done. {total:,} ranking_results in {(time.perf_counter()-t0)/60:.1f}m", flush=True)
     return 0
 
 
