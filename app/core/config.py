@@ -318,7 +318,7 @@ class Settings(BaseSettings):
     #     momentum' blind spot (VPS: such names ate ~38% of slot-days for ~+13% avg, vs
     #     +139% for the >=0.20/day winners). Slope floor spares multibaggers; the
     #     momentum-rising guard spares coilers. Default OFF (flag-gated for A/B).
-    lifecycle_stall_enabled: bool = False
+    lifecycle_stall_enabled: bool = True
     lifecycle_stall_grace_days: int = 60          # never fire before this hold
     lifecycle_stall_slope_floor_pct: float = 0.12  # gain%/day below this -> stall (~30%/yr)
 
