@@ -72,21 +72,27 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
         or _INITIAL_CAPITAL
     )
 
-    # Foreground/background split (replay_fast): the FOREGROUND ranks only the active
-    # (regime-gated) strategy each day → distinct as_of_date == trade-days done. The
-    # BACKGROUND fills the other strategies for research (lagging). A day is fully
-    # researched once every strategy in the suite has ranked it; the lag = foreground
-    # − research. Suite size is detected from the data (was hardcoded 4 — broke for the
-    # v2 single-strategy runs, pinning research at 0%).
+    # PHASED replay: PHASE 1 ranks ALL days in parallel (no trades), then PHASE 2 trades
+    # sequentially. So track two progress axes: RANKING (above) and TRADING (paper days,
+    # below). The paper window starts 2021-01-01; a paper day is "done" once it has a NAV
+    # snapshot. Strategies-per-day is detected from the data.
     n_strat = db.execute(text(
         "SELECT COALESCE(MAX(c), 1) FROM (SELECT COUNT(DISTINCT strategy_name) c "
         "FROM ranking_runs GROUP BY as_of_date) x"
     )).scalar() or 1
-    research_done = db.execute(text(
-        "SELECT COUNT(*) FROM (SELECT as_of_date FROM ranking_runs "
-        "GROUP BY as_of_date HAVING COUNT(DISTINCT strategy_name) >= :n) x"
-    ), {"n": n_strat}).scalar() or 0
-    bg_lag = max(0, processed - research_done)
+    paper_start = date(2021, 1, 1)
+    paper_total = db.execute(text(
+        "SELECT COUNT(*) FROM (SELECT DISTINCT m.date FROM market_data m "
+        "JOIN stocks s ON s.id = m.stock_id WHERE s.symbol = '^NSEI' "
+        "AND m.source = 'kite' AND m.date >= :ps) x"
+    ), {"ps": paper_start}).scalar() or 0
+    _pp = db.execute(text(
+        "SELECT COUNT(DISTINCT as_of_date) AS n, MAX(as_of_date) AS d "
+        "FROM portfolio_nav_history"
+    )).fetchone()
+    paper_done = (_pp.n if _pp else 0) or 0
+    paper_cur = _pp.d if _pp else None
+    paper_pct = round(paper_done / paper_total * 100, 1) if paper_total else 0.0
     active_strategy = db.execute(text(
         "SELECT strategy_name FROM recommendation_runs "
         "ORDER BY as_of_date DESC, created_at DESC LIMIT 1"
@@ -114,17 +120,21 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
     else:
         equity, ret, nav_date, positions, regime = initial_capital, 0.0, None, 0, "—"
 
-    if cur_date is None:
-        phase = "Not started"
-    elif cur_date >= date(2021, 1, 1):
-        phase = "Paper trading (2021+) &middot; foreground = active strategy only"
+    # Phase detection from state: PHASE 1 ranks all days before any trade exists.
+    ranking_done = processed >= total and total > 0
+    if processed == 0:
+        phase, headline_pct = "Not started", 0.0
+    elif paper_done == 0 and not ranking_done:
+        phase, headline_pct = "PHASE 1 &mdash; Ranking all days (parallel)", pct
+    elif paper_done == 0:
+        phase, headline_pct = "PHASE 1 done &middot; PHASE 2 (trading) starting", pct
+    elif paper_done < paper_total:
+        phase, headline_pct = "PHASE 2 &mdash; Trading (sequential)", paper_pct
     else:
-        phase = "Warm-up analytics (no trades)"
+        phase, headline_pct = "Complete", 100.0
 
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     ret_cls = "pos" if ret >= 0 else "neg"
-    research_pct = round(research_done / total * 100, 1) if total else 0.0
-    bg_cls = "pos" if bg_lag == 0 else "neg"
 
     html = f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -146,15 +156,15 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
 <div class="card">
  <h1>Pi-PM &mdash; Replay (fast)</h1>
  <div class="sub">{phase}<br>updated {now} &middot; auto-refresh 30s</div>
- <div class="big">{pct}%</div>
+ <div class="big">{headline_pct}%</div>
  <div class="bar"><div class="fill" style="width:{pct}%"></div></div>
- <div class="sub">TRADES (foreground): {processed:,} / {total:,} days &middot; current: <b>{cur_date or '—'}</b>
-   &middot; active: <b>{active_strategy}</b></div>
- <div class="bar" style="background:#2a2433"><div class="fill" style="width:{research_pct}%;background:linear-gradient(90deg,#a855f7,#f59e0b)"></div></div>
- <div class="sub">RESEARCH (background, {n_strat} strat): {research_done:,} / {total:,} days
-   &middot; lag <span class="{bg_cls}">{bg_lag:,} d</span></div>
+ <div class="sub">PHASE 1 &middot; RANKING ({n_strat} strat): {processed:,} / {total:,} days
+   &middot; ranked to <b>{cur_date or '—'}</b></div>
+ <div class="bar" style="background:#2a2433"><div class="fill" style="width:{paper_pct}%;background:linear-gradient(90deg,#a855f7,#f59e0b)"></div></div>
+ <div class="sub">PHASE 2 &middot; TRADING: {paper_done:,} / {paper_total:,} paper days
+   &middot; traded to <b>{paper_cur or '—'}</b> &middot; active: <b>{active_strategy}</b></div>
  <div class="sub" style="margin-top:8px">started <b>{started_str}</b> &middot; elapsed <b>{elapsed_str}</b>
-   &middot; ~<b>{per_day_str}</b>/trade-day</div>
+   &middot; ~<b>{per_day_str}</b>/day</div>
 </div>
 <div class="card"><div class="grid">
  <div><div class="k">NAV ({nav_date or '—'})</div><div class="v">&#8377;{equity:,.0f}</div></div>
