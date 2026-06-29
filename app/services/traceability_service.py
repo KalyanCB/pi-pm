@@ -52,7 +52,11 @@ class TraceabilityService:
         run.execution_duration_ms = execution_duration_ms
         self.db.flush()
 
-        factor_rows = self.factor_contribution_repo.sync_from_results(run.id)
+        # Factor-contribution audit table is research-only and the bulk-replay write
+        # bottleneck (LWLock contention) — skip it when disabled; trade path never reads it.
+        from app.core.config import get_settings as _gs
+        factor_rows = (self.factor_contribution_repo.sync_from_results(run.id)
+                       if _gs().ranking_factor_contributions_enabled else 0)
 
         if benchmark_ingestion_run_id is not None:
             self.lineage_repo.link(

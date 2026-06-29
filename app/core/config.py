@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     ranking_min_avg_daily_traded_value: float = 10_000_000.0
     ranking_min_stock_price: float = 50.0
     ranking_market_data_source: str = "yahoo"
+    # Persist the per-stock×per-factor contribution audit table on every ranking run.
+    # It's research/explainability only — the trade path reads ranking_results, never
+    # this. In bulk replays it's the write bottleneck (tens of millions of rows, LWLock
+    # contention across workers), so set False to skip it.
+    ranking_factor_contributions_enabled: bool = True
 
     # ── Mega-liquidity diversifier (flag-gated, REGIME-CONDITIONAL) ───────────
     # Counter-cyclical sleeve: tilt the tradable universe to highly liquid "mega"
