@@ -720,8 +720,14 @@ class ExitMonitorService:
         if settings.let_winners_run_enabled:
             _wu = ctx.get("unrealized_pnl_pct")
             _wmg = ctx.get("max_gain_pct")
+            # ATR-scaled pullback band: a volatile name breathes wider so a normal
+            # pullback doesn't drop winner-protection. band = max(floor, mult × ATR%).
+            _pullback_band = settings.win_run_pullback_band_pct
+            if _atr_dyn:
+                _pullback_band = max(_pullback_band,
+                                     settings.win_run_pullback_atr_mult * _atr_pct100)
             if (_wu is not None and _wu >= settings.win_run_min_profit_pct
-                    and (_wmg is None or (_wmg - _wu) <= settings.win_run_pullback_band_pct)):
+                    and (_wmg is None or (_wmg - _wu) <= _pullback_band)):
                 _winner_running = True
                 if not _is_runner:  # widen the leash so the run isn't trailed out early
                     trailing = max(trailing, settings.graduation_winner_trail_pct)
@@ -789,7 +795,8 @@ class ExitMonitorService:
             ))
         results += [
             check_stop_loss(stop_pnl, stop_loss),
-            check_trailing_stop(ctx.get("unrealized_pnl_pct"), ctx.get("max_gain_pct"), trailing),
+            check_trailing_stop(ctx.get("unrealized_pnl_pct"), ctx.get("max_gain_pct"), trailing,
+                                min_activation_pct=settings.trailing_min_activation_pct),
             check_liquidity(
                 ctx.get("avg_daily_volume"),
                 float(pos.market_value) if pos.market_value else None,

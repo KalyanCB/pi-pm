@@ -283,7 +283,17 @@ class Settings(BaseSettings):
     # and the trailing stop still fire (risk + profit-lock intact).
     let_winners_run_enabled: bool = True
     win_run_min_profit_pct: float = 3.0      # only protect positions up at least this
-    win_run_pullback_band_pct: float = 8.0   # "near peak" = within this of max_gain
+    # "near peak" tolerance = within this of max_gain. ATR-scaled: a volatile name
+    # breathes wider so a normal pullback doesn't drop winner-protection (audit: peaks
+    # of +8-13% gave back to ~breakeven through an 8% band, then ran +15-33%).
+    win_run_pullback_band_pct: float = 15.0      # floor band (%)
+    win_run_pullback_atr_mult: float = 3.0       # effective band = max(floor, mult × ATR%)
+    # Don't trail at all below this peak gain — a small breakout rides on the hard ATR
+    # stop only, so a routine pullback in a +8-13% name can't clip it before it runs.
+    # The fat tail (multibaggers) needs room; tight trails on small gains kill it.
+    # 2026 give-back audit: 93% of trailing exits ran further (avg +11.5% left, 190/246 cut
+    # at +2.7% peak); raised 15->18 so the trail only arms with a real cushion.
+    trailing_min_activation_pct: float = 18.0
 
     # ── Lifecycle wiring (regime-aware breakout/reversion; flag-gated, default off) ──
     # ENTRY: gate the buy loop with app.lifecycle.entry.should_enter — only buy a

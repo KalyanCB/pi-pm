@@ -203,39 +203,47 @@ def check_stop_loss(
 
 
 def _trailing_pct(max_gain_pct: float) -> float:
-    """Profit-ladder trailing stop — wider trail as gains grow. Tuned to bank the quick
-    pops (tight low tiers — the <60d give-back fix) while NOT shaking out multibaggers
-    (very wide top tiers — a +90% name routinely breathes 20%+)."""
+    """Profit-ladder trailing stop — WIDENED (2026 give-back audit: 93% of trailing
+    exits ran further, avg +11.5% left on the table, even the 60%+ tier leaked +18%).
+    Below the activation floor the stop is DISARMED entirely (hard stop only); once armed,
+    give names real room — they routinely breathe 20%+. Tiers apply only to peaks ≥ the
+    activation threshold (default 18%), so the lower tiers exist just as a safety floor."""
     if max_gain_pct >= 100.0:
-        return 25.0   # multibagger — ride it, don't get shaken out on a normal correction
+        return 35.0   # multibagger — wide; a +200% name swings 30%+ without breaking trend
     if max_gain_pct >= 60.0:
-        return 20.0
+        return 30.0
     if max_gain_pct >= 35.0:
-        return 15.0
-    if max_gain_pct >= 20.0:
-        return 11.0
-    if max_gain_pct >= 10.0:
-        return 7.0    # tightened from 8 — capture the +10-20% pops we were round-tripping
-    return 5.0
+        return 22.0
+    return 18.0       # 18-35% armed tier — let it establish a trend, don't clip the noise
 
 
 def check_trailing_stop(
     unrealized_pnl_pct: float | None,
     max_gain_pct: float | None,
     trailing_stop_pct: float = 5.0,
+    min_activation_pct: float = 0.0,
 ) -> TriggerResult:
-    """EXIT_TRAILING_STOP: position pulled back from peak (P-02 dynamic ladder + P-03 profit lock)."""
+    """EXIT_TRAILING_STOP: position pulled back from peak (P-02 dynamic ladder + P-03 profit lock).
+
+    ``min_activation_pct``: don't trail until the position has peaked at least this much.
+    Fat-tail protection — a small breakout rides the hard stop only, so a routine pullback
+    can't clip it near breakeven before it runs (audit: +8-13% peaks gave back to ~0 then
+    ran +15-33%)."""
     if unrealized_pnl_pct is None or max_gain_pct is None or max_gain_pct <= 0:
+        return TriggerResult(False, "EXIT_TRAILING_STOP", {})
+    if max_gain_pct < min_activation_pct:
         return TriggerResult(False, "EXIT_TRAILING_STOP", {})
 
     # P-02: dynamic trail based on peak gain
     effective_trail = _trailing_pct(max_gain_pct)
     drawback = max_gain_pct - unrealized_pnl_pct
 
-    # Hard profit floor — engages earlier (15%) so the long winners that round-tripped
-    # keep half their peak; on a multibagger (>=60%) lock 65% so a +400% name banks >=+260%.
+    # Hard profit floor — RAISED band so winners keep more of the peak alongside the wider
+    # trail: a +400% multibagger banks >=+260% (0.65), a +44% name keeps >=+24% (0.55).
     if max_gain_pct >= 60.0:
         profit_floor = max_gain_pct * 0.65
+    elif max_gain_pct >= 35.0:
+        profit_floor = max_gain_pct * 0.55
     elif max_gain_pct >= 15.0:
         profit_floor = max_gain_pct * 0.50
     else:
