@@ -425,12 +425,18 @@ def main() -> int:
     print(f"Trading days: {trading_days[0]} → {trading_days[-1]} ({len(trading_days)})")
     print(f"Paper trade from: {PAPER_TRADE_FROM}\n")
 
-    resume_db = get_session_factory()()
-    try:
-        done = {r.target_trading_day for r in DailyBatchRunRepository(resume_db).list_runs(limit=10000)
-                if r.status == "completed" and r.target_trading_day is not None}
-    finally:
-        resume_db.close()
+    # REPLAY_NO_RESUME: ignore prior completed daily_batch_runs (e.g. a pre-existing prod
+    # batch log) and process every trading day. Needed for a fresh paper-only replay when
+    # the rankings/recs were built out-of-band (bulk_rank/bulk_rec) and the batch log still
+    # has the old run history.
+    done = set()
+    if os.getenv("REPLAY_NO_RESUME", "0") != "1":
+        resume_db = get_session_factory()()
+        try:
+            done = {r.target_trading_day for r in DailyBatchRunRepository(resume_db).list_runs(limit=10000)
+                    if r.status == "completed" and r.target_trading_day is not None}
+        finally:
+            resume_db.close()
     remaining = [d for d in trading_days if d not in done]
     if len(remaining) < len(trading_days):
         print(f"Resuming: {len(trading_days) - len(remaining)} done, {len(remaining)} remaining")
