@@ -301,6 +301,13 @@ class Settings(BaseSettings):
     # BEAR->reversion_v3, SIDEWAYS->cash), a top pick, and clears the stock-trend gate.
     lifecycle_entry_enabled: bool = False
     lifecycle_entry_top_pct: float = 0.20
+    # reversion_v3 turn-confirmation: rank a deeply-crushed name ONLY once it has STARTED
+    # to turn (close back above a short SMA) — skip the falling knife. Entry-timing audit:
+    # un-confirmed bounce entries dipped -3.8% more after entry (vs -1.9% for breakouts),
+    # 34% went 5%+ underwater, tripping the stop (48% stopped, 76% then recovered). Entering
+    # after the turn removes that knife-dip + the stop whipsaw at the source.
+    reversion_turn_confirm_enabled: bool = True
+    reversion_turn_confirm_sma: int = 5
     # Slot experiment: many small slots restricted to the top-N rank bucket. When
     # lifecycle_max_positions > 0 it overrides the regime slot cap; sizing auto-falls to
     # ~deployable/max_positions (18 slots ≈ 5%/name). top_rank>0 admits only rank<=N.

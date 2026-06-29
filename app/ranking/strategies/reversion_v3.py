@@ -57,6 +57,12 @@ class ReversionV3Strategy:
         self._weights = dict(DEFAULT_WEIGHTS)
         if weights:
             self._weights.update(weights)
+        # Turn-confirmation gate (config-driven): rank a crushed name only once it has
+        # started to turn (close back above a short SMA) — enter AFTER the bounce starts.
+        from app.core.config import get_settings
+        _s = get_settings()
+        self._turn_confirm = _s.reversion_turn_confirm_enabled
+        self._turn_sma = max(int(_s.reversion_turn_confirm_sma), 2)
 
     def requirements(self) -> StrategyRequirements:
         return StrategyRequirements(required_history_days=HISTORY_DAYS)
@@ -75,10 +81,23 @@ class ReversionV3Strategy:
         as_of_date: date,
     ) -> dict[str, Decimal | None]:
         bars = bars_on_or_before(price_series, as_of_date)
+        # Turn-confirmation: a crushed name still FALLING (close below its short SMA) is the
+        # falling knife — exclude it (None factors → dropped from the ranking) until the
+        # close is back ABOVE the SMA (the bounce has started). Skips the -3.8% knife-dip.
+        if self._turn_confirm and not self._turn_confirmed(bars):
+            return {self.FACTOR_OVERSOLD_20: None, self.FACTOR_OVERSOLD_60: None}
         return {
             self.FACTOR_OVERSOLD_20: self._oversold(bars, OVERSOLD_SHORT),
             self.FACTOR_OVERSOLD_60: self._oversold(bars, OVERSOLD_LONG),
         }
+
+    def _turn_confirmed(self, bars: list[PriceBar]) -> bool:
+        """Has the crushed name STARTED to turn? close back above its short SMA."""
+        if len(bars) < self._turn_sma:
+            return False
+        recent = bars[-self._turn_sma:]
+        sma = sum((b.close for b in recent), 0.0) / float(self._turn_sma)
+        return float(bars[-1].close) > sma
 
     def build_factor_scores(
         self,
