@@ -264,6 +264,41 @@ def check_trailing_stop(
     )
 
 
+def check_stall(
+    days_held: int,
+    unrealized_pnl_pct: float | None,
+    momentum_rising: bool | None = None,
+    grace_days: int = 60,
+    slope_floor_pct_per_day: float = 0.12,
+) -> TriggerResult:
+    """EXIT_STALL: a long-held position that fails to COMPOUND — realized slope
+    (gain%/day) below the floor after a grace window. Catches the 'dragging momentum'
+    blind spot: not a loss (no stop fires) and momentum technically alive (no handoff
+    exit), but dead money hogging a slot below the hurdle (VPS: such names ate ~38% of
+    slot-days for ~+13% avg, vs +139% for the >=0.20/day winners).
+
+    Guards that spare real holds: (1) grace window — never fires early; (2) slope, not
+    level — a big-but-fast gain clears the floor, only FLAT holds fail; (3) momentum_rising
+    — spare a flat name whose momentum is still building (coiling for a move)."""
+    if unrealized_pnl_pct is None or days_held < grace_days:
+        return TriggerResult(False, "EXIT_STALL", {})
+    slope = unrealized_pnl_pct / days_held
+    fired = slope < slope_floor_pct_per_day and momentum_rising is not True
+    return TriggerResult(
+        fired=fired,
+        trigger_code="EXIT_STALL",
+        details={
+            "days_held": days_held,
+            "unrealized_pnl_pct": round(unrealized_pnl_pct, 2),
+            "slope_pct_per_day": round(slope, 4),
+            "slope_floor_pct_per_day": slope_floor_pct_per_day,
+            "grace_days": grace_days,
+            "momentum_rising": momentum_rising,
+        },
+        urgency="NORMAL" if fired else "LOW",
+    )
+
+
 def check_concentration(
     weight_pct: float | None,
     single_name_cap_pct: float = 18.0,

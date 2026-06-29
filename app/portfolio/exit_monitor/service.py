@@ -43,6 +43,7 @@ from app.portfolio.exit_monitor.triggers import (
     check_liquidity,
     check_rank_drop,
     check_regime_change,
+    check_stall,
     check_stop_loss,
     check_time_stop,
     check_trailing_stop,
@@ -480,6 +481,16 @@ class ExitMonitorService:
         pcts = self._strategy_pcts(pos.stock_id, mstrat, getattr(pos, "entry_date", None), as_of)
         return pcts[-1] if pcts else None
 
+    def _momentum_rising(self, pos, as_of, lookback: int = 20) -> bool | None:
+        """Is momentum_v3 percentile trending UP vs ~lookback days ago? Reuses the same
+        series as _momentum_pct (no extra query). EXIT_STALL uses it to spare a flat-P&L
+        name whose momentum is still BUILDING (coiling for a move) from being recycled."""
+        mstrat = momentum_strategy(getattr(pos, "strategy_name", None))
+        pcts = self._strategy_pcts(pos.stock_id, mstrat, getattr(pos, "entry_date", None), as_of)
+        if not pcts or len(pcts) < lookback + 1:
+            return None
+        return pcts[-1] > pcts[-lookback - 1]
+
     def _lifecycle_handoff(self, pos, as_of, days_held, momentum_pct=None,
                            momentum_hold_pct=0.50) -> "TriggerResult | None":
         """Cross-rank HANDOFF exit: a position entered on breakout_v2/reversion_v3 is
@@ -785,6 +796,22 @@ class ExitMonitorService:
                 ctx.get("last_price"),
             ),
         ]
+
+        # EXIT_STALL (flag-gated): recycle a long-held position that fails to COMPOUND —
+        # slope (gain%/day) below the floor after a grace window. The 'dragging momentum'
+        # blind spot: not a loss (no stop) and momentum alive (no handoff), but dead money
+        # below the hurdle. Lifecycle/breakout positions only; the slope floor spares
+        # multibaggers and the momentum-rising guard spares coilers. Suppressed for an
+        # active runner/winner (already exempt from the other analytical exits).
+        if (settings.lifecycle_stall_enabled and _lifecycle_handoff_pos
+                and not _is_runner and not _winner_running):
+            results.append(check_stall(
+                days_held,
+                ctx.get("unrealized_pnl_pct"),
+                momentum_rising=self._momentum_rising(pos, as_of) if as_of else None,
+                grace_days=settings.lifecycle_stall_grace_days,
+                slope_floor_pct_per_day=settings.lifecycle_stall_slope_floor_pct,
+            ))
         # Lifecycle cross-rank HANDOFF exit (flag-gated): breakout_v2 -> exit on
         # breakout_v1 fade; reversion_v3 -> exit on reversal_v1 recovery. Additive to
         # the legacy regime/stop triggers above.
@@ -795,7 +822,15 @@ class ExitMonitorService:
             _mom_hold = 0.35 if (_pk is not None and _pk >= 25.0) else 0.50
             _handoff = self._lifecycle_handoff(pos, as_of, days_held,
                                                momentum_pct=_mom_pct, momentum_hold_pct=_mom_hold)
-            if _handoff is not None:
+            # A green, still-running winner (or runner) rides the wide trailing stop
+            # instead of being clipped by the MOMENTUM_FADE handoff — mirror the
+            # regime/rank-drop exemptions above so the fast fade signal can't pre-empt the
+            # trail on the fat-tail names (the multibagger leak). The reversion
+            # RV1_RECOVERED handoff is a legitimate bounce take-profit, so it is NOT exempt.
+            if _handoff is not None and not (
+                _handoff.trigger_code == "EXIT_MOMENTUM_FADE"
+                and (_winner_running or _is_runner)
+            ):
                 results.append(_handoff)
 
         # ADR-035 D2: the 30-day time stop is policy-gated (PRD §5 amendment).

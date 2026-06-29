@@ -158,12 +158,12 @@ class Settings(BaseSettings):
     # position that is green AND still ranked is "winner-track" (loosen the leash,
     # hold to run); red OR rank-dropped is "loser-track" (cut). Raises realized win%
     # and cuts the 1-5 day short-churn that bleeds STT.
-    graduation_enabled: bool = False
+    graduation_enabled: bool = True
     graduation_winner_trail_pct: float = 12.0   # wide trail for winner-track (let it run)
     # Tier 1: runner tier — an exceptional winner (still top-N ranked + large gain)
     # is promoted to a months-long position trade on a very loose trail; rides the
     # multibaggers we already find, with near-zero added turnover.
-    runner_tier_enabled: bool = False
+    runner_tier_enabled: bool = True
     runner_max_rank: int = 5
     runner_min_gain_pct: float = 20.0
     runner_trail_pct: float = 25.0
@@ -281,7 +281,7 @@ class Settings(BaseSettings):
     # making higher highs) is exempt from RANK_DROP and EXIT_REGIME regardless of its
     # current rank — it rides a wide trailing stop to capture the fat tail. Hard stop
     # and the trailing stop still fire (risk + profit-lock intact).
-    let_winners_run_enabled: bool = False
+    let_winners_run_enabled: bool = True
     win_run_min_profit_pct: float = 3.0      # only protect positions up at least this
     win_run_pullback_band_pct: float = 8.0   # "near peak" = within this of max_gain
 
@@ -313,6 +313,14 @@ class Settings(BaseSettings):
     lifecycle_stop_sideways_pct: float = 4.0    # market SIDEWAYS
     lifecycle_stop_bear_pct: float = 2.0        # market BEAR
     lifecycle_alpha_decay_tolerance_pct: float = 5.0  # alpha-decay only if down > this
+    #  4) EXIT_STALL — recycle a long-held position that fails to COMPOUND: realized
+    #     slope (gain%/day) below the floor after a grace window. Catches the 'dragging
+    #     momentum' blind spot (VPS: such names ate ~38% of slot-days for ~+13% avg, vs
+    #     +139% for the >=0.20/day winners). Slope floor spares multibaggers; the
+    #     momentum-rising guard spares coilers. Default OFF (flag-gated for A/B).
+    lifecycle_stall_enabled: bool = False
+    lifecycle_stall_grace_days: int = 60          # never fire before this hold
+    lifecycle_stall_slope_floor_pct: float = 0.12  # gain%/day below this -> stall (~30%/yr)
 
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
