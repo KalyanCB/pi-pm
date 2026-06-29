@@ -41,9 +41,16 @@ _TABLE = "recommendation_results"
 
 
 def _completed_run_ids(db) -> list:
-    return [r[0] for r in db.execute(text(
-        "SELECT id FROM ranking_runs WHERE status = 'completed' ORDER BY as_of_date, strategy_name"
-    )).fetchall()]
+    """Completed ranking runs, optionally scoped to REPLAY_START_DATE..REPLAY_END_DATE
+    (so a sample window — e.g. 2018 — can be rec'd in isolation)."""
+    sql = "SELECT id FROM ranking_runs WHERE status = 'completed'"
+    params: dict = {}
+    if rf.START_DATE:
+        sql += " AND as_of_date >= :s"; params["s"] = rf.START_DATE
+    if rf.END_DATE:
+        sql += " AND as_of_date <= :e"; params["e"] = rf.END_DATE
+    sql += " ORDER BY as_of_date, strategy_name"
+    return [r[0] for r in db.execute(text(sql), params).fetchall()]
 
 
 def _worker_chunk(run_ids: list) -> int:
@@ -53,9 +60,11 @@ def _worker_chunk(run_ids: list) -> int:
     try:
         for rid in run_ids:
             try:
-                svc.run_for_ranking_run(rid)  # idempotent; writes rec_run + rec_results
+                svc.run_for_ranking_run(rid)  # idempotent; flushes rec_run + rec_results
+                db.commit()                   # ...but the caller must commit (repo only flushes)
                 n += 1
             except Exception as exc:  # keep going; surface count of failures at the end
+                db.rollback()
                 print(f"  WARN run {rid}: {exc}", flush=True)
     finally:
         db.close()
