@@ -21,15 +21,19 @@ from sqlalchemy import text
 
 
 def capture(db, table: str):
-    """Return (unique_constraints, plain_indexes) as [(name, definition), ...]."""
+    """Return (unique_constraints, plain_indexes) as [(name, definition), ...].
+
+    `table` is an internal constant (caller-supplied table name) — inlined rather than
+    bound because `:t::regclass` collides with SQLAlchemy's colon bind-param parsing.
+    """
     cons = db.execute(text(
-        "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
-        "WHERE conrelid = :t::regclass AND contype = 'u'"
-    ), {"t": table}).fetchall()
+        f"SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+        f"WHERE conrelid = '{table}'::regclass AND contype = 'u'"
+    )).fetchall()
     idx = db.execute(text(
-        "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = :t "
-        "AND indexname NOT IN (SELECT conname FROM pg_constraint WHERE conrelid = :t::regclass)"
-    ), {"t": table}).fetchall()
+        f"SELECT indexname, indexdef FROM pg_indexes WHERE tablename = '{table}' "
+        f"AND indexname NOT IN (SELECT conname FROM pg_constraint WHERE conrelid = '{table}'::regclass)"
+    )).fetchall()
     return [(c[0], c[1]) for c in cons], [(i[0], i[1]) for i in idx]
 
 
