@@ -86,6 +86,7 @@ END_DATE = _envdate("REPLAY_END_DATE", date.today())
 # afterward if the factor-IC research is wanted. Set FACTOR_IC_CADENCE=21 to re-enable.
 FACTOR_IC_CADENCE = int(os.getenv("FACTOR_IC_CADENCE", "0"))  # 0 = deferred (research only)
 BG_WORKERS = int(os.getenv("BG_WORKERS", "2"))
+REPLAY_PHASED = os.getenv("REPLAY_PHASED", "0") == "1"  # rank-all-parallel then trade-sequential
 BENCHMARK = "^NSEI"
 UNIVERSE = "NIFTY_1000"
 _VER = "1.0.0"
@@ -289,6 +290,99 @@ def run_background(day: date, active: str, factor_ic_day: bool) -> None:
         db.close()
 
 
+# ── Phased mode (REPLAY_PHASED=1): rank ALL days in parallel first, then validate+
+# recommend+paper sequentially. Ranking is independent per day -> saturates cores; the
+# trade path stays sequential so the edge gate (regime_performance) matures with no
+# look-ahead. Reuses _GLOBAL_STORE (fork-inherited) + the same batch service. ────────
+def _phase_rank(day: date) -> tuple[str, str]:
+    """PHASE 1 (parallel): regime + rank all lifecycle strategies. No rec/paper."""
+    db = get_session_factory()()
+    try:
+        settings = get_settings()
+        RegimeAnalyticsService(
+            db, settings, RegimeAnalyticsRepository(db), StockRepository(db),
+            MarketDataRepository(db),
+        ).compute_and_store_regime(as_of_date=day, benchmark_symbol=BENCHMARK)
+        db.commit()
+        batch_svc = _build_batch_service(db, _GLOBAL_STORE)
+        request = _base_request(
+            day, [_spec(n) for n in _ALL_STRATEGIES],
+            DailyBatchPhaseFlags(
+                ingest=False, rankings=True, validation=False, recommendations=False,
+                regime_history=False, regime_performance=False, factor_ic=False,
+                research_intelligence=False, exit_research=False, portfolio=False,
+            ),
+        )
+        return (str(day), batch_svc.create_and_execute(request).status)
+    except Exception as exc:
+        return (str(day), f"ERR:{str(exc)[:100]}")
+    finally:
+        db.close()
+
+
+def _phase_trade(day: date, paper_trade: bool) -> tuple[str, str]:
+    """PHASE 2 (sequential): validation + regime_performance + recommendations + paper.
+    Rankings already exist (Phase 1); the rec phase finds them via list_completed_in_range.
+    Sequential so the RCEE edge gate matures day-by-day (no look-ahead)."""
+    db = get_session_factory()()
+    try:
+        row = RegimeAnalyticsRepository(db).get_current(
+            benchmark_symbol=DEFAULT_BENCHMARK_SYMBOL, as_of_date=day)
+        active = _REGIME_STRATEGY.get(
+            (row.regime_label if row else None) or "NEUTRAL_LOW_VOL",
+            RANKING_STRATEGY_MOMENTUM_V1)
+        batch_svc = _build_batch_service(db, _GLOBAL_STORE)
+        request = _base_request(
+            day, [_spec(n) for n in _ALL_STRATEGIES],
+            DailyBatchPhaseFlags(
+                # validation (forward-IC) is RESEARCH, not trade-critical — the RCEE gate
+                # reads regime_performance, not the IC. Skip it on the trade path for speed.
+                ingest=False, rankings=False, validation=False, recommendations=True,
+                regime_history=False, regime_performance=True, factor_ic=False,
+                research_intelligence=False, exit_research=False, portfolio=paper_trade,
+            ),
+            portfolio_phases=DailyBatchPortfolioPhaseFlags(
+                recompute=paper_trade, exit_monitor=paper_trade, paper_trading=paper_trade,
+                nav_snapshot=paper_trade, reconcile=paper_trade,
+            ),
+            pilot_auto_approve=paper_trade,
+        )
+        return (active, batch_svc.create_and_execute(request).status)
+    finally:
+        db.close()
+
+
+def _run_phased(remaining: list[date], executor) -> list[str]:
+    """Drive the 2-phase replay. Returns error strings."""
+    errors: list[str] = []
+    t0 = time.perf_counter()
+    print(f"\nPHASE 1 — ranking {len(remaining)} days (parallel)...", flush=True)
+    for i, (d, status) in enumerate(executor.map(_phase_rank, remaining), 1):
+        if status.startswith("ERR") or status != "completed":
+            errors.append(f"rank {d}: {status}")
+        if i % 100 == 0 or i == len(remaining):
+            el = time.perf_counter() - t0
+            print(f"  ranked {i}/{len(remaining)} | {el/60:.1f}m | eta ~{(el/i)*(len(remaining)-i)/60:.0f}m", flush=True)
+    print(f"PHASE 1 done in {(time.perf_counter()-t0)/60:.1f}m\n", flush=True)
+
+    t1 = time.perf_counter()
+    print(f"PHASE 2 — validate+recommend+paper {len(remaining)} days (sequential)...", flush=True)
+    for i, day in enumerate(remaining, 1):
+        try:
+            active, status = _phase_trade(day, day >= PAPER_TRADE_FROM)
+        except Exception as exc:
+            errors.append(f"trade {day}: {exc}")
+            continue
+        if status != "completed":
+            errors.append(f"trade {day}: {status}")
+        if i % 50 == 0 or i == len(remaining):
+            el = time.perf_counter() - t1
+            print(f"  [{i}/{len(remaining)}] {day} {status} | active={active} | "
+                  f"paper={day>=PAPER_TRADE_FROM} | {el/60:.1f}m | eta ~{(el/i)*(len(remaining)-i)/60:.0f}m", flush=True)
+    print(f"PHASE 2 done in {(time.perf_counter()-t1)/60:.1f}m", flush=True)
+    return errors
+
+
 def main() -> int:
     settings = get_settings()
     print(f"Settings: provider={settings.market_data_provider} "
@@ -351,6 +445,15 @@ def main() -> int:
     bg_futures: list = []
     errors: list[str] = []
     t0 = time.perf_counter()
+
+    if REPLAY_PHASED:
+        print(f"PHASED mode | workers={BG_WORKERS}", flush=True)
+        errors = _run_phased(remaining, executor)
+        executor.shutdown(wait=True)
+        print(f"\nDone (phased). {len(remaining)} days, {len(errors)} errors.")
+        for e in errors[:20]:
+            print(f"  {e}")
+        return 0 if not errors else 1
 
     for i, day in enumerate(remaining, 1):
         paper_trade = day >= PAPER_TRADE_FROM
