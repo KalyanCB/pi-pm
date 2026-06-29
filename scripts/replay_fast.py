@@ -87,6 +87,12 @@ END_DATE = _envdate("REPLAY_END_DATE", date.today())
 FACTOR_IC_CADENCE = int(os.getenv("FACTOR_IC_CADENCE", "0"))  # 0 = deferred (research only)
 BG_WORKERS = int(os.getenv("BG_WORKERS", "2"))
 REPLAY_PHASED = os.getenv("REPLAY_PHASED", "0") == "1"  # rank-all-parallel then trade-sequential
+# Trade-only: skip Phase 1 ranking entirely and REUSE existing ranking_runs (built by
+# bulk_rank/bulk_rec). Phase 2 reads them via list_completed_in_range. Implies phased.
+SKIP_RANK = os.getenv("REPLAY_SKIP_RANK", "0") == "1"
+# Paper-only: recommendations ALSO pre-filled (by bulk_rec) → skip the rec + regime_performance
+# phases entirely; the portfolio/paper loop reads the existing recommendation_results directly.
+SKIP_REC = os.getenv("REPLAY_SKIP_REC", "0") == "1"
 BENCHMARK = "^NSEI"
 UNIVERSE = "NIFTY_1000"
 _VER = "1.0.0"
@@ -337,8 +343,16 @@ def _phase_trade(day: date, paper_trade: bool) -> tuple[str, str]:
             DailyBatchPhaseFlags(
                 # validation (forward-IC) is RESEARCH, not trade-critical — the RCEE gate
                 # reads regime_performance, not the IC. Skip it on the trade path for speed.
+                # SKIP_RANK reuses pre-built RANKINGS only (the 7h bottleneck). Recs +
+                # regime_performance still run here — the batch's portfolio phase depends
+                # on the recommendation phase, and rec regen is cheap vs ranking.
+                # recommendations stays ON: the paper-trade execution is GATED on it
+                # (daily_batch_service L430), but it's IDEMPOTENT — with recs pre-filled by
+                # bulk_rec, run_for_ranking_run returns the existing rows (no regeneration).
+                # SKIP_REC drops only regime_performance (edge accumulation) — not needed
+                # for fixed, pre-decided recs.
                 ingest=False, rankings=False, validation=False, recommendations=True,
-                regime_history=False, regime_performance=True, factor_ic=False,
+                regime_history=False, regime_performance=not SKIP_REC, factor_ic=False,
                 research_intelligence=False, exit_research=False, portfolio=paper_trade,
             ),
             portfolio_phases=DailyBatchPortfolioPhaseFlags(
@@ -356,14 +370,18 @@ def _run_phased(remaining: list[date], executor) -> list[str]:
     """Drive the 2-phase replay. Returns error strings."""
     errors: list[str] = []
     t0 = time.perf_counter()
-    print(f"\nPHASE 1 — ranking {len(remaining)} days (parallel)...", flush=True)
-    for i, (d, status) in enumerate(executor.map(_phase_rank, remaining), 1):
-        if status.startswith("ERR") or status != "completed":
-            errors.append(f"rank {d}: {status}")
-        if i % 100 == 0 or i == len(remaining):
-            el = time.perf_counter() - t0
-            print(f"  ranked {i}/{len(remaining)} | {el/60:.1f}m | eta ~{(el/i)*(len(remaining)-i)/60:.0f}m", flush=True)
-    print(f"PHASE 1 done in {(time.perf_counter()-t0)/60:.1f}m\n", flush=True)
+    if SKIP_RANK:
+        print(f"\nSKIP_RANK — Phase 1 skipped, reusing existing rankings; trade-only over "
+              f"{len(remaining)} days\n", flush=True)
+    else:
+        print(f"\nPHASE 1 — ranking {len(remaining)} days (parallel)...", flush=True)
+        for i, (d, status) in enumerate(executor.map(_phase_rank, remaining), 1):
+            if status.startswith("ERR") or status != "completed":
+                errors.append(f"rank {d}: {status}")
+            if i % 100 == 0 or i == len(remaining):
+                el = time.perf_counter() - t0
+                print(f"  ranked {i}/{len(remaining)} | {el/60:.1f}m | eta ~{(el/i)*(len(remaining)-i)/60:.0f}m", flush=True)
+        print(f"PHASE 1 done in {(time.perf_counter()-t0)/60:.1f}m\n", flush=True)
 
     t1 = time.perf_counter()
     print(f"PHASE 2 — validate+recommend+paper {len(remaining)} days (sequential)...", flush=True)
@@ -446,8 +464,8 @@ def main() -> int:
     errors: list[str] = []
     t0 = time.perf_counter()
 
-    if REPLAY_PHASED:
-        print(f"PHASED mode | workers={BG_WORKERS}", flush=True)
+    if REPLAY_PHASED or SKIP_RANK:
+        print(f"{'TRADE-ONLY (skip-rank)' if SKIP_RANK else 'PHASED'} mode | workers={BG_WORKERS}", flush=True)
         errors = _run_phased(remaining, executor)
         executor.shutdown(wait=True)
         print(f"\nDone (phased). {len(remaining)} days, {len(errors)} errors.")
