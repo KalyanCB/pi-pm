@@ -26,7 +26,15 @@ export class ApiClient {
   private buildUrl(path: string, params?: RequestOptions['params']): string {
     const base = this.config.baseUrl.replace(/\/$/, '');
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const url = new URL(`${base}${normalizedPath}`);
+    // A relative base (the same-origin design's "/api/v1") can't be parsed by new URL()
+    // without an origin — resolve against the current location so BOTH absolute base URLs
+    // (local "http://localhost:8000/api/v1") and relative ones (prod "/api/v1") work.
+    // When the first arg is absolute, the base origin is ignored, so this is always safe.
+    const origin =
+      typeof window !== 'undefined' && window.location
+        ? window.location.origin
+        : 'http://localhost';
+    const url = new URL(`${base}${normalizedPath}`, origin);
     if (params) {
       for (const [key, value] of Object.entries(params)) {
         if (value !== undefined && value !== null) {
