@@ -65,20 +65,20 @@ def replay_status(db: Session = Depends(get_db)) -> HTMLResponse:
     rec_pct = _pct(rec_done, rank_target)
     paper_pct = _pct(paper_done, paper_total)
 
-    # ── Active stage detection ───────────────────────────────────────────────
-    rank_full = rank_done >= rank_target and rank_target > 0
-    rec_full = rec_done >= rank_target and rank_target > 0
-    paper_full = paper_done >= paper_total and paper_total > 0
+    # ── Active stage detection (sequential: the pipeline fills rank→rec→paper in
+    # order, so detect by which downstream table has rows — robust to off-by-one
+    # target counts). ─────────────────────────────────────────────────────────
+    paper_full = paper_total > 0 and paper_done >= paper_total
     if rank_done == 0:
         stage, headline = "Idle &mdash; not started", 0.0
-    elif not rank_full:
-        stage, headline = "STAGE 1/3 &middot; Ranking (bulk_rank)", rank_pct
-    elif not rec_full:
-        stage, headline = "STAGE 2/3 &middot; Recommendations (bulk_rec)", rec_pct
-    elif not paper_full:
-        stage, headline = "STAGE 3/3 &middot; Paper trade (replay)", paper_pct
-    else:
+    elif paper_full:
         stage, headline = "Complete", 100.0
+    elif paper_done > 0:
+        stage, headline = "STAGE 3/3 &middot; Paper trade (replay)", paper_pct
+    elif rec_done > 0:
+        stage, headline = "STAGE 2/3 &middot; Recommendations (bulk_rec)", rec_pct
+    else:
+        stage, headline = "STAGE 1/3 &middot; Ranking (bulk_rank)", rank_pct
 
     # ── NAV / return ─────────────────────────────────────────────────────────
     initial_capital = float(
