@@ -491,6 +491,29 @@ class ExitMonitorService:
             return None
         return pcts[-1] > pcts[-lookback - 1]
 
+    def _benchmark_return_pct(self, entry_date, as_of) -> float | None:
+        """^NSEI return over the hold [entry_date, as_of] — for benchmark-RELATIVE
+        alpha-decay (true alpha = position return − benchmark return). Closes are cached
+        per-call (as_of is constant per run; entry_dates repeat), so it's a handful of
+        queries, not one per position."""
+        cache = getattr(self, "_bench_close_cache", None)
+        if cache is None:
+            cache = self._bench_close_cache = {}
+
+        def _close(d):
+            if d not in cache:
+                cache[d] = self.db.scalar(_text(
+                    "SELECT m.close FROM market_data m JOIN stocks s ON s.id = m.stock_id "
+                    "WHERE s.symbol = :b AND m.source = 'kite' AND m.date <= :d "
+                    "ORDER BY m.date DESC LIMIT 1"
+                ), {"b": DEFAULT_BENCHMARK_SYMBOL, "d": d})
+            return cache[d]
+
+        c0, c1 = _close(entry_date), _close(as_of)
+        if c0 and c1 and float(c0) > 0:
+            return (float(c1) / float(c0) - 1) * 100.0
+        return None
+
     def _lifecycle_handoff(self, pos, as_of, days_held, momentum_pct=None,
                            momentum_hold_pct=0.50) -> "TriggerResult | None":
         """Cross-rank HANDOFF exit: a position entered on breakout_v2/reversion_v3 is
@@ -778,12 +801,27 @@ class ExitMonitorService:
         # + the progressive stop floor big losers in the interim, so deferring only
         # spares the recoverers (green by day 15), not the genuine decayers.
         _alpha_decay_grace = settings.alpha_decay_grace_days
+        # FIX 1: reversion_v3 (bounce) is EXEMPT — an oversold bounce that's down -5% after
+        # grace is the normal pullback within the recovery (55% recover); its exit is the
+        # RV1-recovery handoff + the wide ATR stop, not alpha-decay (which double-cut it).
+        _ad_eligible_strategy = getattr(pos, "strategy_name", None) != "reversion_v3"
         if (days_held >= _alpha_decay_grace and not _in_alpha_decay_cooldown
                 and not _grad_suppress_analytical
-                and not _mom_alive):  # momentum_v3 still carrying it -> not a decayed thesis
+                and not _mom_alive  # momentum_v3 still carrying it -> not a decayed thesis
+                and _ad_eligible_strategy):
             _decay_threshold = 15 if _alpha_decay_grace <= 5 else 10**6
+            # FIX 2: judge decay on TRUE alpha (return vs ^NSEI over the hold), not absolute
+            # P&L — so a name down WITH the market (outperforming = positive alpha) isn't
+            # retired. Falls back to absolute P&L if the benchmark is unavailable or the
+            # flag is off.
+            _pnl = ctx.get("unrealized_pnl_pct")
+            _decay_metric = _pnl
+            if settings.alpha_decay_benchmark_relative and _pnl is not None:
+                _bench = self._benchmark_return_pct(pos.entry_date, as_of)
+                if _bench is not None:
+                    _decay_metric = _pnl - _bench
             results.append(check_alpha_decay(
-                ctx.get("unrealized_pnl_pct"), days_held,
+                _decay_metric, days_held,
                 decay_threshold_day=_decay_threshold,
                 # Lifecycle: don't retire a name at -0.4%; require a real adverse move.
                 decay_min_alpha=(-settings.lifecycle_alpha_decay_tolerance_pct if _lc else 0.0),

@@ -315,6 +315,10 @@ class Settings(BaseSettings):
     reversion_atr_stop_mult: float = 3.0
     reversion_atr_stop_floor_pct: float = 8.0
     reversion_atr_stop_cap_pct: float = 15.0
+    #  EXIT_ALPHA_DECAY: judge thesis decay on TRUE alpha (position return − ^NSEI return
+    #  over the hold) rather than absolute P&L, so a name down WITH the market (still
+    #  outperforming) isn't retired. The absolute proxy mis-fires in down markets.
+    alpha_decay_benchmark_relative: bool = True
     # Slot experiment: many small slots restricted to the top-N rank bucket. When
     # lifecycle_max_positions > 0 it overrides the regime slot cap; sizing auto-falls to
     # ~deployable/max_positions (18 slots ≈ 5%/name). top_rank>0 admits only rank<=N.
