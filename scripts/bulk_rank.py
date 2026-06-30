@@ -36,6 +36,12 @@ _BATCH = int(os.getenv("BULK_BATCH", "10000"))
 _DIFF = os.getenv("BULK_DIFF_TEST", "0") == "1"
 _WORKERS = int(os.getenv("BULK_WORKERS", "6"))
 _DROP_IDX = os.getenv("BULK_DROP_INDEXES", "0") == "1"
+# Optional subset: rank ONLY these strategies (comma-separated) — e.g. add momentum_v3 to
+# an existing ranking set without re-ranking (and duplicating) the others. Applied at the
+# parent before the worker pool forks, so workers inherit the filtered list.
+_ONLY = {s.strip() for s in os.getenv("BULK_ONLY_STRATEGIES", "").split(",") if s.strip()}
+if _ONLY:
+    rf._ALL_STRATEGIES = [s for s in rf._ALL_STRATEGIES if s in _ONLY]
 _DUP_INDEX = "ix_ranking_results_run_rank"  # redundant dup of uq_ranking_result_run_rank — don't recreate
 _STORE = None  # fork-inherited by workers (set in main before the pool)
 _BENCH_BARS = None  # benchmark PriceBar series (fork-inherited) for regime_history
