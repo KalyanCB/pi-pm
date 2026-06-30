@@ -186,6 +186,11 @@ def _active_strategy(db, day: date, label: str) -> str:
     """Pick the active strategy for ``day``. v3 suite routes by market breadth (BROAD ->
     breakout_v3_broad, NARROW -> breakout_v3_def); all other suites route by the 4-way
     regime label. Breadth defaults to BROAD when the table has no row for the day."""
+    # Diagnostic override: pin the active sleeve regardless of breadth (e.g. broad-only
+    # to isolate the broad sleeve's standalone CAGR). Not for production use.
+    _force = os.getenv("V3_FORCE_SLEEVE")
+    if _force:
+        return _force
     if _SUITE == "v3":
         from sqlalchemy import text as _text
         flag = db.execute(
