@@ -17,6 +17,8 @@ from __future__ import annotations
 from app.core.constants import (
     RANKING_STRATEGY_BREAKOUT_V1,
     RANKING_STRATEGY_BREAKOUT_V2,
+    RANKING_STRATEGY_BREAKOUT_V3_BROAD,
+    RANKING_STRATEGY_BREAKOUT_V3_DEF,
     RANKING_STRATEGY_MOMENTUM_V3,
     RANKING_STRATEGY_REVERSAL_V1,
     RANKING_STRATEGY_REVERSION_V3,
@@ -30,8 +32,12 @@ LIFECYCLE_EXIT_RANK_STRATEGY: dict[str, str] = {
 
 # 2nd-leg handoff: once the breakout (B1) is spent, ride MOMENTUM (M3) before exiting.
 # breakout_v2 -> breakout_v1 (breakout leg) -> momentum_v3 (trend leg) -> exit.
+# breakout_v3 sleeves use the CONVICTION exit (not the B1 handoff), but the conviction
+# score's M component still reads the position's momentum_v3 percentile via this map.
 LIFECYCLE_MOMENTUM_STRATEGY: dict[str, str] = {
     RANKING_STRATEGY_BREAKOUT_V2: RANKING_STRATEGY_MOMENTUM_V3,
+    RANKING_STRATEGY_BREAKOUT_V3_BROAD: RANKING_STRATEGY_MOMENTUM_V3,
+    RANKING_STRATEGY_BREAKOUT_V3_DEF: RANKING_STRATEGY_MOMENTUM_V3,
 }
 
 # Thresholds (percentile, high = strong), from the validated lifecycle:

@@ -36,6 +36,10 @@ STRATEGY_HORIZON: dict[str, int] = {
     "low_vol_v1": 5,
     "breakout_v1": 10,   # winners held to rank-drop (~8d); 10 captures the run
     "momentum_v1": 10,
+    # breakout_v3 holds long (conviction exit, ~quarter+ — exit-patience thesis); a 60d
+    # EV horizon prioritises the candidates that carry, not the 10d pop.
+    "breakout_v3_broad": 60,
+    "breakout_v3_def": 60,
 }
 DEFAULT_HORIZON = 10
 

@@ -401,6 +401,7 @@ class RecommendationService:
 
     def _build_engine_config(self, ranking_run: RankingRun) -> EngineConfig:
         from app.core.constants import (
+            RANKING_STRATEGY_BREAKOUT_V3_DEF,
             RANKING_STRATEGY_LOW_VOL_V1,
             RANKING_STRATEGY_REVERSAL_V1,
         )
@@ -411,10 +412,13 @@ class RecommendationService:
 
         # Strategies designed for non-BULL regimes have validated rank ordering —
         # the rank inversion guard (which prevents EXCEPTIONAL for ranks 1–5) is
-        # not appropriate for them.
+        # not appropriate for them. breakout_v3_def is the NARROW/defensive sleeve
+        # (proximity + low-vol), analogous to low_vol_v1 → promoted; breakout_v3_broad
+        # is bull/breakout, so it keeps the guard like breakout_v2.
         rank_v2_promoted = ranking_run.strategy_name in {
             RANKING_STRATEGY_REVERSAL_V1,
             RANKING_STRATEGY_LOW_VOL_V1,
+            RANKING_STRATEGY_BREAKOUT_V3_DEF,
         }
 
         return EngineConfig(

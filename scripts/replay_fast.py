@@ -168,7 +168,15 @@ if _SUITE == "lifecycle":
 # breadth-selected sleeve trades each day, so the foreground ranks just that one.
 elif _SUITE == "v3":
     _REGIME_STRATEGY = {}  # breadth-keyed, not label-keyed (see _active_strategy)
-    _ALL_STRATEGIES = [RANKING_STRATEGY_BREAKOUT_V3_BROAD, RANKING_STRATEGY_BREAKOUT_V3_DEF]
+    # The two breadth-selected entry sleeves PLUS momentum_v3 — ranked (not traded) so the
+    # conviction exit's M component can read each position's momentum_v3 percentile.
+    _ALL_STRATEGIES = [
+        RANKING_STRATEGY_BREAKOUT_V3_BROAD,
+        RANKING_STRATEGY_BREAKOUT_V3_DEF,
+        RANKING_STRATEGY_MOMENTUM_V3,
+    ]
+    # momentum_v3 is read SAME-DAY by the conviction exit -> rank it synchronously.
+    _FOREGROUND_SYNC = {RANKING_STRATEGY_MOMENTUM_V3}
 else:
     _REGIME_STRATEGY = _REGIME_STRATEGY_V2 if _SUITE == "v2" else _REGIME_STRATEGY_V1
     _ALL_STRATEGIES = sorted(set(_REGIME_STRATEGY.values()))

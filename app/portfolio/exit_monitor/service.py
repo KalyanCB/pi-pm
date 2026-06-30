@@ -60,9 +60,16 @@ from app.portfolio.regime_stops import resolve_stop_pcts
 # settings.horizon_aware_exits_enabled.
 _STRATEGY_MIN_HOLD: dict[str | None, int] = {
     "breakout_v2": 10,
+    "breakout_v3_broad": 10,
+    "breakout_v3_def": 10,
     "reversion_v3": 20,
     "momentum_v3": 60,
 }
+
+# Breakout-family strategies that route to the CONSOLIDATED conviction exit (the
+# conviction score IS the trail/stop). breakout_v3 supersedes v2's mono-style with the
+# regime-tilt sleeves; all three share the same conviction-exit gauntlet + PASS-3 swap.
+_BREAKOUT_CONVICTION_STRATEGIES = ("breakout_v2", "breakout_v3_broad", "breakout_v3_def")
 
 
 class ExitMonitorService:
@@ -485,9 +492,9 @@ class ExitMonitorService:
             return None
 
     def _compute_slot_eviction(self, positions, as_of, recent_slope_map):
-        """PASS 3 (opportunity swap): when the book is FULL and a fresh breakout_v2
+        """PASS 3 (opportunity swap): when the book is FULL and a fresh breakout-family
         rank<=N challenger is BLOCKED, return the id of the single WEAKEST evictable
-        breakout_v2 incumbent (lowest recent slope, below the incumbent floor,
+        breakout-family incumbent (lowest recent slope, below the incumbent floor,
         held>=min_hold, momentum not rising) so its slot is freed for the challenger.
         None when no swap is warranted (book not full / no challenger / no dragger)."""
         settings = get_settings()
@@ -499,7 +506,7 @@ class ExitMonitorService:
             select(RankingRun)
             .where(
                 RankingRun.status == "completed",
-                RankingRun.strategy_name == "breakout_v2",
+                RankingRun.strategy_name.in_(_BREAKOUT_CONVICTION_STRATEGIES),
                 RankingRun.as_of_date <= as_of,
             )
             .order_by(RankingRun.as_of_date.desc())
@@ -517,7 +524,7 @@ class ExitMonitorService:
             return None  # no blocked challenger → keep everyone
         best = None  # (recent_slope, position_id) — the weakest evictable incumbent
         for p in positions:
-            if getattr(p, "strategy_name", None) != "breakout_v2":
+            if getattr(p, "strategy_name", None) not in _BREAKOUT_CONVICTION_STRATEGIES:
                 continue
             sl = recent_slope_map.get(p.stock_id)
             if sl is None or sl >= settings.slot_recycle_incumbent_slope_floor_pct:
@@ -874,11 +881,12 @@ class ExitMonitorService:
         single_cap = float(cfg.single_name_cap_pct * 100) if cfg else 18.0
         days_held = ctx.get("days_held", 0)
 
-        # ── Consolidated breakout_v2 exit (flag-gated): the conviction score IS the
-        # trail/stop. Route breakout_v2 positions here and skip the legacy stack
-        # entirely so the single exit logic isn't double-fired by stop/trailing/fade.
+        # ── Consolidated breakout-family exit (flag-gated): the conviction score IS the
+        # trail/stop. Route breakout_v2 AND the breakout_v3 sleeves here and skip the
+        # legacy stack entirely so the single exit logic isn't double-fired by
+        # stop/trailing/fade.
         if (settings.breakout_conviction_exit_enabled
-                and getattr(pos, "strategy_name", None) == "breakout_v2"):
+                and getattr(pos, "strategy_name", None) in _BREAKOUT_CONVICTION_STRATEGIES):
             return self._evaluate_breakout_conviction(
                 pos, ctx, as_of, single_cap, trigger_group
             )
