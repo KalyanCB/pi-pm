@@ -36,11 +36,15 @@ _DEFAULT_REGIME_SLOTS: dict[str, dict] = {
     "crisis":         {"max_positions": 2, "max_buy_per_day": 0},
 }
 
-# P-08: regime-dependent capital deployment ceiling
+# P-08: regime-dependent capital deployment ceiling.
+# Bull ceilings raised to full (1.0) so breakout_v2 deploys the cash across the wide
+# 50-slot book; the ~25% residual cash buffer now comes ONLY from the MEDIUM conviction
+# weight (0.75) — see _CONVICTION_WEIGHTS. Bear (defensive/crisis) keep the conservative
+# ceilings (reversion_v3 sleeve).
 _REGIME_DEPLOY_PCT: dict[str, float] = {
-    "risk_on":         0.92,
-    "limited_risk_on": 0.80,
-    "neutral":         0.85,
+    "risk_on":         1.00,
+    "limited_risk_on": 1.00,
+    "neutral":         0.95,
     "defensive":       0.65,
     "crisis":          0.50,
 }
