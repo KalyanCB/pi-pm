@@ -384,6 +384,19 @@ RANKING_STRATEGY_REVERSION_V3_VERSION = "1.0.0"
 RANKING_STRATEGY_MOMENTUM_V3 = "momentum_v3"
 RANKING_STRATEGY_MOMENTUM_V3_VERSION = "1.0.0"
 
+# breakout_v3: deterministic 2-STATE regime tilt (replaces v2's mono-style + 35% dead
+# weight). Per-year top-of-book validation (2021-2025, fwd250) BEATS/matches breakout_v2
+# every year; the regime SWITCH earns its keep — no static style wins all regimes.
+#   BROAD  market (breadth above trailing median): high_proximity 0.45 + momentum_12m
+#          0.35 + trend_efficiency 0.20  (pro-trend; captures broad-bull upside 2021/23)
+#   NARROW market (breadth below trailing median): high_proximity 0.55 + low_vol 0.45
+#          (defensive; proximity is robust EVERY year, low-vol paid 2022/2024/2025)
+# vol_contraction is DROPPED — its forward IC was ~0/negative every year 2021-2025.
+RANKING_STRATEGY_BREAKOUT_V3_BROAD = "breakout_v3_broad"
+RANKING_STRATEGY_BREAKOUT_V3_BROAD_VERSION = "1.0.0"
+RANKING_STRATEGY_BREAKOUT_V3_DEF = "breakout_v3_def"
+RANKING_STRATEGY_BREAKOUT_V3_DEF_VERSION = "1.0.0"
+
 BENCHMARK_DEPENDENT_FACTORS = frozenset(
     {"relative_strength", "relative_strength_acceleration"}
 )

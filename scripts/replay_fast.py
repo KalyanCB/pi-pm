@@ -36,6 +36,8 @@ from app.core.constants import (
     DEFAULT_BENCHMARK_SYMBOL,
     RANKING_STRATEGY_BREAKOUT_V1,
     RANKING_STRATEGY_BREAKOUT_V2,
+    RANKING_STRATEGY_BREAKOUT_V3_BROAD,
+    RANKING_STRATEGY_BREAKOUT_V3_DEF,
     RANKING_STRATEGY_LOW_VOL_V1,
     RANKING_STRATEGY_MOMENTUM_V1,
     RANKING_STRATEGY_MOMENTUM_V2,
@@ -159,9 +161,33 @@ if _SUITE == "lifecycle":
         RANKING_STRATEGY_REVERSION_V3,
         RANKING_STRATEGY_REVERSAL_V1,
     }
+# v3 suite (STRATEGY_SUITE=v3): deterministic 2-STATE regime tilt. The active sleeve is
+# NOT chosen by the 4-way vol/bull label but by MARKET BREADTH (market_breadth.broad_flag,
+# precomputed point-in-time by scripts/compute_breadth.py): BROAD -> breakout_v3_broad
+# (proximity+momentum+efficiency), NARROW -> breakout_v3_def (proximity+low_vol). Only the
+# breadth-selected sleeve trades each day, so the foreground ranks just that one.
+elif _SUITE == "v3":
+    _REGIME_STRATEGY = {}  # breadth-keyed, not label-keyed (see _active_strategy)
+    _ALL_STRATEGIES = [RANKING_STRATEGY_BREAKOUT_V3_BROAD, RANKING_STRATEGY_BREAKOUT_V3_DEF]
 else:
     _REGIME_STRATEGY = _REGIME_STRATEGY_V2 if _SUITE == "v2" else _REGIME_STRATEGY_V1
     _ALL_STRATEGIES = sorted(set(_REGIME_STRATEGY.values()))
+
+
+def _active_strategy(db, day: date, label: str) -> str:
+    """Pick the active strategy for ``day``. v3 suite routes by market breadth (BROAD ->
+    breakout_v3_broad, NARROW -> breakout_v3_def); all other suites route by the 4-way
+    regime label. Breadth defaults to BROAD when the table has no row for the day."""
+    if _SUITE == "v3":
+        from sqlalchemy import text as _text
+        flag = db.execute(
+            _text("SELECT broad_flag FROM market_breadth WHERE date <= :d "
+                  "ORDER BY date DESC LIMIT 1"),
+            {"d": day},
+        ).scalar()
+        broad = True if flag is None else bool(flag)
+        return RANKING_STRATEGY_BREAKOUT_V3_BROAD if broad else RANKING_STRATEGY_BREAKOUT_V3_DEF
+    return _REGIME_STRATEGY.get(label, RANKING_STRATEGY_MOMENTUM_V1)
 
 # Background runs in separate PROCESSES (true multi-core — sidesteps the GIL that caps
 # a single process at one core). The preloaded bar store is shared with the workers via
@@ -239,7 +265,7 @@ def run_foreground(day: date, paper_trade: bool, global_store) -> tuple[str, str
             benchmark_symbol=DEFAULT_BENCHMARK_SYMBOL, as_of_date=day
         )
         label = (row.regime_label if row else None) or "NEUTRAL_LOW_VOL"
-        active = _REGIME_STRATEGY.get(label, RANKING_STRATEGY_MOMENTUM_V1)
+        active = _active_strategy(db, day, label)
 
         # 2. Batch the active strategy PLUS any trade-critical handoff strategies the exit
         #    reads same-day (lifecycle: breakout_v1/momentum_v3/reversal_v1). Ranking them
@@ -334,9 +360,8 @@ def _phase_trade(day: date, paper_trade: bool) -> tuple[str, str]:
     try:
         row = RegimeAnalyticsRepository(db).get_current(
             benchmark_symbol=DEFAULT_BENCHMARK_SYMBOL, as_of_date=day)
-        active = _REGIME_STRATEGY.get(
-            (row.regime_label if row else None) or "NEUTRAL_LOW_VOL",
-            RANKING_STRATEGY_MOMENTUM_V1)
+        active = _active_strategy(
+            db, day, (row.regime_label if row else None) or "NEUTRAL_LOW_VOL")
         batch_svc = _build_batch_service(db, _GLOBAL_STORE)
         request = _base_request(
             day, [_spec(n) for n in _ALL_STRATEGIES],

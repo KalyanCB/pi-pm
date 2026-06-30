@@ -840,6 +840,26 @@ class PaperPilotOps:
         )
         _regime_label = (_regime_row.regime_label if _regime_row else None) or "NEUTRAL_LOW_VOL"
         _active_strategy = _REGIME_STRATEGY.get(_regime_label, "momentum_v1")
+        # v3 suite: the active sleeve is chosen by MARKET BREADTH, not the 4-way label.
+        # market_breadth.broad_flag is precomputed point-in-time (scripts/compute_breadth.py).
+        # Must stay in sync with replay_fast._active_strategy. (_regime_label still drives
+        # gold rotation / deploy posture below.)
+        if _suite == "v3":
+            from sqlalchemy import text as _text
+            from app.core.constants import (
+                RANKING_STRATEGY_BREAKOUT_V3_BROAD,
+                RANKING_STRATEGY_BREAKOUT_V3_DEF,
+            )
+            _bflag = self.db.execute(
+                _text("SELECT broad_flag FROM market_breadth WHERE date <= :d "
+                      "ORDER BY date DESC LIMIT 1"),
+                {"d": as_of_date},
+            ).scalar()
+            _broad = True if _bflag is None else bool(_bflag)
+            _active_strategy = (
+                RANKING_STRATEGY_BREAKOUT_V3_BROAD if _broad
+                else RANKING_STRATEGY_BREAKOUT_V3_DEF
+            )
 
         # P-22 (v18, flag-gated): rotate the defensive sleeve to gold in BEAR regimes.
         _gold = self._gold_rotation(as_of_date, _regime_label)
