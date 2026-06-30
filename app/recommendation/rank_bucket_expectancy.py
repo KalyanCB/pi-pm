@@ -87,10 +87,14 @@ class RankBucketExpectancyProvider:
         ranking date. Aggregated to a median in Python (robust to outliers).
         """
         start = as_of_date - timedelta(days=int(lookback_days * 1.6))  # cal-day pad
-        # No-lookahead: only include rankings whose full forward horizon (≤20 trading
-        # days ≈ 30 calendar days) has already completed by as_of_date. Otherwise the
-        # forward-return window would peek at prices in the replay's future.
-        rank_cutoff = as_of_date - timedelta(days=30)
+        # No-lookahead: only include rankings whose full forward horizon has ALREADY
+        # completed by as_of_date — else the forward-return window peeks at prices in the
+        # replay's future. The cutoff must cover the LONGEST strategy horizon in play
+        # (trading days -> calendar via ~1.5x, +5d holiday margin). breakout_v3 uses a
+        # 60-trading-day horizon (~95 cal days); the legacy hardcoded 30d only covered
+        # the old ≤20-day horizons and would leak ~50 cal days for v3.
+        _max_horizon_td = max(max(STRATEGY_HORIZON.values(), default=DEFAULT_HORIZON), DEFAULT_HORIZON)
+        rank_cutoff = as_of_date - timedelta(days=int(_max_horizon_td * 1.5) + 5)
 
         rows = db.execute(
             text("""
