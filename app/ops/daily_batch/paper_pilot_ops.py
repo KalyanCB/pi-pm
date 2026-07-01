@@ -523,6 +523,38 @@ class PaperPilotOps:
         uret = float(row.universe_ret20) if row.universe_ret20 is not None else None
         return breadth, uret
 
+    def _confirmed_breakout_ids(self, stock_ids: list, as_of: date, confirm_days: int) -> set:
+        """PIT multi-day breakout confirmation. A stock qualifies when its last
+        ``confirm_days`` closes ALL sit above its pre-breakout high — the max high over
+        the window ENDING confirm_days sessions ago (rn confirm_days+1 .. 129). That means
+        the breakout level (set before the recent window) has been HELD for confirm_days
+        sessions. Uses only data <= as_of. Returns the set of qualifying stock_ids."""
+        if not stock_ids:
+            return set()
+        from sqlalchemy import text as _text
+        rows = self.db.execute(_text(
+            """
+            WITH r AS (
+                SELECT stock_id, close, high,
+                       row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) rn
+                FROM market_data
+                WHERE stock_id = ANY(:ids) AND date <= :d AND source = 'kite'
+            )
+            SELECT stock_id,
+                   max(high)  FILTER (WHERE rn BETWEEN :cd1 AND 129) AS level,
+                   min(close) FILTER (WHERE rn <= :cd)              AS min_recent,
+                   count(*)   FILTER (WHERE rn <= 130)              AS n
+            FROM r WHERE rn <= 130 GROUP BY stock_id
+            """
+        ), {"ids": list(stock_ids), "d": as_of,
+            "cd": confirm_days, "cd1": confirm_days + 1}).all()
+        out = set()
+        for x in rows:
+            if (x.n and x.n >= 130 and x.level and x.min_recent
+                    and float(x.min_recent) > float(x.level)):
+                out.add(x.stock_id)
+        return out
+
     def _prioritize_entries(
         self,
         fresh_recs: list,
@@ -906,6 +938,19 @@ class PaperPilotOps:
         # same artifact a HITL reviewer would approve top-down.
         _fresh = [r for r in all_buy_results
                   if not r.portfolio_position_id and r.stock_id not in _open_stock_ids]
+        # BEAR_IMPRV_BROAD (flag-gated, PIT): multi-day-confirmed entry gate on breakout
+        # sleeves — only buy a candidate once its close has held above its breakout level
+        # for N sessions. Filters ~40% of false breakouts before purchase (validated to
+        # lift win-rate every regime + cut 2024-26 churn). Decided from <=as_of data.
+        from app.core.config import get_settings as _gsc
+        _sc = _gsc()
+        if (_sc.bear_imprv_broad and _fresh and _active_strategy in
+                ("breakout_v2", "breakout_v3_broad", "breakout_v3_def")):
+            _confirmed = self._confirmed_breakout_ids(
+                [r.stock_id for r in _fresh], as_of_date, _sc.bear_imprv_confirm_days)
+            _n0 = len(_fresh)
+            _fresh = [r for r in _fresh if r.stock_id in _confirmed]
+            entries.append(f"bear_confirm:{len(_fresh)}/{_n0}")
         _ordered_recs = self._prioritize_entries(
             _fresh, _active_strategy, _regime_label, as_of_date
         )

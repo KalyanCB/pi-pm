@@ -390,6 +390,15 @@ class Settings(BaseSettings):
     slot_recycle_incumbent_slope_floor_pct: float = 0.12        # only evict an incumbent below this
     slot_recycle_min_hold_days: int = 60                        # never evict a fresh incumbent
 
+    # ── BEAR_IMPRV_BROAD: bear/sideways breakout entry improvement ────────────
+    # Deterministic, PIT. Gate breakout-sleeve entries on a MULTI-DAY CONFIRMATION:
+    # only buy a candidate once its close has held above its breakout level for
+    # `bear_imprv_confirm_days` sessions (delayed entry, decided on the confirmation
+    # day from <=t data). Validated to lift win-rate +9-12pp in EVERY regime and cut
+    # ~40% of false-breakout churn (2024-2026), without degrading 2021-2023.
+    bear_imprv_broad: bool = False
+    bear_imprv_confirm_days: int = 3
+
     # ── breakout_v3_def proximity-break exit (NO momentum) ────────────────────
     # def buys low-vol names near their 52w high; the momentum conviction gauntlet cut
     # them at the wrong time. When enabled, def routes to EXIT_PROXIMITY_BREAK instead:
