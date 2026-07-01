@@ -942,10 +942,12 @@ class PaperPilotOps:
         # sleeves — only buy a candidate once its close has held above its breakout level
         # for N sessions. Filters ~40% of false breakouts before purchase (validated to
         # lift win-rate every regime + cut 2024-26 churn). Decided from <=as_of data.
+        # BEAR-DAYS ONLY: the confirmation gate fires only on the NARROW/bear sleeve
+        # (breakout_v3_def). Broad/bull days (breakout_v3_broad) are left UNTOUCHED — the
+        # completed bull strategy is not modified.
         from app.core.config import get_settings as _gsc
         _sc = _gsc()
-        if (_sc.bear_imprv_broad and _fresh and _active_strategy in
-                ("breakout_v2", "breakout_v3_broad", "breakout_v3_def")):
+        if _sc.bear_imprv_broad and _fresh and _active_strategy == "breakout_v3_def":
             _confirmed = self._confirmed_breakout_ids(
                 [r.stock_id for r in _fresh], as_of_date, _sc.bear_imprv_confirm_days)
             _n0 = len(_fresh)
