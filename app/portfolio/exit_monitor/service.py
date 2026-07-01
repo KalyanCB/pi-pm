@@ -41,6 +41,7 @@ from app.portfolio.exit_monitor.triggers import (
     TriggerResult,
     check_alpha_decay,
     check_breakout_conviction_exit,
+    check_proximity_break_exit,
     check_liquidity,
     check_rank_drop,
     check_regime_change,
@@ -93,7 +94,9 @@ class ExitMonitorService:
                         "EXIT_TIME", "EXIT_LIQUIDITY",
                         "EXIT_B1_FADE", "EXIT_MOMENTUM_FADE", "EXIT_RV1_RECOVERED",
                         # gauntlet passes 2 & 3 are daily slot-allocation signals
-                        "EXIT_SLOT_RECYCLE", "EXIT_SLOT_SWAP"}
+                        "EXIT_SLOT_RECYCLE", "EXIT_SLOT_SWAP",
+                        # def-sleeve proximity-break exit (evaluated on the close)
+                        "EXIT_PROXIMITY_BREAK"}
     # EXIT_CONVICTION blends signal (momentum/regime) and price (drag/RSI) but is
     # evaluated on the live close, so it rides the PRICE pass with the stops.
     _PRICE_TRIGGERS = {"EXIT_STOP_LOSS", "EXIT_TRAILING_STOP", "EXIT_CONVICTION"}
@@ -257,6 +260,7 @@ class ExitMonitorService:
         # price-derived inputs — own-thrust RSI and the stock's 200-SMA tier).
         rsi_map: dict = {}
         sma200_map: dict = {}
+        high252_map: dict = {}  # 252d max close -> proximity for the def prox-break exit
         if settings.breakout_conviction_exit_enabled:
             ranked_px = (
                 select(
@@ -285,8 +289,10 @@ class ExitMonitorService:
                     func.avg(ranked_px.c.close).filter(ranked_px.c.rn <= 200).label("sma200"),
                     func.max(ranked_px.c.close).filter(ranked_px.c.rn == 1).label("last_close"),
                     func.count().filter(ranked_px.c.rn <= 200).label("n200"),
+                    func.max(ranked_px.c.close).filter(ranked_px.c.rn <= 252).label("high252"),
+                    func.count().filter(ranked_px.c.rn <= 252).label("n252"),
                 )
-                .where(ranked_px.c.rn <= 200)
+                .where(ranked_px.c.rn <= 252)
                 .group_by(ranked_px.c.stock_id)
             ).all()
             for r in px_rows:
@@ -300,6 +306,9 @@ class ExitMonitorService:
                 # 200-SMA tier needs enough history (≥150 bars).
                 if r.sma200 and r.n200 and r.n200 >= 150:
                     sma200_map[r.stock_id] = float(r.sma200)
+                # 252d high (proximity denominator for the def prox-break exit).
+                if r.high252 and r.n252 and r.n252 >= 120 and float(r.high252) > 0:
+                    high252_map[r.stock_id] = float(r.high252)
 
         # ── Batch prefetch: recent slope (last-N-day price velocity) for PASS 2 & 3 ──
         # recent_slope = (close_now / close_N_bars_ago − 1)*100 / N  (%/day). Flag-gated.
@@ -368,7 +377,7 @@ class ExitMonitorService:
             context = self._build_position_context(
                 pos, as_of, price_map=price_map, rank_map=rank_map, trend_map=trend_map,
                 atr_map=atr_map, rsi_map=rsi_map, sma200_map=sma200_map,
-                recent_slope_map=recent_slope_map,
+                recent_slope_map=recent_slope_map, high252_map=high252_map,
             )
             if settings.slot_recycle_opportunity_enabled:
                 context["slot_swap_evict"] = (pos.id == evict_position_id)
@@ -632,6 +641,44 @@ class ExitMonitorService:
         # ── SURVIVED all enabled passes → HOLD (unless a safety rail tripped) ──
         return _emit(None)
 
+    def _evaluate_def_proximity_break(self, pos, ctx: dict, trigger_group: str) -> list:
+        """def-sleeve exit (EXIT_PROXIMITY_BREAK, no momentum): hold while the stock stays
+        near its 52w high; exit when proximity (close/252d-high) breaks below the floor OR
+        it gives back peak_drop_pct from its peak close since entry. Keeps the always-on
+        catastrophe stop + liquidity rails."""
+        settings = get_settings()
+        last = ctx.get("last_price")
+        high252 = ctx.get("high252")
+        proximity = (float(last) / float(high252)) if (last and high252 and float(high252) > 0) else None
+        # give-back from the peak close since entry (identical to the conviction path's drag)
+        mg = ctx.get("max_gain_pct")
+        pnl = ctx.get("unrealized_pnl_pct")
+        peak_factor = 1.0 + max(mg or 0.0, 0.0) / 100.0
+        cur_factor = 1.0 + (pnl or 0.0) / 100.0
+        drag = max(0.0, (1.0 - cur_factor / peak_factor) * 100.0)
+
+        res = check_proximity_break_exit(
+            proximity=proximity,
+            drag_from_peak_pct=drag,
+            prox_floor=settings.breakout_v3_def_prox_floor,
+            peak_drop_pct=settings.breakout_v3_def_peak_drop_pct,
+        )
+        safety = [
+            r for r in (
+                check_stop_loss(ctx.get("unrealized_pnl_pct"),
+                                -settings.breakout_conviction_catastrophe_stop_pct),
+                check_liquidity(ctx.get("avg_daily_volume"),
+                                float(pos.market_value) if pos.market_value else None,
+                                ctx.get("last_price")),
+            ) if r.fired
+        ]
+        fired = ([res] if res.fired else []) + safety
+        if trigger_group == "signal":
+            fired = [r for r in fired if r.trigger_code in self._SIGNAL_TRIGGERS]
+        elif trigger_group == "price":
+            fired = [r for r in fired if r.trigger_code in self._PRICE_TRIGGERS]
+        return fired
+
     def _build_position_context(
         self,
         pos: PortfolioPosition,
@@ -643,6 +690,7 @@ class ExitMonitorService:
         rsi_map: dict | None = None,
         sma200_map: dict | None = None,
         recent_slope_map: dict | None = None,
+        high252_map: dict | None = None,
     ) -> dict:
         ctx: dict = {}
 
@@ -660,6 +708,8 @@ class ExitMonitorService:
             ctx["rsi14"] = rsi_map.get(pos.stock_id)
         if sma200_map:
             ctx["sma200"] = sma200_map.get(pos.stock_id)
+        if high252_map:
+            ctx["high252"] = high252_map.get(pos.stock_id)
         if recent_slope_map:
             ctx["recent_slope"] = recent_slope_map.get(pos.stock_id)
 
@@ -887,6 +937,11 @@ class ExitMonitorService:
         # stop/trailing/fade.
         if (settings.breakout_conviction_exit_enabled
                 and getattr(pos, "strategy_name", None) in _BREAKOUT_CONVICTION_STRATEGIES):
+            # def sleeve (low-vol near-high) uses a proximity-break exit, NOT the momentum
+            # gauntlet, which cut the calm names at the wrong time. Flag-gated.
+            if (settings.breakout_v3_def_prox_exit_enabled
+                    and getattr(pos, "strategy_name", None) == "breakout_v3_def"):
+                return self._evaluate_def_proximity_break(pos, ctx, trigger_group)
             return self._evaluate_breakout_conviction(
                 pos, ctx, as_of, single_cap, trigger_group
             )

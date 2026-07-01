@@ -390,6 +390,14 @@ class Settings(BaseSettings):
     slot_recycle_incumbent_slope_floor_pct: float = 0.12        # only evict an incumbent below this
     slot_recycle_min_hold_days: int = 60                        # never evict a fresh incumbent
 
+    # ── breakout_v3_def proximity-break exit (NO momentum) ────────────────────
+    # def buys low-vol names near their 52w high; the momentum conviction gauntlet cut
+    # them at the wrong time. When enabled, def routes to EXIT_PROXIMITY_BREAK instead:
+    # exit when close/252d-high < prox_floor OR it gives back peak_drop_pct from its peak.
+    breakout_v3_def_prox_exit_enabled: bool = False
+    breakout_v3_def_prox_floor: float = 0.85                    # exit below 85% of the 252d high
+    breakout_v3_def_peak_drop_pct: float = 20.0                 # wide trail: give-back from peak close
+
     # ── P-24: transaction-cost model (net-of-cost backtest) ───────────────────
     # When enabled, every fill incurs the NSE delivery-equity cost stack so NAV /
     # CAGR are reported NET of costs (the legacy behaviour applied only a flat

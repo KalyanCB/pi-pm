@@ -850,16 +850,22 @@ class PaperPilotOps:
                 RANKING_STRATEGY_BREAKOUT_V3_BROAD,
                 RANKING_STRATEGY_BREAKOUT_V3_DEF,
             )
-            _bflag = self.db.execute(
-                _text("SELECT broad_flag FROM market_breadth WHERE date <= :d "
-                      "ORDER BY date DESC LIMIT 1"),
-                {"d": as_of_date},
-            ).scalar()
-            _broad = True if _bflag is None else bool(_bflag)
-            _active_strategy = (
-                RANKING_STRATEGY_BREAKOUT_V3_BROAD if _broad
-                else RANKING_STRATEGY_BREAKOUT_V3_DEF
-            )
+            # Diagnostic override: pin the sleeve regardless of breadth (must match
+            # replay_fast; the TRADE selection is here, so the force must apply here too).
+            _force = _os.getenv("V3_FORCE_SLEEVE")
+            if _force:
+                _active_strategy = _force
+            else:
+                _bflag = self.db.execute(
+                    _text("SELECT broad_flag FROM market_breadth WHERE date <= :d "
+                          "ORDER BY date DESC LIMIT 1"),
+                    {"d": as_of_date},
+                ).scalar()
+                _broad = True if _bflag is None else bool(_bflag)
+                _active_strategy = (
+                    RANKING_STRATEGY_BREAKOUT_V3_BROAD if _broad
+                    else RANKING_STRATEGY_BREAKOUT_V3_DEF
+                )
 
         # P-22 (v18, flag-gated): rotate the defensive sleeve to gold in BEAR regimes.
         _gold = self._gold_rotation(as_of_date, _regime_label)

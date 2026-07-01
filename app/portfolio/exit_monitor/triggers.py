@@ -498,3 +498,32 @@ def check_liquidity(
         },
         urgency="HIGH" if fired else "NORMAL",
     )
+
+
+def check_proximity_break_exit(
+    proximity: float | None,
+    drag_from_peak_pct: float | None,
+    prox_floor: float,
+    peak_drop_pct: float,
+) -> TriggerResult:
+    """EXIT_PROXIMITY_BREAK — the def-sleeve exit (NO momentum term). def buys low-vol
+    names holding near their 52-week high; the thesis is "hold quality near the high".
+    So it exits only when the stock LEAVES that zone:
+      * proximity (close / 252d-high) falls below ``prox_floor`` (e.g. 0.85), OR
+      * it gives back ``peak_drop_pct`` from its own peak close since entry (wide trail).
+    This replaces the momentum-based conviction gauntlet for def, which cut the calm
+    low-vol names precisely when their (already low) momentum faded."""
+    prox_break = proximity is not None and proximity < prox_floor
+    peak_break = drag_from_peak_pct is not None and drag_from_peak_pct >= peak_drop_pct
+    return TriggerResult(
+        fired=prox_break or peak_break,
+        trigger_code="EXIT_PROXIMITY_BREAK",
+        details={
+            "proximity": proximity,
+            "prox_floor": prox_floor,
+            "drag_from_peak_pct": drag_from_peak_pct,
+            "peak_drop_pct": peak_drop_pct,
+            "reason": "prox_break" if prox_break else ("peak_drop" if peak_break else None),
+        },
+        urgency="HIGH" if (prox_break or peak_break) else "NORMAL",
+    )
